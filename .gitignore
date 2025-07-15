@@ -1,0 +1,110 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Dependencies
+node_modules/
+*/node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build and dist
+dist/
+build/
+*/dist/
+*/build/
+.vite/
+.next/
+out/
+
+# Logs
+logs/
+*.log
+*.err.log
+*.out.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pm2.log*
+lerna-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+.mocha-json-reporter/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-workspace
+*.sublime-project
+.vim/
+.emacs.d/
+
+# OS files
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+*.sublime-workspace
+*.sublime-project
+
+# Temp and cache
+tmp/
+temp/
+cache/
+.cache/
+.eslintcache
+.prettierignore
+*.bak
+*.swp
+*.swo
+*~
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Local development
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Uploads (temporary - only development)
+uploads/
+temp-uploads/
+
+# Private files and config
+config/private/
+secrets/
+certificates/
+*.pem
+*.key
+*.crt
+
+# Build output
+.next/
+.nuxt/
+dist/
+build/
+
+# Misc
+.turbo/
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# Backup files
+*.backup
+*.bak
