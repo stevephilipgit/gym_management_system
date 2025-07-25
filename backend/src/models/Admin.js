@@ -1,0 +1,56 @@
+// gym_project_backend/models/Admin.js
+import mongoose from "mongoose";
+
+const AdminSchema = new mongoose.Schema(
+  {
+    fullName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    username: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+    },
+
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      lowercase: true,
+    },
+
+    role: {
+      type: String,
+      enum: ["superadmin", "trainer", "finance"],
+      default: "trainer",
+    },
+
+    passwordHash: {
+      type: String,
+      required: true,
+    },
+
+    lastLogin: {
+      type: Date,
+      default: null,
+    },
+
+    resetOtp: {
+      type: String,
+      default: null,
+    },
+
+    otpExpiry: {
+      type: Number,
+      default: null,
+    },
+  },
+  { timestamps: true }
+);
+
+export default mongoose.model("Admin", AdminSchema);
