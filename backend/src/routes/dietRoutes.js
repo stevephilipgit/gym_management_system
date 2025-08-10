@@ -1,0 +1,32 @@
+import express from "express";
+import dietController from "../controllers/dietController.js";
+import adminAuth from "../middleware/adminAuth.js";
+import { validateSchema } from "../middleware/schemaValidator.js";
+import { createDietSchema, updateDietSchema } from "../schemas/dietSchema.js";
+import { adminLimiter, defaultLimiter, sensitiveLimiter } from "../middleware/rateLimiter.js";
+
+const router = express.Router();
+router.use(defaultLimiter);
+
+/**
+ * POST /api/diets
+ * Create new diet
+ */
+router.post("/", adminLimiter, adminAuth, validateSchema(createDietSchema), dietController.createDiet);
+
+/**
+ * GET /api/diets
+ * List all active diets
+ */
+router.get("/", sensitiveLimiter, dietController.getAllDiets);
+
+// GET /api/diets/:id
+router.get("/:id", sensitiveLimiter, dietController.getDietById);
+
+// PUT /api/diets/:id
+router.put("/:id", adminLimiter, adminAuth, validateSchema(updateDietSchema), dietController.updateDiet);
+
+// DELETE /api/diets/:id
+router.delete("/:id", adminLimiter, adminAuth, dietController.deleteDiet);
+
+export default router;

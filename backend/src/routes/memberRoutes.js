@@ -1,0 +1,73 @@
+//  memberRoutes.js  
+
+import express from "express";
+import multer from "multer";
+import rateLimit from "express-rate-limit";
+import memberController from "../controllers/memberController.js";
+import adminAuth from "../middleware/adminAuth.js";
+import requireRole from "../middleware/requireRole.js";
+import { validateSchema } from "../middleware/schemaValidator.js";
+import { memberRegisterSchema, memberUpdateSchema, memberRenewSchema } from "../schemas/memberSchema.js";
+import { adminLimiter, sensitiveLimiter } from "../middleware/rateLimiter.js";
+
+const router = express.Router();
+
+/* ============================================================
+   RATE LIMIT (public validity check) - FOR PUBLIC ROUTE ONLY
+============================================================ */
+const validityLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  message: { message: "Too many requests, slow down." },
+});
+
+// ✅ PUBLIC ROUTE (no auth) - Must come BEFORE adminLimiter
+router.get("/public-validity/:gymId", validityLimiter, memberController.checkPublicValidity);
+
+// Apply admin limiter to ALL remaining routes
+router.use(adminLimiter);
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, "uploads/"),
+  filename: (req, file, cb) =>
+    cb(null, Date.now() + "-" + file.originalname.replace(/\s+/g, "_")),
+});
+
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.match(/jpg|jpeg|png/i)) {
+      return cb(new Error("Only JPG, JPEG, PNG allowed"));
+    }
+    cb(null, true);
+  },
+});
+
+/* ============================================================
+   MEMBER ROUTES
+============================================================ */
+
+// POST /api/members/register
+router.post("/register", adminAuth, upload.single("photo"), validateSchema(memberRegisterSchema), memberController.registerMember);
+
+// GET /api/members/public-validity/:gymId (public, no auth)
+router.get("/public-validity/:gymId", validityLimiter, memberController.checkPublicValidity);
+
+// DELETE /api/members/:gymId
+router.delete("/:gymId", adminAuth, requireRole("superadmin"), memberController.deleteMember);
+
+// GET /api/members/due/list
+router.get("/due/list", adminAuth, memberController.getExpiringMembers);
+
+// GET /api/members (all members)
+router.get("/", adminAuth, memberController.getAllMembers);
+
+// PUT /api/members/renew/:gymId
+router.put("/renew/:gymId", adminAuth, validateSchema(memberRenewSchema), memberController.renewMember);
+
+// GET /api/members/:gymId (get single member)
+router.get("/:gymId", sensitiveLimiter, adminAuth, memberController.getMemberById);
+
+// PUT /api/members/:gymId (update member)
+router.put("/:gymId", adminAuth, upload.single("photo"), validateSchema(memberUpdateSchema), memberController.updateMember);
+
+export default router;
