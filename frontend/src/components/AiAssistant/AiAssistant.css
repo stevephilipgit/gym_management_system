@@ -1,0 +1,150 @@
+.ai-assistant-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 720px);
+  border: 1px solid var(--border-color, #d8d8d8);
+  border-radius: 16px;
+  background: var(--bg-secondary, #ffffff);
+  overflow: hidden;
+}
+
+.ai-chat-window {
+  flex-grow: 1;
+  overflow-y: auto;
+  max-height: 400px;
+  padding: 16px;
+  background: var(--bg-primary, #fafafa);
+}
+
+.ai-bubble-base {
+  padding: 12px 14px;
+  border-radius: 14px;
+  max-width: 80%;
+  margin: 0 0 12px;
+}
+
+.ai-bubble-user {
+  margin-left: auto;
+  background: var(--accent-color, #ccff00);
+  color: #111111;
+}
+
+.ai-bubble-assistant {
+  margin-right: auto;
+  background: #f1f1f1;
+  color: #1a1a1a;
+}
+
+.ai-input-row {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  border-top: 1px solid var(--border-color, #d8d8d8);
+}
+
+.ai-input-row input {
+  flex: 1;
+  padding: 12px;
+  border: 1px solid var(--border-color, #d8d8d8);
+  border-radius: 10px;
+}
+
+.ai-input-row button {
+  padding: 12px 18px;
+  background: var(--accent-color, #ccff00);
+  color: #111111;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.ai-input-row button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-error {
+  color: red;
+  font-size: 12px;
+  padding: 4px 16px 16px;
+}
+
+.ai-reminder-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ai-reminder-table th {
+  background: #f8f8f8;
+  padding: 10px;
+  text-align: left;
+}
+
+.ai-reminder-table td {
+  padding: 10px;
+  border-bottom: 1px solid #e5e5e5;
+  vertical-align: top;
+}
+
+.ai-whatsapp-btn {
+  background: #25d366;
+  color: white;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.ai-confirm-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ai-confirm-btn {
+  background: #2e7d32;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.ai-cancel-btn {
+  background: #e0e0e0;
+  color: #222222;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.ai-timestamp {
+  font-size: 10px;
+  color: #999;
+  text-align: right;
+  margin-top: 2px;
+}
+
+.ai-message-block {
+  display: flex;
+  flex-direction: column;
+}
+
+.ai-summary {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #555;
+}
+
+.ai-empty {
+  font-size: 13px;
+  color: #666;
+}
+
+.ai-more {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #666;
+}
