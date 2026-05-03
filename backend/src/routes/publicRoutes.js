@@ -1,6 +1,7 @@
 import express from "express";
 import memberController from "../controllers/memberController.js";
 import invoiceController from "../controllers/invoiceController.js";
+import packageController from "../controllers/packageController.js";
 import { defaultLimiter, sensitiveLimiter } from "../middleware/rateLimiter.js";
 
 const router = express.Router();
@@ -15,5 +16,8 @@ router.get("/check-member", memberController.checkPublicValidity);
 
 // GET /api/public/invoices/share/:token
 router.get("/invoices/share/:token", sensitiveLimiter, invoiceController.getInvoiceByLink);
+
+// GET /api/public/packages
+router.get("/packages", packageController.getAllPackages);
 
 export default router;

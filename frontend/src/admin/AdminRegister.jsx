@@ -48,6 +48,9 @@ export default function AdminRegister() {
   const [selectedDietName, setSelectedDietName] = useState(null);
   const [selectedDietDescription, setSelectedDietDescription] = useState("");
   const [currentAdmin, setCurrentAdmin] = useState(null);
+  const [submitError, setSubmitError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
   const fetchedRef = useRef(false);
 
   const loadDynamicFields = async () => {
@@ -116,33 +119,52 @@ export default function AdminRegister() {
   };
 
   const validateForm = () => {
-    if (!form.fullName.trim()) return "Full Name required";
-    if (!form.fatherName.trim()) return "Father Name required";
-    if (!form.occupation.trim()) return "Occupation required";
-    if (!form.address.trim()) return "Address required";
-    if (!form.trainingType) return "Training type required";
-    if (!form.dob) return "DOB required";
-    if (!form.bloodGroup) return "Blood group required";
-    if (!form.gymPlan) return "Gym plan required";
+    const errors = {};
+    if (!form.fullName.trim()) errors.fullName = "Full Name is required";
+    if (!form.fatherName.trim()) errors.fatherName = "Father Name is required";
+    if (!form.occupation.trim()) errors.occupation = "Occupation is required";
+    if (!form.address.trim()) errors.address = "Address is required";
+    if (!form.trainingType) errors.trainingType = "Training type is required";
+    if (!form.dob) errors.dob = "Date of birth is required";
+    if (!form.bloodGroup) errors.bloodGroup = "Blood group is required";
+    if (!form.gymPlan) errors.gymPlan = "Gym plan is required";
 
     const pkgExists = packages.find((item) => item._id === form.gymPlan);
-    if (!pkgExists) return "Invalid package selected";
-    if (form.aadhar.replace(/\D/g, "").length !== 12) return "Aadhar must be 12 digits";
-    if (!/^[6-9]\d{9}$/.test(form.phone)) return "Phone must start with 6-9 and be 10 digits";
+    if (form.gymPlan && !pkgExists) errors.gymPlan = "Invalid package selected";
+    if (form.aadhar.replace(/\D/g, "").length !== 12) errors.aadhar = "Aadhar must be 12 digits";
+    if (!/^[6-9]\d{9}$/.test(form.phone)) errors.phone = "Phone must start with 6-9 and be 10 digits";
 
     for (const field of dynamicFields) {
-      if (field.required && field.isEnabled && !SYSTEM_KEYS.includes(field.key) && !customFields[field.key]) {
-        return `${field.label} is required`;
+      if (field.required && field.isEnabled && !SYSTEM_KEYS.includes(field.key) && !String(customFields[field.key] || "").trim()) {
+        errors[field.key] = `${field.label} is required`;
       }
     }
 
-    return null;
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const isFormValidForSubmit = () => {
+    if (!form.fullName.trim()) return false;
+    if (!form.fatherName.trim()) return false;
+    if (!form.occupation.trim()) return false;
+    if (!form.address.trim()) return false;
+    if (!form.trainingType || !form.dob || !form.bloodGroup || !form.gymPlan) return false;
+    if (form.aadhar.replace(/\D/g, "").length !== 12) return false;
+    if (!/^[6-9]\d{9}$/.test(form.phone)) return false;
+
+    for (const field of dynamicFields) {
+      if (field.required && field.isEnabled && !SYSTEM_KEYS.includes(field.key) && !String(customFields[field.key] || "").trim()) {
+        return false;
+      }
+    }
+    return true;
   };
 
   const openPopup = (e) => {
     e.preventDefault();
-    const err = validateForm();
-    if (err) return alert(err);
+    const ok = validateForm();
+    if (!ok) return;
     setShowPopup(true);
   };
 
@@ -154,6 +176,9 @@ export default function AdminRegister() {
   };
 
   const submitRegistration = async () => {
+    setSubmitError(null);
+    setSubmitting(true);
+    
     try {
       const fd = new FormData();
       const trainingTypeMap = {
@@ -163,19 +188,24 @@ export default function AdminRegister() {
       };
 
       const selectedPackage = packages.find((item) => item._id === form.gymPlan);
-      if (!selectedPackage) return alert("Invalid package selected");
+      if (!selectedPackage) {
+        setSubmitError("Invalid package selected");
+        setSubmitting(false);
+        return;
+      }
+
       const planLabel = selectedPackage.months === 1 ? "1 Month" : `${selectedPackage.months} Months`;
 
-      fd.append("fullName", form.fullName);
-      fd.append("fatherName", form.fatherName);
+      fd.append("fullName", form.fullName.trim());
+      fd.append("fatherName", form.fatherName.trim());
       fd.append("dob", form.dob);
       fd.append("bloodGroup", form.bloodGroup);
       fd.append("gender", form.gender);
-      fd.append("medicalIssues", form.medicalIssues);
+      fd.append("medicalIssues", form.medicalIssues.trim());
       fd.append("customFields", JSON.stringify(customFields));
-      fd.append("address", form.address);
+      fd.append("address", form.address.trim());
       fd.append("aadhar", form.aadhar.replace(/\D/g, ""));
-      fd.append("occupation", form.occupation);
+      fd.append("occupation", form.occupation.trim());
       fd.append("phone", form.phone);
       fd.append("gymPlan", planLabel);
       fd.append("trainingType", trainingTypeMap[form.trainingType]);
@@ -230,8 +260,7 @@ export default function AdminRegister() {
         diet: selectedDiet,
       });
 
-      alert("Member Registered Successfully");
-
+      // Success - reset form
       setForm({
         fullName: "",
         fatherName: "",
@@ -257,9 +286,16 @@ export default function AdminRegister() {
       setSelectedDietId(null);
       setSelectedDietName(null);
       setSelectedDietDescription("");
+      setSubmitError(null);
+      setFieldErrors({});
+      
+      alert("Member Registered Successfully");
     } catch (err) {
-      console.log("Registration Error:", err);
-      alert(err.response?.data?.message || "Registration Failed");
+      const errorMessage = err.response?.data?.message || err.message || "Registration Failed. Please try again.";
+      console.error("Registration Error:", err);
+      setSubmitError(errorMessage);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -278,12 +314,15 @@ export default function AdminRegister() {
           <div className="grid gap-6 md:grid-cols-2 lg:col-span-2">
             <Field label="Full Name">
               <input name="fullName" value={form.fullName} onChange={handleChange} className="field-control" />
+              {fieldErrors.fullName && <p className="text-xs text-red-600 mt-1">{fieldErrors.fullName}</p>}
             </Field>
             <Field label="Father's Name">
               <input name="fatherName" value={form.fatherName} onChange={handleChange} className="field-control" />
+              {fieldErrors.fatherName && <p className="text-xs text-red-600 mt-1">{fieldErrors.fatherName}</p>}
             </Field>
             <Field label="Date of Birth">
               <input type="date" name="dob" value={form.dob} onChange={handleChange} className="field-control" />
+              {fieldErrors.dob && <p className="text-xs text-red-600 mt-1">{fieldErrors.dob}</p>}
             </Field>
             <Field label="Blood Group">
               <select name="bloodGroup" value={form.bloodGroup} onChange={handleChange} className="field-control">
@@ -292,9 +331,11 @@ export default function AdminRegister() {
                   <option key={bg}>{bg}</option>
                 ))}
               </select>
+              {fieldErrors.bloodGroup && <p className="text-xs text-red-600 mt-1">{fieldErrors.bloodGroup}</p>}
             </Field>
             <Field label="Occupation">
               <input name="occupation" value={form.occupation} onChange={handleChange} className="field-control" />
+              {fieldErrors.occupation && <p className="text-xs text-red-600 mt-1">{fieldErrors.occupation}</p>}
             </Field>
             <Field label="Aadhar">
               <input
@@ -303,6 +344,7 @@ export default function AdminRegister() {
                 onChange={(e) => setForm({ ...form, aadhar: e.target.value.replace(/\D/g, "") })}
                 className="field-control"
               />
+              {fieldErrors.aadhar && <p className="text-xs text-red-600 mt-1">{fieldErrors.aadhar}</p>}
             </Field>
             <Field label="Phone">
               <input
@@ -311,6 +353,7 @@ export default function AdminRegister() {
                 onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, "") })}
                 className="field-control"
               />
+              {fieldErrors.phone && <p className="text-xs text-red-600 mt-1">{fieldErrors.phone}</p>}
             </Field>
             <Field label="Training Type">
               <select name="trainingType" value={form.trainingType} onChange={handleChange} className="field-control">
@@ -319,6 +362,7 @@ export default function AdminRegister() {
                 <option value="WeightGain">Weight Gain</option>
                 <option value="Transformation">Transformation</option>
               </select>
+              {fieldErrors.trainingType && <p className="text-xs text-red-600 mt-1">{fieldErrors.trainingType}</p>}
             </Field>
             <Field label="Gym Plan">
               <select name="gymPlan" value={form.gymPlan} onChange={handleChange} className="field-control">
@@ -329,6 +373,7 @@ export default function AdminRegister() {
                   </option>
                 ))}
               </select>
+              {fieldErrors.gymPlan && <p className="text-xs text-red-600 mt-1">{fieldErrors.gymPlan}</p>}
             </Field>
 
             {dynamicFields
@@ -338,7 +383,12 @@ export default function AdminRegister() {
                   {field.type === "dropdown" ? (
                     <select
                       value={customFields[field.key] || ""}
-                      onChange={(e) => handleCustomFieldChange(field.key, e.target.value)}
+                      onChange={(e) => {
+                        handleCustomFieldChange(field.key, e.target.value);
+                        if (fieldErrors[field.key]) {
+                          setFieldErrors((prev) => ({ ...prev, [field.key]: undefined }));
+                        }
+                      }}
                       required={field.required}
                       className="field-control"
                     >
@@ -353,17 +403,24 @@ export default function AdminRegister() {
                     <input
                       type={field.type || "text"}
                       value={customFields[field.key] || ""}
-                      onChange={(e) => handleCustomFieldChange(field.key, e.target.value)}
+                      onChange={(e) => {
+                        handleCustomFieldChange(field.key, e.target.value);
+                        if (fieldErrors[field.key]) {
+                          setFieldErrors((prev) => ({ ...prev, [field.key]: undefined }));
+                        }
+                      }}
                       required={field.required}
                       className="field-control"
                     />
                   )}
+                  {fieldErrors[field.key] && <p className="text-xs text-red-600 mt-1">{fieldErrors[field.key]}</p>}
                 </Field>
               ))}
 
             <div className="md:col-span-2">
               <Field label="Address">
                 <textarea name="address" value={form.address} onChange={handleChange} className="field-control" />
+                {fieldErrors.address && <p className="text-xs text-red-600 mt-1">{fieldErrors.address}</p>}
               </Field>
             </div>
             <div className="md:col-span-2">
@@ -414,7 +471,7 @@ export default function AdminRegister() {
           </div>
         </div>
 
-        <button className="btn-primary mt-6 w-full">Register</button>
+        <button className="btn-primary mt-6 w-full" disabled={!isFormValidForSubmit() || submitting}>Register</button>
       </form>
 
       {showPopup && (
@@ -425,6 +482,20 @@ export default function AdminRegister() {
               <h3 className="panel-title">Confirm billing</h3>
               <p className="panel-subtitle">Amount: Rs. {form.selectedPrice}</p>
             </div>
+
+            {submitError && (
+              <div style={{
+                padding: "12px",
+                backgroundColor: "#fee",
+                borderLeft: "4px solid #c33",
+                borderRadius: "4px",
+                color: "#c33",
+                fontSize: "14px",
+                margin: "16px 0"
+              }}>
+                {submitError}
+              </div>
+            )}
 
             <div className="section-stack mt-6">
               <div className="radio-row">
@@ -454,10 +525,20 @@ export default function AdminRegister() {
               )}
 
               <div className="flex flex-wrap gap-3">
-                <button type="button" className="btn-primary" onClick={submitRegistration}>
-                  Confirm and Submit
+                <button 
+                  type="button" 
+                  className="btn-primary" 
+                  onClick={submitRegistration}
+                  disabled={submitting}
+                >
+                  {submitting ? "Submitting..." : "Confirm and Submit"}
                 </button>
-                <button type="button" className="btn-secondary" onClick={() => setShowPopup(false)}>
+                <button 
+                  type="button" 
+                  className="btn-secondary" 
+                  onClick={() => setShowPopup(false)}
+                  disabled={submitting}
+                >
                   Cancel
                 </button>
               </div>

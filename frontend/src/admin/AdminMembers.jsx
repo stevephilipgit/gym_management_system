@@ -18,6 +18,9 @@ export default function AdminMembers() {
   const [sortAsc, setSortAsc] = useState(true);
   const [renewSubmitting, setRenewSubmitting] = useState(false);
   const [currentAdmin, setCurrentAdmin] = useState(null);
+  const [renewError, setRenewError] = useState(null);
+  const [renewLoading, setRenewLoading] = useState(false);
+  const [renewSubmitError, setRenewSubmitError] = useState(null);
   const [renewData, setRenewData] = useState({
     packageId: "",
     trainingType: "",
@@ -119,6 +122,7 @@ export default function AdminMembers() {
     setSelectedMember(null);
     setRenewMode(false);
     setRenewSubmitting(false);
+    setRenewSubmitError(null);
   };
 
   const handleModeToggle = (enabled) => {
@@ -166,9 +170,16 @@ export default function AdminMembers() {
   };
 
   const openRenew = async (gymId) => {
+    setRenewError(null);
+    setRenewLoading(true);
     try {
       const res = await apiClient.get(`/members/${gymId}`);
       const member = res.data?.data || res.data;
+      
+      if (!member || !member._id) {
+        throw new Error("Member data not found");
+      }
+      
       const today = new Date();
       const validityEnd = member.validityEnd ? new Date(member.validityEnd) : null;
       const lateDays = validityEnd && today > validityEnd ? diffDays(validityEnd, today) : 0;
@@ -195,8 +206,13 @@ export default function AdminMembers() {
       });
       setShowRenewPopup(true);
     } catch (err) {
-      console.log(err);
-      alert("Failed to load member details");
+      console.error("Failed to load member details:", err);
+      const errorMsg = err.response?.data?.message || err.message || "Failed to load member details";
+      setRenewError(errorMsg);
+      setSelectedMember(null);
+      setShowRenewPopup(false);
+    } finally {
+      setRenewLoading(false);
     }
   };
 
@@ -274,6 +290,8 @@ export default function AdminMembers() {
   };
 
   const submitRenewal = async () => {
+    setRenewSubmitError(null);
+    
     if (!selectedMember || !renewMode) return;
     if (renewData.paymentStatus === "not_paid") {
       alert("Marked as not paid. Renewal skipped.");
@@ -281,11 +299,20 @@ export default function AdminMembers() {
       return;
     }
 
-    if (!renewData.packageId) return alert("Select a package");
-    if (!renewData.trainingType) return alert("Select training type");
+    if (!renewData.packageId) {
+      setRenewSubmitError("Please select a package");
+      return;
+    }
+    if (!renewData.trainingType) {
+      setRenewSubmitError("Please select training type");
+      return;
+    }
 
     const pkg = packages.find((item) => item._id === renewData.packageId);
-    if (!pkg) return alert("Invalid package selected");
+    if (!pkg) {
+      setRenewSubmitError("Invalid package selected");
+      return;
+    }
 
     const body = {
       newPlan: getPlanLabel(pkg.months),
@@ -329,8 +356,9 @@ export default function AdminMembers() {
       closeRenewModal();
       alert("Membership renewed successfully");
     } catch (err) {
-      console.log(err);
-      alert("Renew failed");
+      console.error("Renewal failed:", err);
+      const errorMsg = err.response?.data?.message || err.message || "Renewal failed. Please try again.";
+      setRenewSubmitError(errorMsg);
     } finally {
       setRenewSubmitting(false);
     }
@@ -357,6 +385,11 @@ export default function AdminMembers() {
           <h2 className="text-3xl">Member management</h2>
           <p className="panel-subtitle">Review members, sort by urgency, renew plans, and remove records when needed.</p>
         </div>
+        {renewError && (
+          <div className="mt-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+            {renewError}
+          </div>
+        )}
 
         <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="field-group sm:max-w-xs">
@@ -405,8 +438,12 @@ export default function AdminMembers() {
                   <td>{member.paymentStatus}</td>
                   <td>
                     <div className="flex flex-wrap gap-2">
-                      <button onClick={() => openRenew(member.gymId)} className="btn-primary min-h-0 px-4 py-2">
-                        Renew
+                      <button 
+                        onClick={() => openRenew(member.gymId)} 
+                        className="btn-primary min-h-0 px-4 py-2"
+                        disabled={renewLoading}
+                      >
+                        {renewLoading ? "Loading..." : "Renew"}
                       </button>
                       <button onClick={() => confirmDelete(member.gymId)} className="btn-danger min-h-0 px-4 py-2">
                         Delete
@@ -617,6 +654,20 @@ export default function AdminMembers() {
                 )}
               </div>
             </div>
+
+            {renewSubmitError && (
+              <div style={{
+                padding: "12px",
+                backgroundColor: "#fee",
+                borderLeft: "4px solid #c33",
+                borderRadius: "4px",
+                color: "#c33",
+                fontSize: "14px",
+                margin: "16px 0"
+              }}>
+                {renewSubmitError}
+              </div>
+            )}
 
             <div className="modal-footer mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-color)] pt-5">
               <div className="section-stack" style={{ gap: "6px" }}>

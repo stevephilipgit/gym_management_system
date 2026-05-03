@@ -4,9 +4,13 @@ import winston from 'winston';
 const { combine, timestamp, printf } = winston.format;
 
 // Plain-text format matching the spec
-const attendanceFormat = printf(({ level, message, timestamp }) => {
+const attendanceFormat = printf(({ level, message, timestamp, source, ip, userAgent }) => {
   const tag = level === 'warn' ? 'WARN' : 'INFO';
-  return `[${timestamp}] [${tag}] ${message}`;
+  const meta = [];
+  if (source) meta.push(`source=${source}`);
+  if (ip) meta.push(`ip=${ip}`);
+  if (userAgent) meta.push(`ua=${userAgent}`);
+  return `[${timestamp}] [${tag}] ${message}${meta.length ? ` | ${meta.join(" | ")}` : ""}`;
 });
 
 const attendanceLogger = winston.createLogger({

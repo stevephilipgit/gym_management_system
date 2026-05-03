@@ -1,12 +1,23 @@
 import mongoose from 'mongoose';
 import attendanceService from '../services/attendanceService.js';
 import systemSettingsService from '../services/systemSettingsService.js';
-import auditLog from '../utils/auditLog.js';
+import { auditActions } from '../utils/auditLog.js';
 import logger from '../core/logger.js';
 import attendanceLogger from '../core/attendanceLogger.js';
+import { shouldSyncToSheets, syncAttendanceToSheets } from "../services/attendanceSyncService.js";
 
 const Attendance = mongoose.model('Attendance');
 const Member = mongoose.model('Member');
+
+async function syncAttendanceIfConnected(attendanceRecord, memberData) {
+  try {
+    const canSync = await shouldSyncToSheets();
+    if (!canSync) return;
+    await syncAttendanceToSheets(attendanceRecord, memberData);
+  } catch (syncError) {
+    logger.error("Attendance sync failed (non-blocking)", { error: syncError.message });
+  }
+}
 
 /**
  * Sanitize input - strip dangerous chars, trim
@@ -90,13 +101,19 @@ function isLateEntry(latePunchThreshold) {
 export const searchPunch = async (req, res) => {
   try {
     const rawInput = req.body.input;
+    const source = req.get('x-attendance-source') === 'kiosk' ? 'kiosk' : 'counter';
+    const requestMeta = {
+      source,
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+    };
 
-    attendanceLogger.info(`Search Attempt | Input=${sanitizeInput(rawInput)}`);
+    attendanceLogger.info(`Search Attempt | Input=${sanitizeInput(rawInput)}`, requestMeta);
 
     // 1. Validate + sanitize
     const { type, value, error } = validateSearchInput(rawInput);
     if (error) {
-      attendanceLogger.warn(`Invalid Search Input | Raw=${sanitizeInput(rawInput)} | Reason=${error}`);
+      attendanceLogger.warn(`Invalid Search Input | Raw=${sanitizeInput(rawInput)} | Reason=${error}`, requestMeta);
       return res.status(400).json({
         success: false,
         message: error,
@@ -112,21 +129,29 @@ export const searchPunch = async (req, res) => {
     }
 
     if (!member) {
-      attendanceLogger.warn(`Member Not Found | Input=${value} | Type=${type}`);
+      attendanceLogger.warn(`Member Not Found | Input=${value} | Type=${type}`, requestMeta);
       return res.status(404).json({
         success: false,
         message: 'Member not found',
       });
     }
 
-    attendanceLogger.info(`Member Found | MemberID=${member.gymId} | Name=${member.fullName}`);
+    attendanceLogger.info(`Member Found | MemberID=${member.gymId} | Name=${member.fullName}`, requestMeta);
+
+    if (member.status !== 'active') {
+      attendanceLogger.warn(`Member Blocked by Status | MemberID=${member.gymId} | Status=${member.status}`, requestMeta);
+      return res.status(403).json({
+        success: false,
+        message: `Member is ${member.status}. Attendance not allowed.`,
+      });
+    }
 
     // 3. Get settings
     const settings = await systemSettingsService.getSettings();
 
     // 4. Check business hours
     if (!isWithinBusinessHours(settings.openingTime, settings.closingTime)) {
-      attendanceLogger.warn(`Gym Closed Attempt | MemberID=${member.gymId}`);
+      attendanceLogger.warn(`Gym Closed Attempt | MemberID=${member.gymId}`, requestMeta);
       return res.status(403).json({
         success: false,
         gymClosed: true,
@@ -139,7 +164,7 @@ export const searchPunch = async (req, res) => {
     // 5. Check expiry
     const daysLeft = attendanceService.calculateDaysLeft(member.validityEnd);
     if (daysLeft < -settings.expiredGraceDays && settings.blockExpiredMembers) {
-      attendanceLogger.warn(`Expired Member Blocked | MemberID=${member.gymId}`);
+      attendanceLogger.warn(`Expired Member Blocked | MemberID=${member.gymId}`, requestMeta);
       return res.status(403).json({
         success: false,
         message: `Membership expired ${Math.abs(daysLeft)} days ago. Entry blocked.`,
@@ -153,7 +178,7 @@ export const searchPunch = async (req, res) => {
       settings.duplicatePunchSeconds
     );
     if (isDuplicate) {
-      attendanceLogger.warn(`Duplicate Punch Blocked | MemberID=${member.gymId}`);
+      attendanceLogger.warn(`Duplicate Punch Blocked | MemberID=${member.gymId}`, requestMeta);
       return res.status(429).json({
         success: false,
         message: 'Recent punch already recorded. Please wait.',
@@ -185,7 +210,7 @@ export const searchPunch = async (req, res) => {
         date: normalizedDate,
         checkInTime: now,
         state,
-        source: 'counter',
+        source,
       });
       await attendance.save();
 
@@ -193,10 +218,11 @@ export const searchPunch = async (req, res) => {
       await Member.updateOne({ _id: member._id }, { lastAttendanceDate: now });
 
       if (isLate) {
-        attendanceLogger.info(`Late Entry | MemberID=${member.gymId} | Time=${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`);
+        attendanceLogger.info(`Late Entry | MemberID=${member.gymId} | Time=${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`, requestMeta);
       } else {
-        attendanceLogger.info(`Check-In | MemberID=${member.gymId} | Time=${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} | Status=Inside Gym`);
+        attendanceLogger.info(`Check-In | MemberID=${member.gymId} | Time=${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} | Status=Inside Gym`, requestMeta);
       }
+      await syncAttendanceIfConnected(attendance, member);
     } else if (existingRecord.checkInTime && !existingRecord.checkOutTime) {
       // SCENARIO B: Already inside, entering again — Check-out
       isCheckOut = true;
@@ -211,10 +237,11 @@ export const searchPunch = async (req, res) => {
       await existingRecord.save();
       attendance = existingRecord;
 
-      attendanceLogger.info(`Check-Out | MemberID=${member.gymId} | Time=${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} | Status=${existingRecord.state === 'late' ? 'Late' : 'Visited'}`);
+      attendanceLogger.info(`Check-Out | MemberID=${member.gymId} | Time=${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} | Status=${existingRecord.state === 'late' ? 'Late' : 'Visited'}`, requestMeta);
+      await syncAttendanceIfConnected(attendance, member);
     } else {
       // Already completed today
-      attendanceLogger.warn(`Already Completed | MemberID=${member.gymId}`);
+      attendanceLogger.warn(`Already Completed | MemberID=${member.gymId}`, requestMeta);
       return res.status(409).json({
         success: false,
         message: 'Attendance already completed for today',
@@ -268,7 +295,12 @@ export const searchPunch = async (req, res) => {
     });
   } catch (error) {
     logger.error('Error in searchPunch', { error });
-    attendanceLogger.warn(`Search Punch Error | ${error.message}`);
+    const source = req.get('x-attendance-source') === 'kiosk' ? 'kiosk' : 'counter';
+    attendanceLogger.warn(`Search Punch Error | ${error.message}`, {
+      source,
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+    });
     res.status(500).json({
       success: false,
       message: 'Failed to process attendance',
@@ -299,7 +331,7 @@ export const markAttendance = async (req, res) => {
 
     if (isDuplicate) {
       logger.warn('Duplicate punch blocked', { memberId });
-      await auditLog.duplicatePunchBlocked(req, memberId);
+      await auditActions.duplicatePunchBlocked(req, memberId);
       return res.status(429).json({
         success: false,
         message: 'Recent punch already recorded. Please wait before trying again.',
@@ -311,7 +343,7 @@ export const markAttendance = async (req, res) => {
       await attendanceService.validateMemberExpiry(memberId, settings);
     } catch (expiryError) {
       logger.warn('Expired member attempted entry', { memberId });
-      await auditLog.expiredMemberBlocked(req, memberId, expiryError.message);
+      await auditActions.expiredMemberBlocked(req, memberId, expiryError.message);
       return res.status(403).json({
         success: false,
         message: expiryError.message,
@@ -323,9 +355,10 @@ export const markAttendance = async (req, res) => {
 
     // Get member details
     const member = await Member.findById(memberId).lean();
+    await syncAttendanceIfConnected(attendance, member);
 
     // Audit log
-    await auditLog.attendanceMarked(req, memberId, new Date());
+    await auditActions.attendanceMarked(req, memberId, new Date());
 
     // Fetch updated member with daysLeft
     const daysLeft = attendanceService.calculateDaysLeft(member.validityEnd);
@@ -378,8 +411,9 @@ export const handleLatePunchManual = async (req, res) => {
       const { attendance } = await attendanceService.markAttendance(memberId);
       const member = await Member.findById(memberId).lean();
       const daysLeft = attendanceService.calculateDaysLeft(member.validityEnd);
+      await syncAttendanceIfConnected(attendance, member);
 
-      await auditLog.attendanceMarked(req, memberId, new Date());
+      await auditActions.attendanceMarked(req, memberId, new Date());
 
       return res.json({
         success: true,
@@ -415,8 +449,9 @@ export const handleLatePunchManual = async (req, res) => {
 
       const member = await Member.findById(memberId).lean();
       const daysLeft = attendanceService.calculateDaysLeft(member.validityEnd);
+      await syncAttendanceIfConnected(attendance, member);
 
-      await auditLog.attendanceMarked(req, memberId, new Date());
+      await auditActions.attendanceMarked(req, memberId, new Date());
 
       return res.json({
         success: true,
@@ -510,7 +545,7 @@ export const correctTime = async (req, res) => {
       await attendanceService.correctCheckOutTime(id, new Date(checkOutTime), adminId);
     }
 
-    await auditLog.attendanceCorrected(req, attendance.memberId, {
+    await auditActions.attendanceCorrected(req, attendance.memberId, {
       field: checkInTime ? 'checkInTime' : 'checkOutTime',
       newValue: checkInTime || checkOutTime,
     });
@@ -545,7 +580,10 @@ export const addMissing = async (req, res) => {
       adminId
     );
 
-    await auditLog.attendanceMarked(req, memberId, new Date(date));
+    const member = await Member.findById(memberId).lean();
+    await syncAttendanceIfConnected(attendance, member);
+
+    await auditActions.attendanceMarked(req, memberId, new Date(date));
 
     res.json({
       success: true,
@@ -577,7 +615,7 @@ export const deleteAttendance = async (req, res) => {
 
     await Attendance.deleteOne({ _id: id });
 
-    await auditLog.attendanceDeleted(req, attendance.memberId, id);
+    await auditActions.attendanceDeleted(req, attendance.memberId, id);
 
     res.json({
       success: true,

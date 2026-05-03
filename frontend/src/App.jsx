@@ -1,9 +1,11 @@
 import { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 /* PUBLIC */
 const Home = lazy(() => import("./pages/Home"));
 const Login = lazy(() => import("./pages/Login"));
+const KioskAttendance = lazy(() => import("./pages/KioskAttendance"));
 
 /* ADMIN */
 import AuthGuard from "./admin/components/Authguard";
@@ -30,17 +32,19 @@ const SettingsPage = lazy(() => import("./admin/SettingsPage"));
 function App() {
   return (
     <BrowserRouter>
-      <Suspense
-        fallback={
-          <div className="page-frame py-10 text-center text-sm uppercase tracking-[0.24em] text-[var(--muted)]">
-            Loading...
-          </div>
-        }
-      >
-        <Routes>
+      <ErrorBoundary>
+        <Suspense
+          fallback={
+            <div className="page-frame py-10 text-center text-sm uppercase tracking-[0.24em] text-[var(--muted)]">
+              Loading...
+            </div>
+          }
+        >
+          <Routes>
           {/* PUBLIC */}
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/kiosk-attendance" element={<KioskAttendance />} />
 
           {/* ADMIN (FULL PROTECTION) */}
           <Route
@@ -66,8 +70,9 @@ function App() {
             <Route path="inactivity-reports" element={<InactiveReportsPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
-        </Routes>
-      </Suspense>
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

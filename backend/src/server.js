@@ -46,6 +46,7 @@ import healthController from "./controllers/healthController.js";
 import attendanceRoutes from "./routes/attendanceRoutes.js";
 import reportsRoutes from "./routes/reportsRoutes.js";
 import systemSettingsRoutes from "./routes/systemSettingsRoutes.js";
+import connectorsRoutes from "./routes/connectorsRoutes.js";
 
 // ✅ NEW: Attendance Jobs (Cron)
 import cron from "node-cron";
@@ -141,6 +142,7 @@ app.use("/api/ai", adminAuth, aiRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/settings", systemSettingsRoutes);
+app.use("/api/connectors", connectorsRoutes);
 
 /* ============================================================
    HEALTH CHECK

@@ -1,6 +1,6 @@
 import systemSettingsService from '../services/systemSettingsService.js';
 import logger from '../core/logger.js';
-import auditLog from '../utils/auditLog.js';
+import { auditActions } from '../utils/auditLog.js';
 
 /**
  * System Settings Controller
@@ -53,7 +53,7 @@ export const updateSettings = async (req, res) => {
       adminId
     );
 
-    await auditLog.settingsUpdated(req, validUpdates);
+    await auditActions.settingsUpdated(req, validUpdates);
 
     res.json({
       success: true,

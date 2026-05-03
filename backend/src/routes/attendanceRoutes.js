@@ -12,7 +12,6 @@ const router = express.Router();
 // POST /api/attendance/search-punch - Combined search + attendance (from header bar)
 router.post(
   '/search-punch',
-  adminAuth,
   attendanceController.searchPunch
 );
 

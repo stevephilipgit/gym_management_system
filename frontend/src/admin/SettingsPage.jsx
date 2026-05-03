@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { API_BASE_URL } from '../utils/apiClient';
+import { GoogleSheetsConnector } from '../components/GoogleSheetsConnector';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState(null);
@@ -316,6 +317,11 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Google Sheets Connector */}
+      <div className="mt-8">
+        <GoogleSheetsConnector />
       </div>
 
       {/* Save Button */}

@@ -32,7 +32,7 @@ const attendanceSchema = new mongoose.Schema(
     },
     source: {
       type: String,
-      enum: ['counter', 'manual', 'correction', 'startup_recovery'],
+      enum: ['counter', 'kiosk', 'manual', 'correction', 'startup_recovery'],
       default: 'counter',
     },
     correctedBy: {
