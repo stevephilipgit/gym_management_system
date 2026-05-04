@@ -1,7 +1,8 @@
 // controllers/healthController.js - System health check
 import mongoose from "mongoose";
-import { redisClient } from "../core/config.js";
+import redisClient from "../config/redis.js";
 import { asyncHandler } from "../core/errorHandler.js";
+import config from "../config/index.js";
 
 export const healthController = {
   // Health check endpoint
@@ -70,7 +71,7 @@ export const healthController = {
         stateCode: mongoStatus,
       },
       nodeVersion: process.version,
-      environment: process.env.NODE_ENV || "development",
+      environment: config.env,
     };
 
     return res.json({

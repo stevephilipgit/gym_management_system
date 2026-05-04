@@ -1,8 +1,8 @@
 import { createClient } from "redis";
-import env from "./env.js";
+import config from "./index.js";
 
 const redisClient = createClient({
-  url: env.REDIS_URL,
+  url: config.db.redisUrl,
   socket: {
     connectTimeout: 5000,
     reconnectStrategy: (retries) => {

@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import Admin from "../models/Admin.js";
 import logger from "../core/logger.js";
-import env from "../core/config.js";
+import config from "../config/index.js";
 import { auditActions } from "../utils/auditLog.js";
 import { asyncHandler, ValidationError, AuthError, ConflictError } from "../core/errorHandler.js";
 
@@ -52,14 +52,14 @@ export const authController = {
         role: admin.role,
         email: admin.email,
       },
-      env.JWT_ACCESS_SECRET,
-      { expiresIn: env.JWT_ACCESS_EXPIRES }
+      config.jwt.accessSecret,
+      { expiresIn: config.jwt.accessExpires }
     );
 
     // Set cookie
     res.cookie("gym_admin_token", token, {
       httpOnly: true,
-      secure: env.IS_PRODUCTION,
+      secure: config.app.isProduction,
       sameSite: "strict",
       maxAge: 15 * 60 * 1000, // 15 minutes
     });

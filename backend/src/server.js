@@ -12,7 +12,11 @@ import { fileURLToPath } from "url";
 import { v4 as uuid } from "uuid";
 
 // ============= CORE IMPORTS =============
-import env, { connectDB } from "./core/config.js";
+import config from "./config/index.js";
+import connectDB from "./config/db.js";
+import { validateEnv } from "./config/validateEnv.js";
+
+validateEnv();
 import logger from "./core/logger.js";
 import { errorHandler } from "./core/errorHandler.js";
 
@@ -20,6 +24,7 @@ import { errorHandler } from "./core/errorHandler.js";
 import "./models/Attendance.js";
 import "./models/SystemSettings.js";
 import "./models/Member.js";
+import "./models/Enquiry.js";
 
 // ============= MIDDLEWARE IMPORTS =============
 import { helmetMiddleware, additionalHeaders } from "./middleware/securityHeaders.js";
@@ -47,6 +52,10 @@ import attendanceRoutes from "./routes/attendanceRoutes.js";
 import reportsRoutes from "./routes/reportsRoutes.js";
 import systemSettingsRoutes from "./routes/systemSettingsRoutes.js";
 import connectorsRoutes from "./routes/connectorsRoutes.js";
+
+// ✅ NEW: Enquiry System
+import enquiryRoutes from "./routes/enquiryRoutes.js";
+import { cleanupOldEnquiries } from "./controllers/enquiryController.js";
 
 // ✅ NEW: Attendance Jobs (Cron)
 import cron from "node-cron";
@@ -144,6 +153,9 @@ app.use("/api/reports", reportsRoutes);
 app.use("/api/settings", systemSettingsRoutes);
 app.use("/api/connectors", connectorsRoutes);
 
+// ✅ NEW: Enquiry System Routes
+app.use("/api/enquiries", enquiryRoutes);
+
 /* ============================================================
    HEALTH CHECK
 ============================================================ */
@@ -221,9 +233,20 @@ const startServer = async () => {
     });
     logger.info("✅ Stale record auto-close job scheduled every 30 minutes");
 
+    // ✅ NEW: Daily enquiry cleanup at 02:00
+    cron.schedule("0 2 * * *", async () => {
+      try {
+        const deleted = await cleanupOldEnquiries();
+        logger.info(`[Enquiry Cleanup] Deleted ${deleted} old records`);
+      } catch (err) {
+        logger.error("[Enquiry Cleanup] Job failed", { error: err.message });
+      }
+    });
+    logger.info("✅ Enquiry cleanup cron scheduled at 02:00 daily");
+
     // Start listening
-    server = app.listen(env.PORT, () => {
-      logger.info(`🚀 Server running on port ${env.PORT} in ${env.NODE_ENV} mode`);
+    server = app.listen(config.app.port, () => {
+      logger.info(`🚀 Server running on port ${config.app.port} in ${config.env} mode`);
     });
   } catch (err) {
     logger.error("Failed to start server", { error: err.message });
