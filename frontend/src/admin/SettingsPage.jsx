@@ -1,29 +1,59 @@
+/**
+ * SettingsPage.jsx
+ * Extended admin settings page — Black + Gold premium theme.
+ * Covers: Attendance, Business Info, Enquiry Settings, Branch Config,
+ * Social Links, Integrations.
+ * Reuses existing save/fetch pattern for zero-regression risk.
+ */
 import { useEffect, useState } from 'react';
 import { API_BASE_URL } from '../utils/apiClient';
 import { GoogleSheetsConnector } from '../components/GoogleSheetsConnector';
 
+const SECTION_TABS = [
+  { id: 'attendance', label: '⏱ Attendance' },
+  { id: 'business',   label: '🏢 Business Info' },
+  { id: 'enquiry',    label: '📩 Enquiry' },
+  { id: 'branches',   label: '📍 Branches' },
+  { id: 'social',     label: '🔗 Social' },
+  { id: 'integrations', label: '⚙️ Integrations' },
+];
+
+// All fields allowed to be saved per section
+const SECTION_FIELDS = {
+  attendance: [
+    'oneVisitPerDay', 'duplicatePunchSeconds', 'latePunchThreshold',
+    'openingTime', 'closingTime', 'blockExpiredMembers', 'expiredGraceDays', 'soundEnabled',
+  ],
+  business: ['gym_name', 'gym_tagline', 'support_phone', 'whatsapp_number', 'public_email', 'footer_text'],
+  enquiry: [
+    'enquiry_notify_email', 'enquiry_success_message', 'enquiry_auto_reply_enabled',
+    'enquiry_auto_reply_subject', 'enquiry_retention_days',
+  ],
+  branches: [
+    'branch_mathur_name', 'branch_mathur_address', 'branch_mathur_phone',
+    'branch_mathur_map_url', 'branch_mathur_image_url',
+    'branch_vepery_name', 'branch_vepery_address', 'branch_vepery_phone',
+    'branch_vepery_map_url', 'branch_vepery_image_url',
+  ],
+  social: ['social_instagram', 'social_facebook', 'social_youtube', 'social_google_reviews'],
+  integrations: ['sheets_enabled', 'sheets_email', 'sheets_default_name', 'email_notifications_enabled'],
+};
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState(null);
+  const [activeTab, setActiveTab] = useState('attendance');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
+  useEffect(() => { fetchSettings(); }, []);
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/settings`, {
-        credentials: 'include',
-      });
-
+      const res = await fetch(`${API_BASE_URL}/settings`, { credentials: 'include' });
       const data = await res.json();
-      if (data.settings) {
-        setSettings(data.settings);
-      }
-    } catch (err) {
-      console.error('Failed to fetch settings:', err);
+      if (data.settings) setSettings(data.settings);
+    } catch {
       showMsg('Failed to load settings', 'error');
     }
   };
@@ -31,28 +61,21 @@ export default function SettingsPage() {
   const showMsg = (msg, type = 'error', duration = 3000) => {
     setMessage(msg);
     setMessageType(type);
-    if (duration) {
-      setTimeout(() => setMessage(''), duration);
-    }
+    if (duration) setTimeout(() => setMessage(''), duration);
   };
 
-  const handleInputChange = (field, value) => {
-    setSettings({ ...settings, [field]: value });
+  const handleChange = (field, value) => {
+    setSettings((prev) => ({ ...prev, [field]: value }));
   };
 
-  const saveSettings = async () => {
+  const saveSection = async (section) => {
     setLoading(true);
     try {
-      const updates = {
-        oneVisitPerDay: settings.oneVisitPerDay,
-        duplicatePunchSeconds: parseInt(settings.duplicatePunchSeconds),
-        latePunchThreshold: settings.latePunchThreshold,
-        openingTime: settings.openingTime,
-        closingTime: settings.closingTime,
-        blockExpiredMembers: settings.blockExpiredMembers,
-        expiredGraceDays: parseInt(settings.expiredGraceDays),
-        soundEnabled: settings.soundEnabled,
-      };
+      const fields = SECTION_FIELDS[section] || [];
+      const updates = {};
+      for (const f of fields) {
+        if (settings[f] !== undefined) updates[f] = settings[f];
+      }
 
       const res = await fetch(`${API_BASE_URL}/settings`, {
         method: 'PUT',
@@ -60,17 +83,14 @@ export default function SettingsPage() {
         credentials: 'include',
         body: JSON.stringify(updates),
       });
-
       const data = await res.json();
-
       if (res.ok) {
         showMsg('✓ Settings saved successfully', 'success', 2000);
       } else {
         showMsg(data.message || 'Failed to save settings', 'error');
       }
-    } catch (err) {
+    } catch {
       showMsg('Error saving settings', 'error');
-      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -78,275 +98,367 @@ export default function SettingsPage() {
 
   if (!settings) {
     return (
-      <div className="p-6">
-        <div className="text-center text-gray-600">Loading settings...</div>
+      <div className="p-6 text-center" style={{ color: 'var(--text-muted)', paddingTop: 80 }}>
+        Loading settings...
       </div>
     );
   }
 
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6">Front Desk &amp; Attendance Settings</h1>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: '1.8rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+          System Settings
+        </h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>
+          All changes take effect immediately. Last updated: {settings.updatedAt ? new Date(settings.updatedAt).toLocaleString('en-GB') : 'Never'}
+        </p>
+      </div>
 
-      {/* Message */}
+      {/* Toast */}
       {message && (
-        <div
-          className={`mb-6 p-4 rounded-lg ${
-            messageType === 'success'
-              ? 'bg-green-100 text-green-800'
-              : 'bg-red-100 text-red-800'
-          }`}
-        >
+        <div style={{
+          marginBottom: 16, padding: '12px 16px', borderRadius: 8, fontSize: 14, fontWeight: 600,
+          background: messageType === 'success' ? 'rgba(61,220,132,0.12)' : 'rgba(255,93,93,0.12)',
+          border: `1px solid ${messageType === 'success' ? '#3ddc84' : '#ff5d5d'}`,
+          color: messageType === 'success' ? '#3ddc84' : '#ff5d5d',
+        }}>
           {message}
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Gym Business Hours */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-bold mb-4 text-gray-800">
-            🕐 Gym Business Hours
-          </h2>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-semibold mb-2">
-                Opening Time (HH:MM):
-              </label>
-              <input
-                type="time"
-                value={settings.openingTime || '04:00'}
-                onChange={(e) =>
-                  handleInputChange('openingTime', e.target.value)
-                }
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Attendance blocked before this time (default: 04:00 AM)
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold mb-2">
-                Closing Time (HH:MM):
-              </label>
-              <input
-                type="time"
-                value={settings.closingTime || '22:00'}
-                onChange={(e) =>
-                  handleInputChange('closingTime', e.target.value)
-                }
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Attendance blocked after this time (default: 10:00 PM)
-              </p>
-            </div>
-
-            <div className="p-3 bg-blue-50 rounded-lg">
-              <p className="text-sm text-blue-700">
-                ℹ️ Members attempting entry outside these hours will see a "Gym Closed" message. Attempts are logged.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Attendance Rules */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-bold mb-4 text-gray-800">
-            Attendance Rules
-          </h2>
-
-          <div className="space-y-4">
-            <label className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={settings.oneVisitPerDay}
-                onChange={(e) =>
-                  handleInputChange('oneVisitPerDay', e.target.checked)
-                }
-                className="w-5 h-5"
-              />
-              <span className="text-gray-700">One Visit Per Day Only</span>
-            </label>
-
-            <div>
-              <label className="block text-sm font-semibold mb-2">
-                Duplicate Punch Prevention (seconds):
-              </label>
-              <input
-                type="number"
-                value={settings.duplicatePunchSeconds}
-                onChange={(e) =>
-                  handleInputChange('duplicatePunchSeconds', e.target.value)
-                }
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
-                min="5"
-                max="300"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Block duplicate punches within this window (5-300 seconds)
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold mb-2">
-                Late Entry Threshold (HH:MM):
-              </label>
-              <input
-                type="time"
-                value={settings.latePunchThreshold}
-                onChange={(e) =>
-                  handleInputChange('latePunchThreshold', e.target.value)
-                }
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                First entry after this time is marked as "Late" (default: 9:00 PM)
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Membership Rules */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-bold mb-4 text-gray-800">
-            Membership Rules
-          </h2>
-
-          <div className="space-y-4">
-            <label className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={settings.blockExpiredMembers}
-                onChange={(e) =>
-                  handleInputChange('blockExpiredMembers', e.target.checked)
-                }
-                className="w-5 h-5"
-              />
-              <span className="text-gray-700">Block Expired Members Entry</span>
-            </label>
-
-            <div>
-              <label className="block text-sm font-semibold mb-2">
-                Grace Period for Expired (days):
-              </label>
-              <input
-                type="number"
-                value={settings.expiredGraceDays}
-                onChange={(e) =>
-                  handleInputChange('expiredGraceDays', e.target.value)
-                }
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
-                min="0"
-                max="30"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Allow members to attend for N days after expiry (0 = no grace)
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Front Desk UX */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-bold mb-4 text-gray-800">
-            Front Desk UX
-          </h2>
-
-          <div className="space-y-4">
-            <label className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={settings.soundEnabled}
-                onChange={(e) =>
-                  handleInputChange('soundEnabled', e.target.checked)
-                }
-                className="w-5 h-5"
-              />
-              <span className="text-gray-700">
-                Enable Success/Error Sounds
-              </span>
-            </label>
-
-            <p className="text-sm text-gray-600 bg-blue-50 p-3 rounded">
-              ℹ️ Sounds help receptionist quickly identify punch success/failure
-            </p>
-          </div>
-        </div>
-
-        {/* Info Section */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-bold mb-4 text-gray-800">System Info</h2>
-
-          <div className="space-y-2 text-sm">
-            <p>
-              <span className="font-semibold">Last Updated:</span>{' '}
-              {settings.updatedAt
-                ? new Date(settings.updatedAt).toLocaleString('en-GB')
-                : 'Never'}
-            </p>
-            <p>
-              <span className="font-semibold">Version:</span> Production Ready
-            </p>
-            <p className="text-xs text-gray-500 mt-4">
-              All changes are logged and audited. Changes take effect immediately.
-            </p>
-          </div>
-        </div>
-
-        {/* Status Legend */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-bold mb-4 text-gray-800">Status Guide</h2>
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, background: '#f3f4f6', color: '#6b7280' }}>YET TO VISIT</span>
-              <span className="text-sm text-gray-600">Before first entry today</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, background: '#dcfce7', color: '#15803d' }}>INSIDE GYM</span>
-              <span className="text-sm text-gray-600">After check-in, before check-out</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, background: '#dbeafe', color: '#1d4ed8' }}>VISITED</span>
-              <span className="text-sm text-gray-600">After check-out (or auto-closed after 2hrs)</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, background: '#fff7ed', color: '#c2410c' }}>LATE</span>
-              <span className="text-sm text-gray-600">First entry after late threshold</span>
-            </div>
-          </div>
-        </div>
+      {/* Tab Bar */}
+      <div style={{
+        display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24,
+        borderBottom: '1px solid var(--border-color)', paddingBottom: 0,
+      }}>
+        {SECTION_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              padding: '10px 18px',
+              background: activeTab === tab.id ? 'var(--accent)' : 'transparent',
+              color: activeTab === tab.id ? '#000' : 'var(--text-secondary)',
+              border: 'none', borderRadius: '8px 8px 0 0',
+              fontWeight: activeTab === tab.id ? 700 : 500,
+              fontSize: 13, cursor: 'pointer',
+              transition: 'all 0.15s',
+              marginBottom: -1,
+              borderBottom: activeTab === tab.id ? 'none' : '1px solid transparent',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      {/* Google Sheets Connector */}
-      <div className="mt-8">
-        <GoogleSheetsConnector />
-      </div>
+      {/* ── ATTENDANCE TAB ─────────────────────────────────── */}
+      {activeTab === 'attendance' && (
+        <div>
+          <div style={gridStyle}>
+            <Card title="🕐 Business Hours">
+              <Field label="Opening Time (HH:MM)" help="Attendance blocked before this time">
+                <input type="time" style={inputStyle} value={settings.openingTime || '04:00'} onChange={(e) => handleChange('openingTime', e.target.value)} />
+              </Field>
+              <Field label="Closing Time (HH:MM)" help="Attendance blocked after this time">
+                <input type="time" style={inputStyle} value={settings.closingTime || '22:00'} onChange={(e) => handleChange('closingTime', e.target.value)} />
+              </Field>
+              <Field label="Late Entry Threshold (HH:MM)" help='First entry after this time marked "Late"'>
+                <input type="time" style={inputStyle} value={settings.latePunchThreshold || '21:00'} onChange={(e) => handleChange('latePunchThreshold', e.target.value)} />
+              </Field>
+            </Card>
 
-      {/* Save Button */}
-      <div className="mt-6 flex gap-4">
-        <button
-          onClick={saveSettings}
-          disabled={loading}
-          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-semibold text-lg"
-        >
-          {loading ? 'Saving...' : '💾 Save Settings'}
-        </button>
-        <button
-          onClick={fetchSettings}
-          className="px-6 py-3 bg-gray-400 text-white rounded-lg hover:bg-gray-500 font-semibold text-lg"
-        >
-          ↻ Reset
-        </button>
-      </div>
+            <Card title="🔒 Attendance Rules">
+              <ToggleField label="One Visit Per Day Only" value={settings.oneVisitPerDay} onChange={(v) => handleChange('oneVisitPerDay', v)} />
+              <Field label="Duplicate Punch Prevention (seconds)" help="Block duplicate punches within this window (5–300s)">
+                <input type="number" style={inputStyle} value={settings.duplicatePunchSeconds} min={5} max={300} onChange={(e) => handleChange('duplicatePunchSeconds', e.target.value)} />
+              </Field>
+            </Card>
 
-      <div className="mt-6 p-4 bg-yellow-50 rounded-lg border-l-4 border-yellow-500">
-        <p className="text-yellow-800 text-sm">
-          <span className="font-semibold">⚠️ Important:</span> Settings changes take
-          effect immediately on all front-desk sessions. Inform staff of any changes.
-        </p>
+            <Card title="👤 Membership Rules">
+              <ToggleField label="Block Expired Member Entry" value={settings.blockExpiredMembers} onChange={(v) => handleChange('blockExpiredMembers', v)} />
+              <Field label="Grace Period for Expired (days)" help="Allow entry for N days after expiry (0 = no grace)">
+                <input type="number" style={inputStyle} value={settings.expiredGraceDays} min={0} max={30} onChange={(e) => handleChange('expiredGraceDays', e.target.value)} />
+              </Field>
+            </Card>
+
+            <Card title="🔊 Front Desk UX">
+              <ToggleField label="Enable Success / Error Sounds" value={settings.soundEnabled} onChange={(v) => handleChange('soundEnabled', v)} />
+              <InfoBox>Sounds help receptionist quickly identify punch success/failure at the front desk.</InfoBox>
+            </Card>
+          </div>
+          <SaveRow onSave={() => saveSection('attendance')} onReset={fetchSettings} loading={loading} />
+
+          {/* Status Guide */}
+          <div style={{ marginTop: 24, ...cardStyle }}>
+            <h2 style={cardTitleStyle}>Status Guide</h2>
+            {[
+              { label: 'YET TO VISIT', bg: '#1a1a1a', color: '#818181', desc: 'Before first entry today' },
+              { label: 'INSIDE GYM', bg: '#001a0d', color: '#3ddc84', desc: 'After check-in, before check-out' },
+              { label: 'VISITED', bg: '#001029', color: '#6ca8ff', desc: 'After check-out or auto-closed' },
+              { label: 'LATE', bg: '#1a0800', color: '#ffb800', desc: 'First entry after late threshold' },
+            ].map((s) => (
+              <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                <span style={{ background: s.bg, color: s.color, border: `1px solid ${s.color}`, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>
+                  {s.label}
+                </span>
+                <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{s.desc}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── BUSINESS INFO TAB ──────────────────────────────── */}
+      {activeTab === 'business' && (
+        <div>
+          <Card title="🏢 Business Information">
+            <Field label="Gym Name">
+              <input style={inputStyle} value={settings.gym_name || ''} onChange={(e) => handleChange('gym_name', e.target.value)} maxLength={100} />
+            </Field>
+            <Field label="Tagline">
+              <input style={inputStyle} value={settings.gym_tagline || ''} onChange={(e) => handleChange('gym_tagline', e.target.value)} maxLength={200} />
+            </Field>
+            <Field label="Support Phone">
+              <input style={inputStyle} value={settings.support_phone || ''} onChange={(e) => handleChange('support_phone', e.target.value)} maxLength={20} />
+            </Field>
+            <Field label="WhatsApp Number" help="Include country code, no spaces or + (e.g. 919342393935)">
+              <input style={inputStyle} value={settings.whatsapp_number || ''} onChange={(e) => handleChange('whatsapp_number', e.target.value)} maxLength={20} />
+            </Field>
+            <Field label="Public Email">
+              <input style={inputStyle} type="email" value={settings.public_email || ''} onChange={(e) => handleChange('public_email', e.target.value)} maxLength={120} />
+            </Field>
+            <Field label="Footer Text">
+              <textarea style={{ ...inputStyle, height: 80, resize: 'vertical' }} value={settings.footer_text || ''} onChange={(e) => handleChange('footer_text', e.target.value)} maxLength={300} />
+            </Field>
+          </Card>
+          <SaveRow onSave={() => saveSection('business')} onReset={fetchSettings} loading={loading} />
+        </div>
+      )}
+
+      {/* ── ENQUIRY SETTINGS TAB ───────────────────────────── */}
+      {activeTab === 'enquiry' && (
+        <div>
+          <Card title="📩 Enquiry Notification Settings">
+            <Field label="Notification Email" help="Admin email to receive new enquiry alerts. Leave blank to disable.">
+              <input style={inputStyle} type="email" value={settings.enquiry_notify_email || ''} onChange={(e) => handleChange('enquiry_notify_email', e.target.value)} maxLength={120} />
+            </Field>
+            <Field label="Success Message Text" help="Shown to user after successful enquiry submission">
+              <textarea style={{ ...inputStyle, height: 80, resize: 'vertical' }} value={settings.enquiry_success_message || ''} onChange={(e) => handleChange('enquiry_success_message', e.target.value)} maxLength={300} />
+            </Field>
+            <ToggleField label="Auto-Reply to User Email" value={settings.enquiry_auto_reply_enabled} onChange={(v) => handleChange('enquiry_auto_reply_enabled', v)} />
+            <Field label="Auto-Reply Subject">
+              <input style={inputStyle} value={settings.enquiry_auto_reply_subject || ''} onChange={(e) => handleChange('enquiry_auto_reply_subject', e.target.value)} maxLength={200} />
+            </Field>
+            <Field label="Data Retention (days)" help="Closed / Spam enquiries older than this are auto-cleaned (min 30)">
+              <input style={inputStyle} type="number" min={30} max={365} value={settings.enquiry_retention_days || 90} onChange={(e) => handleChange('enquiry_retention_days', e.target.value)} />
+            </Field>
+          </Card>
+          <InfoBox type="warning">SMTP credentials (SMTP_HOST, SMTP_USER, SMTP_PASS) must be set in the server .env file. They are never stored in the database.</InfoBox>
+          <SaveRow onSave={() => saveSection('enquiry')} onReset={fetchSettings} loading={loading} />
+        </div>
+      )}
+
+      {/* ── BRANCHES TAB ───────────────────────────────────── */}
+      {activeTab === 'branches' && (
+        <div>
+          {[
+            { prefix: 'mathur', title: '📍 Branch: Mathur (Flagship)' },
+            { prefix: 'vepery', title: '📍 Branch: Vepery (Central Chennai)' },
+          ].map(({ prefix, title }) => (
+            <Card key={prefix} title={title} style={{ marginBottom: 20 }}>
+              <Field label="Branch Name">
+                <input style={inputStyle} value={settings[`branch_${prefix}_name`] || ''} onChange={(e) => handleChange(`branch_${prefix}_name`, e.target.value)} maxLength={100} />
+              </Field>
+              <Field label="Address">
+                <textarea style={{ ...inputStyle, height: 72, resize: 'vertical' }} value={settings[`branch_${prefix}_address`] || ''} onChange={(e) => handleChange(`branch_${prefix}_address`, e.target.value)} maxLength={300} />
+              </Field>
+              <Field label="Phone">
+                <input style={inputStyle} value={settings[`branch_${prefix}_phone`] || ''} onChange={(e) => handleChange(`branch_${prefix}_phone`, e.target.value)} maxLength={20} />
+              </Field>
+              <Field label="Google Maps URL">
+                <input style={inputStyle} value={settings[`branch_${prefix}_map_url`] || ''} onChange={(e) => handleChange(`branch_${prefix}_map_url`, e.target.value)} maxLength={500} />
+              </Field>
+              <Field label="Image URL">
+                <input style={inputStyle} value={settings[`branch_${prefix}_image_url`] || ''} onChange={(e) => handleChange(`branch_${prefix}_image_url`, e.target.value)} maxLength={500} />
+              </Field>
+            </Card>
+          ))}
+          <SaveRow onSave={() => saveSection('branches')} onReset={fetchSettings} loading={loading} />
+        </div>
+      )}
+
+      {/* ── SOCIAL LINKS TAB ───────────────────────────────── */}
+      {activeTab === 'social' && (
+        <div>
+          <Card title="🔗 Social & Review Links">
+            {[
+              { key: 'social_instagram', label: 'Instagram URL' },
+              { key: 'social_facebook', label: 'Facebook URL' },
+              { key: 'social_youtube', label: 'YouTube URL' },
+              { key: 'social_google_reviews', label: 'Google Reviews URL' },
+            ].map(({ key, label }) => (
+              <Field key={key} label={label}>
+                <input style={inputStyle} type="url" value={settings[key] || ''} onChange={(e) => handleChange(key, e.target.value)} maxLength={300} placeholder="https://..." />
+              </Field>
+            ))}
+          </Card>
+          <SaveRow onSave={() => saveSection('social')} onReset={fetchSettings} loading={loading} />
+        </div>
+      )}
+
+      {/* ── INTEGRATIONS TAB ───────────────────────────────── */}
+      {activeTab === 'integrations' && (
+        <div>
+          <Card title="📊 Google Sheets Integration">
+            <ToggleField label="Enable Google Sheets Sync" value={settings.sheets_enabled} onChange={(v) => handleChange('sheets_enabled', v)} />
+            <Field label="Service Account Email" help="Google Sheets service account email">
+              <input style={inputStyle} type="email" value={settings.sheets_email || ''} onChange={(e) => handleChange('sheets_email', e.target.value)} maxLength={120} />
+            </Field>
+            <Field label="Default Sheet Name">
+              <input style={inputStyle} value={settings.sheets_default_name || ''} onChange={(e) => handleChange('sheets_default_name', e.target.value)} maxLength={100} />
+            </Field>
+          </Card>
+
+          <Card title="📧 Email Notifications">
+            <ToggleField label="Enable Email Notifications" value={settings.email_notifications_enabled} onChange={(v) => handleChange('email_notifications_enabled', v)} />
+            <InfoBox>Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM in the backend .env file for email delivery.</InfoBox>
+          </Card>
+
+          <SaveRow onSave={() => saveSection('integrations')} onReset={fetchSettings} loading={loading} />
+
+          {/* Existing Google Sheets Connector Component */}
+          <div style={{ marginTop: 24 }}>
+            <GoogleSheetsConnector />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function Card({ title, children, style = {} }) {
+  return (
+    <div style={{ ...cardStyle, marginBottom: 20, ...style }}>
+      <h2 style={cardTitleStyle}>{title}</h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {children}
       </div>
     </div>
   );
 }
+
+function Field({ label, help, children }) {
+  return (
+    <div>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
+        {label}
+      </label>
+      {children}
+      {help && <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{help}</p>}
+    </div>
+  );
+}
+
+function ToggleField({ label, value, onChange }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+      <div
+        onClick={() => onChange(!value)}
+        style={{
+          width: 42, height: 22, borderRadius: 11,
+          background: value ? 'var(--accent)' : 'var(--border-strong)',
+          position: 'relative', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0,
+        }}
+      >
+        <div style={{
+          position: 'absolute', top: 3, left: value ? 21 : 3,
+          width: 16, height: 16, borderRadius: '50%', background: value ? '#000' : '#fff',
+          transition: 'left 0.2s',
+        }} />
+      </div>
+      <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{label}</span>
+    </label>
+  );
+}
+
+function InfoBox({ children, type = 'info' }) {
+  const colors = {
+    info:    { bg: 'rgba(108,168,255,0.08)', border: '#6ca8ff', text: '#6ca8ff' },
+    warning: { bg: 'rgba(255,184,0,0.08)',   border: '#ffb800', text: '#ffb800' },
+  };
+  const c = colors[type] || colors.info;
+  return (
+    <div style={{
+      background: c.bg, border: `1px solid ${c.border}`, color: c.text,
+      padding: '10px 14px', borderRadius: 8, fontSize: 12, marginTop: 8,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function SaveRow({ onSave, onReset, loading }) {
+  return (
+    <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+      <button
+        onClick={onSave}
+        disabled={loading}
+        style={{
+          padding: '10px 22px', background: 'var(--accent)', color: '#000',
+          border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 14,
+          cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1,
+        }}
+      >
+        {loading ? 'Saving...' : '💾 Save Settings'}
+      </button>
+      <button
+        onClick={onReset}
+        style={{
+          padding: '10px 22px', background: 'transparent', color: 'var(--text-secondary)',
+          border: '1px solid var(--border-color)', borderRadius: 8, fontWeight: 600,
+          fontSize: 14, cursor: 'pointer',
+        }}
+      >
+        ↺ Reset
+      </button>
+    </div>
+  );
+}
+
+// ── Shared styles ─────────────────────────────────────────────────────────────
+const cardStyle = {
+  background: 'var(--surface-soft)',
+  border: '1px solid var(--border-color)',
+  borderRadius: 12,
+  padding: '20px 24px',
+};
+
+const cardTitleStyle = {
+  fontSize: '1rem',
+  fontWeight: 700,
+  color: 'var(--text-primary)',
+  marginBottom: 18,
+  marginTop: 0,
+};
+
+const inputStyle = {
+  width: '100%',
+  padding: '9px 12px',
+  background: 'var(--surface-muted)',
+  border: '1px solid var(--border-color)',
+  borderRadius: 8,
+  color: 'var(--text-primary)',
+  fontSize: 13,
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+
+const gridStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+  gap: 20,
+};

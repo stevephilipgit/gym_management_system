@@ -1,5 +1,6 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import apiClient from "../utils/apiClient.js";
+import EnquiryModal from "../components/EnquiryModal.jsx";
 
 const NAV_ITEMS = [
   { label: "Home", id: "home" },
@@ -87,6 +88,10 @@ export default function Home() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [loadingPlans, setLoadingPlans] = useState(true);
   const [plansLoadFailed, setPlansLoadFailed] = useState(false);
+  const [isEnquiryOpen, setIsEnquiryOpen] = useState(false);
+
+  const openEnquiry = useCallback(() => setIsEnquiryOpen(true), []);
+  const closeEnquiry = useCallback(() => setIsEnquiryOpen(false), []);
 
   useEffect(() => {
     const normalizePackages = (payload) => {
@@ -196,7 +201,7 @@ export default function Home() {
                   {item.label}
                 </button>
               ))}
-              <button className="lp-btn lp-btn-primary" onClick={() => scrollToId("contact")}>
+              <button className="lp-btn lp-btn-primary" onClick={openEnquiry} id="nav-join-now-btn">
                 Join Now
               </button>
             </div>
@@ -214,7 +219,7 @@ export default function Home() {
                 {item.label}
               </button>
             ))}
-            <button className="lp-btn lp-btn-primary w-full" onClick={() => scrollToId("contact")}>
+            <button className="lp-btn lp-btn-primary w-full" onClick={() => { setIsMenuOpen(false); openEnquiry(); }}>
               Join Now
             </button>
           </div>
@@ -229,7 +234,7 @@ export default function Home() {
               <h1>Transform Your Body at Chennai&apos;s Premium Gym</h1>
               <p>Elite equipment, expert trainers, real results.</p>
               <div className="lp-hero-actions">
-                <button className="lp-btn lp-btn-primary" onClick={() => scrollToId("contact")}>
+                <button className="lp-btn lp-btn-primary" onClick={openEnquiry} id="hero-join-now-btn">
                   Join Now
                 </button>
                 <button className="lp-btn lp-btn-outline" onClick={() => scrollToId("plans")}>
@@ -400,7 +405,7 @@ export default function Home() {
         <section className="lp-final-cta">
           <div className="lp-container lp-final-wrap">
             <h2>Start Today. Become Your Strongest Version.</h2>
-            <button className="lp-btn lp-btn-primary" onClick={() => scrollToId("contact")}>
+            <button className="lp-btn lp-btn-primary" onClick={openEnquiry} id="cta-join-btn">
               Join Premium Fitness
             </button>
           </div>
@@ -449,6 +454,7 @@ export default function Home() {
       >
         WhatsApp
       </a>
+      <EnquiryModal isOpen={isEnquiryOpen} onClose={closeEnquiry} />
     </div>
   );
 }

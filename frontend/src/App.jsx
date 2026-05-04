@@ -27,6 +27,7 @@ const AttendanceFrontDesk = lazy(() => import("./admin/AttendanceFrontDesk"));
 const CorrectionPanel = lazy(() => import("./admin/CorrectionPanel"));
 const InactiveReportsPage = lazy(() => import("./admin/InactiveReportsPage"));
 const SettingsPage = lazy(() => import("./admin/SettingsPage"));
+const AdminEnquiries = lazy(() => import("./admin/AdminEnquiries"));
 
 
 function App() {
@@ -64,11 +65,11 @@ function App() {
             <Route path="fields" element={<AdminManageFields />} />
             <Route path="diet-manager" element={<AdminDietManager />} />
             <Route path="ai-assistant" element={<AiAssistant />} />
-            {/* ✅ NEW: Attendance System Routes */}
             <Route path="attendance-front-desk" element={<AttendanceFrontDesk />} />
             <Route path="corrections" element={<CorrectionPanel />} />
             <Route path="inactivity-reports" element={<InactiveReportsPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="enquiries" element={<AdminEnquiries />} />
           </Route>
           </Routes>
         </Suspense>

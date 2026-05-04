@@ -1,6 +1,6 @@
 import { IoClose } from "react-icons/io5";
 import { useLocation, useNavigate } from "react-router-dom";
-import { FiCalendar, FiEdit, FiHome, FiLayers, FiLogOut, FiMenu, FiUserPlus, FiUsers, FiClock, FiBarChart2, FiSettings } from "react-icons/fi";
+import { FiCalendar, FiEdit, FiHome, FiInbox, FiLayers, FiLogOut, FiMenu, FiUserPlus, FiUsers, FiClock, FiBarChart2, FiSettings } from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
 
 export default function AdminSidebar({ closeSidebar, collapsed, setCollapsed }) {
@@ -21,6 +21,7 @@ export default function AdminSidebar({ closeSidebar, collapsed, setCollapsed }) 
     { label: "Attendance", icon: <FiClock />, path: "/admin/attendance-front-desk" },
     { label: "Corrections", icon: <FiEdit />, path: "/admin/corrections" },
     { label: "Inactivity Reports", icon: <FiBarChart2 />, path: "/admin/inactivity-reports" },
+    { label: "Enquiries", icon: <FiInbox />, path: "/admin/enquiries" },
     { label: "Settings", icon: <FiSettings />, path: "/admin/settings" },
   ];
 
