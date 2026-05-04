@@ -1,0 +1,50 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
+const config = {
+  env: process.env.NODE_ENV || 'development',
+  app: {
+    url: process.env.APP_URL || 'http://localhost:5000',
+    port: Number.parseInt(process.env.PORT || '5000', 10),
+    allowedOrigins: (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5173').split(','),
+    isProduction: process.env.NODE_ENV === 'production',
+  },
+  jwt: {
+    accessSecret: process.env.JWT_ACCESS_SECRET,
+    refreshSecret: process.env.JWT_REFRESH_SECRET || process.env.JWT_ACCESS_SECRET,
+    accessExpires: process.env.JWT_ACCESS_EXPIRES || '15m',
+    refreshExpires: process.env.JWT_REFRESH_EXPIRES || '7d',
+  },
+  db: {
+    url: process.env.DATABASE_URL || process.env.MONGO_URI || process.env.MONGO_URL,
+    redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
+    fieldEncryptionKey: process.env.FIELD_ENCRYPTION_KEY,
+  },
+  rateLimit: {
+    windowMs: Number.parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10),
+    defaultMax: Number.parseInt(process.env.RATE_LIMIT_DEFAULT_MAX || '100', 10),
+    loginMax: Number.parseInt(process.env.RATE_LIMIT_LOGIN_MAX || '5', 10),
+    otpMax: Number.parseInt(process.env.RATE_LIMIT_OTP_MAX || '3', 10),
+  },
+  email: {
+    enabled: !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS),
+    host: process.env.SMTP_HOST,
+    port: process.env.SMTP_PORT,
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+  },
+  google: {
+    enabled: !!(process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY && process.env.GOOGLE_SHEET_ID),
+    clientEmail: process.env.GOOGLE_CLIENT_EMAIL,
+    privateKey: process.env.GOOGLE_PRIVATE_KEY,
+    sheetId: process.env.GOOGLE_SHEET_ID,
+  },
+  ai: {
+    enabled: String(process.env.AI_ENABLED).toLowerCase() === 'true',
+    apiKey: process.env.GEMINI_API_KEY,
+    model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+  },
+};
+
+export default config;
