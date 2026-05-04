@@ -1,9 +1,9 @@
 import cors from "cors";
-import env from "../config/env.js";
+import config from "../config/index.js";
 
 const corsMiddleware = cors({
   origin: (origin, callback) => {
-    if (!origin || env.ALLOWED_ORIGINS.includes(origin)) {
+    if (!origin || config.app.allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error(`CORS: Origin ${origin} not allowed`));

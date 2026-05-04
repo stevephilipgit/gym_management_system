@@ -1,6 +1,6 @@
 import { RateLimiterRedis } from "rate-limiter-flexible";
 import redisClient from "../config/redis.js";
-import env from "../config/env.js";
+import config from "../config/index.js";
 
 const createLimiter = (keyPrefix, points, durationSeconds) => {
   const limiter = new RateLimiterRedis({
@@ -34,10 +34,10 @@ const createLimiter = (keyPrefix, points, durationSeconds) => {
 
 export const defaultLimiter = createLimiter(
   "rl_default",
-  env.RATE_LIMIT_DEFAULT_MAX,
-  env.RATE_LIMIT_WINDOW_MS / 1000
+  config.rateLimit.defaultMax,
+  config.rateLimit.windowMs / 1000
 );
-export const loginLimiter = createLimiter("rl_login", env.RATE_LIMIT_LOGIN_MAX, 60);
-export const otpLimiter = createLimiter("rl_otp", env.RATE_LIMIT_OTP_MAX, 300);
+export const loginLimiter = createLimiter("rl_login", config.rateLimit.loginMax, 60);
+export const otpLimiter = createLimiter("rl_otp", config.rateLimit.otpMax, 300);
 export const adminLimiter = createLimiter("rl_admin", 300, 60);
 export const sensitiveLimiter = createLimiter("rl_sensitive", 50, 60);

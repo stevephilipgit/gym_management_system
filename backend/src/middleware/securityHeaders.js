@@ -1,5 +1,5 @@
 import helmet from "helmet";
-import env from "../config/env.js";
+import config from "../config/index.js";
 
 export const helmetMiddleware = helmet({
   contentSecurityPolicy: {
@@ -12,11 +12,11 @@ export const helmetMiddleware = helmet({
       fontSrc: ["'self'", "https:", "data:"],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
-      upgradeInsecureRequests: env.IS_PRODUCTION ? [] : null,
+      upgradeInsecureRequests: config.app.isProduction ? [] : null,
     },
   },
   crossOriginEmbedderPolicy: false,
-  hsts: env.IS_PRODUCTION
+  hsts: config.app.isProduction
     ? { maxAge: 31536000, includeSubDomains: true, preload: true }
     : false,
 });
