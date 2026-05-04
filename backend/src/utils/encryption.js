@@ -1,8 +1,8 @@
 import crypto from "crypto";
-import env from "../config/env.js";
+import config from "../config/index.js";
 
 const ALGORITHM = "aes-256-gcm";
-const KEY = Buffer.from(env.FIELD_ENCRYPTION_KEY.padEnd(32).slice(0, 32));
+const KEY = Buffer.from(config.db.fieldEncryptionKey.padEnd(32).slice(0, 32));
 
 export const encrypt = (plainText) => {
   if (!plainText) return null;
