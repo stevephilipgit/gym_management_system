@@ -1,41 +1,38 @@
 import { google } from "googleapis";
 import GoogleSheetsConnector from "../models/GoogleSheetsConnector.js";
 import logger from "../core/logger.js";
+import config from "../config/index.js";
 
-// Google OAuth2 configuration
-const oauth2Client = new google.auth.OAuth2(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_REDIRECT_URI
-);
+let authClient = null;
+
+const getAuth = () => {
+  if (!config.google.enabled) {
+    return null;
+  }
+  if (!authClient) {
+    authClient = new google.auth.GoogleAuth({
+      credentials: {
+        client_email: config.google.clientEmail,
+        private_key: config.google.privateKey?.replace(/\\n/g, '\n'),
+      },
+      scopes: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file'],
+    });
+  }
+  return authClient;
+};
 
 /**
  * Get authorization URL for Google OAuth2
  */
 export const getAuthorizationUrl = () => {
-  const scopes = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive.file",
-  ];
-
-  return oauth2Client.generateAuthUrl({
-    access_type: "offline",
-    scope: scopes,
-    prompt: "consent",
-  });
+  return ""; // Deprecated
 };
 
 /**
  * Exchange authorization code for tokens
  */
 export const getTokensFromCode = async (code) => {
-  try {
-    const { tokens } = await oauth2Client.getToken(code);
-    return tokens;
-  } catch (error) {
-    logger.error("Failed to get tokens:", error);
-    throw new Error("Failed to authenticate with Google");
-  }
+  return {}; // Deprecated
 };
 
 /**
@@ -43,8 +40,12 @@ export const getTokensFromCode = async (code) => {
  */
 export const createAttendanceSheet = async (tokens, adminEmail) => {
   try {
-    oauth2Client.setCredentials(tokens);
-    const sheets = google.sheets({ version: "v4", auth: oauth2Client });
+    const auth = getAuth();
+    if (!auth) {
+      logger.warn('[Sheets] Skipping sync — sheets not configured.');
+      return;
+    }
+    const sheets = google.sheets({ version: "v4", auth });
 
     const year = new Date().getFullYear();
     const spreadsheetName = `Gym Attendance - ${year}`;
@@ -158,10 +159,15 @@ export const createAttendanceSheet = async (tokens, adminEmail) => {
 /**
  * Add attendance entry to Google Sheet
  */
-export const addAttendanceEntry = async (tokens, spreadsheetId, attendanceData) => {
+export const addAttendanceEntry = async (tokens, _spreadsheetId, attendanceData) => {
   try {
-    oauth2Client.setCredentials(tokens);
-    const sheets = google.sheets({ version: "v4", auth: oauth2Client });
+    const auth = getAuth();
+    if (!auth) {
+      logger.warn('[Sheets] Skipping sync — sheets not configured.');
+      return { success: false };
+    }
+    const sheets = google.sheets({ version: "v4", auth });
+    const spreadsheetId = config.google.sheetId || _spreadsheetId;
 
     const { date, memberId, memberName, checkInTime, status, branch } = attendanceData;
 
@@ -212,79 +218,92 @@ export const addAttendanceEntry = async (tokens, spreadsheetId, attendanceData) 
   }
 };
 
-/**
- * Get connector details
- */
-export const getConnector = async (adminEmail) => {
-  try {
-    const connector = await GoogleSheetsConnector.findOne({
-      adminEmail,
-      isConnected: true,
-    });
-    return connector;
-  } catch (error) {
-    logger.error("Failed to get connector:", error);
-    throw error;
-  }
-};
 
-/**
- * Save connector details
- */
-export const saveConnector = async (adminEmail, connectorData) => {
-  try {
-    let connector = await GoogleSheetsConnector.findOne({ adminEmail });
 
-    if (!connector) {
-      connector = new GoogleSheetsConnector({
-        adminEmail,
-        ...connectorData,
+export const addEnquiryEntry = async (tokens, _spreadsheetId, enquiryData) => {
+  try {
+    const auth = getAuth();
+    if (!auth) {
+      logger.warn('[Sheets] Skipping sync — sheets not configured.');
+      return { success: false };
+    }
+    const sheets = google.sheets({ version: "v4", auth });
+    const spreadsheetId = config.google.sheetId || _spreadsheetId;
+
+    const { date, name, email, phone, branch, reason, message } = enquiryData;
+
+    // Check if Enquiries sheet exists, if not create it
+    const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
+    const sheetExists = spreadsheet.data.sheets.some((s) => s.properties.title === "Enquiries");
+
+    let newSheetId = null;
+
+    if (!sheetExists) {
+      const addSheetRes = await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        resource: {
+          requests: [{ addSheet: { properties: { title: "Enquiries" } } }]
+        }
       });
-    } else {
-      Object.assign(connector, connectorData);
+      newSheetId = addSheetRes.data.replies[0].addSheet.properties.sheetId;
+
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "Enquiries!A1:G1",
+        valueInputOption: "RAW",
+        resource: { values: [["Date", "Name", "Email", "Phone", "Branch", "Reason", "Message"]] }
+      });
+
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        resource: {
+          requests: [
+            {
+              repeatCell: {
+                range: { sheetId: newSheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 7 },
+                cell: {
+                  userEnteredFormat: {
+                    backgroundColor: { red: 0.2, green: 0.2, blue: 0.2 },
+                    textFormat: { foregroundColor: { red: 1, green: 1, blue: 1 }, bold: true },
+                    horizontalAlignment: "CENTER"
+                  }
+                },
+                fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)"
+              }
+            }
+          ]
+        }
+      });
     }
 
-    await connector.save();
-    return connector;
+    const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: "Enquiries!A:A" });
+    const values = response.data.values || [];
+    const nextRow = values.length + 1;
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `Enquiries!A${nextRow}:G${nextRow}`,
+      valueInputOption: "RAW",
+      resource: { values: [[date, name, email, phone, branch, reason, message || ""]] }
+    });
+
+    logger.info(`Added enquiry entry to Google Sheet: ${email}`);
+    return { success: true, rowIndex: nextRow };
   } catch (error) {
-    logger.error("Failed to save connector:", error);
+    logger.error("Failed to add enquiry entry:", error);
     throw error;
   }
 };
-
-/**
- * Disconnect Google Sheets
- */
-export const disconnectSheets = async (adminEmail) => {
-  try {
-    const connector = await GoogleSheetsConnector.findOne({ adminEmail });
-
-    if (connector) {
-      connector.isConnected = false;
-      connector.accessToken = null;
-      connector.refreshToken = null;
-      connector.lastError = null;
-      await connector.save();
-    }
-
-    logger.info(`Disconnected Google Sheets for: ${adminEmail}`);
-    return true;
-  } catch (error) {
-    logger.error("Failed to disconnect sheets:", error);
-    throw error;
-  }
-};
-
-/**
- * Test connection
- */
 export const testConnection = async (tokens) => {
   try {
-    oauth2Client.setCredentials(tokens);
-    const sheets = google.sheets({ version: "v4", auth: oauth2Client });
+    const auth = getAuth();
+    if (!auth) {
+      return { success: false, message: "Sheets not configured" };
+    }
+    const sheets = google.sheets({ version: "v4", auth });
 
     // Try to list spreadsheets
-    const drive = google.drive({ version: "v3", auth: oauth2Client });
+    const drive = google.drive({ version: "v3", auth });
     const result = await drive.files.list({
       pageSize: 1,
       fields: "files(id, name)",
