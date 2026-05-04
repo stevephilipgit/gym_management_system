@@ -1,5 +1,5 @@
 
-# Gym Management System
+# Gym Management System  (Customer-Specific working + improving)
 
 A comprehensive, full-stack gym management platform built with modern web technologies. This system manages members, attendance, billing, analytics, and administrative operations for fitness facilities.
 
