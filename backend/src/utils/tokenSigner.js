@@ -1,13 +1,15 @@
 import crypto from "crypto";
 
-const SHARE_TOKEN_SECRET =
-  process.env.SHARE_TOKEN_SECRET || "dev-secret-key-change-in-production-min-32-char";
-
 /**
  * Generate cryptographic token for PDF sharing
  * Token includes timestamp and signature
  */
 export function generateShareToken(paymentLogId, expirationHours = 24) {
+  const secret = process.env.SHARE_TOKEN_SECRET;
+  if (!secret) {
+    throw new Error("SHARE_TOKEN_SECRET is not configured");
+  }
+
   const expiresAt = new Date(Date.now() + expirationHours * 60 * 60 * 1000);
   const expiryTimestamp = expiresAt.getTime();
 
@@ -16,7 +18,7 @@ export function generateShareToken(paymentLogId, expirationHours = 24) {
 
   // Generate HMAC signature
   const token = crypto
-    .createHmac("sha256", SHARE_TOKEN_SECRET)
+    .createHmac("sha256", secret)
     .update(data)
     .digest("hex");
 

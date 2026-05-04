@@ -1,6 +1,5 @@
 import jwt from "jsonwebtoken";
-
-const JWT_SECRET = process.env.JWT_SECRET || "supersecret_gym_key";
+import config from "../config/index.js";
 
 export default function adminAuth(req, res, next) {
   try {
@@ -10,7 +9,7 @@ export default function adminAuth(req, res, next) {
       return res.status(401).json({ message: "Unauthorized. Please login again." });
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, config.jwt.accessSecret);
     req.admin = decoded; // { id, username, role }
 
     next();
