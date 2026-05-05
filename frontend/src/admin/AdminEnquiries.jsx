@@ -5,13 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import apiClient from '../utils/apiClient';
-
-const STATUS_COLORS = {
-  new:       { bg: '#1a1a00', border: '#ccff00', text: '#ccff00' },
-  contacted: { bg: '#001a0d', border: '#3ddc84', text: '#3ddc84' },
-  closed:    { bg: '#1a1a1a', border: '#818181', text: '#818181' },
-  spam:      { bg: '#1a0000', border: '#ff5d5d', text: '#ff5d5d' },
-};
+import IconButton from './components/IconButton';
 
 const BRANCH_OPTS = ['all', 'Mathur', 'Vepery', 'Any Branch'];
 const STATUS_OPTS = ['all', 'new', 'contacted', 'closed', 'spam'];
@@ -22,14 +16,15 @@ const REASON_OPTS = [
 ];
 
 function StatusBadge({ status }) {
-  const c = STATUS_COLORS[status] || STATUS_COLORS.new;
+  let badgeClass = "saas-badge-dark";
+  if (status === "new") badgeClass = "saas-badge-warning";
+  if (status === "contacted") badgeClass = "saas-badge-success";
+  if (status === "closed") badgeClass = "saas-badge-dark";
+  if (status === "spam") badgeClass = "saas-badge-danger";
+
   return (
-    <span style={{
-      background: c.bg, border: `1px solid ${c.border}`, color: c.text,
-      padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700,
-      textTransform: 'uppercase', letterSpacing: 1, display: 'inline-block',
-    }}>
-      {status}
+    <span className={`saas-badge-pill ${badgeClass}`}>
+      {status.toUpperCase()}
     </span>
   );
 }
@@ -132,6 +127,8 @@ export default function AdminEnquiries() {
   const [filters, setFilters] = useState({ status: 'all', branch: 'all', reason: 'all', search: '', dateFrom: '', dateTo: '' });
   const [selected, setSelected] = useState(null);
   const [toast, setToast] = useState('');
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [enquiryToDelete, setEnquiryToDelete] = useState(null);
   const searchRef = useRef();
   const searchTimer = useRef();
 
@@ -170,14 +167,22 @@ export default function AdminEnquiries() {
     }, 350);
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this enquiry? This cannot be undone.')) return;
+  const confirmDelete = (id) => {
+    setEnquiryToDelete(id);
+    setDeleteModalOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!enquiryToDelete) return;
     try {
-      await apiClient.delete(`/enquiries/${id}`);
-      setEnquiries((prev) => prev.filter((e) => e._id !== id));
+      await apiClient.delete(`/enquiries/${enquiryToDelete}`);
+      setEnquiries((prev) => prev.filter((e) => e._id !== enquiryToDelete));
+      setDeleteModalOpen(false);
+      setEnquiryToDelete(null);
       showToast('Enquiry deleted.');
     } catch (err) {
       showToast('Failed to delete enquiry.');
+      setDeleteModalOpen(false);
     }
   };
 
@@ -213,7 +218,7 @@ export default function AdminEnquiries() {
   };
 
   return (
-    <div className="p-6">
+    <div className="saas-container">
       {/* Toast */}
       {toast && (
         <div style={{
@@ -227,39 +232,25 @@ export default function AdminEnquiries() {
       )}
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <h1 style={{ fontSize: '1.8rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-            Enquiries
-          </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>
-            {pagination.total} total leads
-          </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div className="saas-header" style={{ marginBottom: 0 }}>
+          <h1>Enquiries</h1>
+          <p>Track and manage leads • {pagination.total} total</p>
         </div>
-        <button
-          onClick={handleExportCSV}
-          style={{
-            background: 'var(--accent)', color: '#000', border: 'none', borderRadius: 8,
-            padding: '10px 18px', fontWeight: 700, fontSize: 13, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: 6,
-          }}
-        >
+        <button onClick={handleExportCSV} className="btn-secondary" style={{ height: '38px', display: 'flex', alignItems: 'center', gap: '8px', padding: '0 16px', borderRadius: '6px', fontSize: '14px', background: 'var(--surface-muted)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', cursor: 'pointer' }}>
           ↓ Export CSV
         </button>
       </div>
 
       {/* Filters */}
-      <div style={{
-        display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 20,
-        padding: '16px', background: 'var(--surface-soft)', borderRadius: 12,
-        border: '1px solid var(--border-color)',
-      }}>
+      <div className="saas-filter-bar">
         <input
           ref={searchRef}
           type="text"
           placeholder="Search name, phone, email..."
           onChange={handleSearchInput}
-          style={filterInputStyle}
+          className="saas-input"
+          style={{ flex: '1 1 200px' }}
         />
 
         {[
@@ -271,7 +262,7 @@ export default function AdminEnquiries() {
             key={key}
             value={filters[key]}
             onChange={(e) => handleFilterChange(key, e.target.value)}
-            style={filterInputStyle}
+            className="saas-input"
           >
             {opts.map((o) => (
               <option key={o} value={o}>
@@ -285,14 +276,14 @@ export default function AdminEnquiries() {
           type="date"
           value={filters.dateFrom}
           onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
-          style={filterInputStyle}
+          className="saas-input"
           title="From date"
         />
         <input
           type="date"
           value={filters.dateTo}
           onChange={(e) => handleFilterChange('dateTo', e.target.value)}
-          style={filterInputStyle}
+          className="saas-input"
           title="To date"
         />
       </div>
@@ -307,53 +298,38 @@ export default function AdminEnquiries() {
           No enquiries found for the current filters.
         </div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <div className="saas-table-container">
+          <table className="saas-table">
             <thead>
-              <tr style={{ background: 'var(--surface-soft)', textAlign: 'left' }}>
+              <tr>
                 {['Date', 'Name', 'Phone', 'Branch', 'Reason', 'Status', 'Actions'].map((h) => (
-                  <th key={h} style={thStyle}>{h}</th>
+                  <th key={h}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {enquiries.map((e, i) => (
-                <tr
-                  key={e._id}
-                  style={{
-                    background: i % 2 === 0 ? 'var(--row-odd)' : 'var(--row-even)',
-                    transition: 'background 0.15s',
-                    cursor: 'pointer',
-                  }}
-                  onMouseEnter={(el) => el.currentTarget.style.background = 'var(--row-hover)'}
-                  onMouseLeave={(el) => el.currentTarget.style.background = i % 2 === 0 ? 'var(--row-odd)' : 'var(--row-even)'}
-                >
-                  <td style={tdStyle}>{new Date(e.createdAt).toLocaleDateString('en-IN')}</td>
-                  <td style={{ ...tdStyle, fontWeight: 600, color: 'var(--text-primary)' }}>
+              {enquiries.map((e) => (
+                <tr key={e._id} style={{ cursor: 'pointer' }}>
+                  <td>{new Date(e.createdAt).toLocaleDateString('en-IN')}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
                     {e.name}
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>{e.email}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400, marginTop: 2 }}>{e.email}</div>
                   </td>
-                  <td style={tdStyle}>{e.phone}</td>
-                  <td style={tdStyle}>{e.preferred_branch}</td>
-                  <td style={tdStyle}>{e.reason}</td>
-                  <td style={tdStyle}><StatusBadge status={e.status} /></td>
-                  <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                    <button style={actionBtnStyle('#ccff00', '#000')} onClick={() => setSelected(e)}>
-                      View
-                    </button>
-                    {e.status !== 'contacted' && (
-                      <button style={actionBtnStyle('#3ddc84', '#000')} onClick={() => quickStatus(e._id, 'contacted')}>
-                        ✓ Contacted
-                      </button>
-                    )}
-                    {e.status !== 'closed' && (
-                      <button style={actionBtnStyle('#818181', '#fff')} onClick={() => quickStatus(e._id, 'closed')}>
-                        Close
-                      </button>
-                    )}
-                    <button style={actionBtnStyle('#ff5d5d', '#fff')} onClick={() => handleDelete(e._id)}>
-                      Delete
-                    </button>
+                  <td>{e.phone}</td>
+                  <td>{e.preferred_branch}</td>
+                  <td>{e.reason}</td>
+                  <td><StatusBadge status={e.status} /></td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <IconButton type="view" onClick={() => setSelected(e)} />
+                      {e.status !== 'contacted' && (
+                        <IconButton type="check" title="Mark Contacted" onClick={() => quickStatus(e._id, 'contacted')} />
+                      )}
+                      {e.status !== 'closed' && (
+                        <IconButton type="close" title="Close Enquiry" onClick={() => quickStatus(e._id, 'closed')} />
+                      )}
+                      <IconButton type="delete" onClick={() => confirmDelete(e._id)} />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -389,6 +365,20 @@ export default function AdminEnquiries() {
           onClose={() => setSelected(null)}
           onStatusChange={handleStatusChange}
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] p-4" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--modal-backdrop)', zIndex: 9999 }}>
+          <div className="w-full max-w-sm rounded-[var(--radius-md)] bg-[var(--surface-soft)] p-6 shadow-2xl border border-[var(--border-strong)]" style={{ background: 'var(--surface-soft)', padding: '24px', borderRadius: '16px', border: '1px solid var(--border-strong)', width: '100%', maxWidth: '384px' }}>
+            <h3 className="mb-2 text-xl font-semibold text-white" style={{ marginBottom: '8px', fontSize: '1.25rem', fontWeight: 600, color: '#fff' }}>Delete Enquiry?</h3>
+            <p className="mb-6 text-[var(--text-secondary)]" style={{ marginBottom: '24px', color: 'var(--text-secondary)' }}>This action cannot be undone. Are you sure you want to delete this enquiry?</p>
+            <div className="flex justify-end gap-3" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button onClick={() => setDeleteModalOpen(false)} className="btn-secondary min-h-0 px-4 py-2" style={actionBtnStyle('var(--surface-muted)', 'var(--text-primary)')}>Cancel</button>
+              <button onClick={handleDelete} className="btn-danger min-h-0 px-4 py-2" style={actionBtnStyle('#ff5d5d', '#fff')}>Delete</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
