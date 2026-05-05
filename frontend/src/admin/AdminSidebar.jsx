@@ -1,85 +1,152 @@
 import { IoClose } from "react-icons/io5";
 import { useLocation, useNavigate } from "react-router-dom";
-import { FiCalendar, FiEdit, FiHome, FiInbox, FiLayers, FiLogOut, FiMenu, FiUserPlus, FiUsers, FiClock, FiBarChart2, FiSettings } from "react-icons/fi";
+import {
+  FiActivity,
+  FiBarChart2,
+  FiCalendar,
+  FiClock,
+  FiCpu,
+  FiEdit,
+  FiHome,
+  FiInbox,
+  FiLogOut,
+  FiMenu,
+  FiPackage,
+  FiSettings,
+  FiSliders,
+  FiUserPlus,
+  FiUsers,
+} from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
 
-export default function AdminSidebar({ closeSidebar, collapsed, setCollapsed }) {
-  const navigate = useNavigate();
-  const location = useLocation();
+const NAV_GROUPS = [
+  {
+    label: "Overview",
+    items: [
+      { label: "Dashboard", icon: <FiHome />, path: "/admin" },
+    ],
+  },
+  {
+    label: "Members",
+    items: [
+      { label: "Register Member", icon: <FiUserPlus />, path: "/admin/register" },
+      { label: "View Dues",       icon: <FiCalendar />, path: "/admin/due" },
+      { label: "All Members",    icon: <FiUsers />,    path: "/admin/members" },
+      { label: "Update Member",  icon: <FiEdit />,     path: "/admin/update" },
+    ],
+  },
+  {
+    label: "Training",
+    items: [
+      { label: "Packages",     icon: <FiPackage />,  path: "/admin/packages" },
+      { label: "Diet Manager", icon: <FiActivity />, path: "/admin/diet-manager" },
+      { label: "AI Assistant", icon: <FiCpu />,      path: "/admin/ai-assistant" },
+      { label: "Form Fields",  icon: <FiSliders />,  path: "/admin/fields" },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      { label: "Attendance",  icon: <FiClock />,     path: "/admin/attendance-front-desk" },
+      { label: "Corrections", icon: <FiEdit />,      path: "/admin/corrections" },
+      { label: "Reports",     icon: <FiBarChart2 />, path: "/admin/inactivity-reports" },
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      { label: "Enquiries", icon: <FiInbox />,    path: "/admin/enquiries" },
+      { label: "Settings",  icon: <FiSettings />, path: "/admin/settings" },
+    ],
+  },
+];
 
-  const menuItems = [
-    { label: "Dashboard", icon: <FiHome />, path: "/admin" },
-    { label: "Register Member", icon: <FiUserPlus />, path: "/admin/register" },
-    { label: "View Dues", icon: <FiCalendar />, path: "/admin/due" },
-    { label: "View All Members", icon: <FiUsers />, path: "/admin/members" },
-    { label: "Update Member", icon: <FiEdit />, path: "/admin/update" },
-    { label: "Manage Packages", icon: <FiLayers />, path: "/admin/packages" },
-    { label: "Diet Manager", icon: <FiLayers />, path: "/admin/diet-manager" },
-    { label: "AI Assistant", icon: <FiLayers />, path: "/admin/ai-assistant" },
-    { label: "Edit Form Fields", icon: <FiEdit />, path: "/admin/fields" },
-    // ✅ NEW: Attendance System
-    { label: "Attendance", icon: <FiClock />, path: "/admin/attendance-front-desk" },
-    { label: "Corrections", icon: <FiEdit />, path: "/admin/corrections" },
-    { label: "Inactivity Reports", icon: <FiBarChart2 />, path: "/admin/inactivity-reports" },
-    { label: "Enquiries", icon: <FiInbox />, path: "/admin/enquiries" },
-    { label: "Settings", icon: <FiSettings />, path: "/admin/settings" },
-  ];
+export default function AdminSidebar({ closeSidebar, collapsed, setCollapsed }) {
+  const navigate  = useNavigate();
+  const location  = useLocation();
+
+  const isActive = (path) =>
+    location.pathname === path ||
+    (path !== "/admin" && location.pathname.startsWith(path));
 
   return (
-    <aside className="glass-panel custom-scrollbar flex h-full flex-col overflow-y-auto border-r border-white/10 px-4 py-6">
-      <div className="mb-6 flex items-center justify-between gap-3">
-        {!collapsed && (
-          <div>
-            <p className="eyebrow">Admin Modules</p>
-            <div className="text-lg font-extrabold tracking-[0.14em]">GIRI GYM</div>
-          </div>
-        )}
+    <aside className="admin-sidebar h-full flex flex-col">
+      {/* ── Brand Header ───────────────────────────── */}
+      <div className="admin-sidebar-header">
+        <div className="admin-logo-wrap">
+          <div className="admin-logo-mark" aria-hidden="true">GG</div>
+          {!collapsed && (
+            <div className="admin-logo-text">
+              <span className="admin-logo-name">GIRI GYM</span>
+              <span className="admin-logo-sub">Admin Panel</span>
+            </div>
+          )}
+        </div>
 
-        <div className="flex items-center gap-2">
-          <button className="btn-ghost hidden md:inline-flex" onClick={() => setCollapsed(!collapsed)}>
+        <div className="flex items-center gap-1">
+          <button
+            className="btn-ghost hidden md:inline-flex"
+            onClick={() => setCollapsed(!collapsed)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
             {collapsed ? <FiMenu /> : <IoClose />}
           </button>
-          <button className="btn-ghost md:hidden" onClick={closeSidebar}>
+          <button
+            className="btn-ghost md:hidden"
+            onClick={closeSidebar}
+            aria-label="Close sidebar"
+          >
             <IoClose />
           </button>
         </div>
       </div>
 
-      <div className="flex-1 space-y-2">
-        {menuItems.map((item) => {
-          const isActive =
-            location.pathname === item.path ||
-            (item.path !== "/admin" && location.pathname.startsWith(item.path));
+      {/* ── Navigation ─────────────────────────────── */}
+      <nav className="admin-sidebar-content flex-1 overflow-y-auto py-3 custom-scrollbar" aria-label="Admin navigation">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.label} className="admin-nav-group">
+            {!collapsed && (
+              <p className="admin-nav-group-label">{group.label}</p>
+            )}
+            <div className="admin-nav-items">
+              {group.items.map((item) => {
+                const active = isActive(item.path);
+                return (
+                  <button
+                    key={item.label}
+                    onClick={() => { navigate(item.path); closeSidebar(); }}
+                    className={`sidebar-link ${active ? "sidebar-link-active" : ""} ${
+                      collapsed ? "justify-center px-0" : ""
+                    }`}
+                    title={collapsed ? item.label : undefined}
+                    aria-current={active ? "page" : undefined}
+                  >
+                    {active && !collapsed && <span className="sidebar-active-bar" aria-hidden="true" />}
+                    <span className="sidebar-icon">{item.icon}</span>
+                    {!collapsed && <span className="sidebar-label">{item.label}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
 
-          return (
-            <button
-              key={item.label}
-              onClick={() => {
-                navigate(item.path);
-                closeSidebar();
-              }}
-              className={`sidebar-link ${isActive ? "sidebar-link-active" : ""} ${collapsed ? "justify-center px-3" : ""}`}
-              title={collapsed ? item.label : undefined}
-            >
-              <span className="sidebar-dot" />
-              <span className="text-lg">{item.icon}</span>
-              {!collapsed && <span>{item.label}</span>}
-            </button>
-          );
-        })}
+      {/* ── Logout ─────────────────────────────────── */}
+      <div className="admin-sidebar-footer">
+        <button
+          onClick={() =>
+            apiClient.post("/admin/logout", {}).then(() => {
+              window.location.href = "/login";
+            })
+          }
+          className={`sidebar-logout ${collapsed ? "justify-center px-0" : ""}`}
+          title={collapsed ? "Logout" : undefined}
+        >
+          <FiLogOut size={16} />
+          {!collapsed && <span>Logout</span>}
+        </button>
       </div>
-
-      <button
-        onClick={() => {
-          apiClient.post("/admin/logout", {}).then(() => {
-            window.location.href = "/login";
-          });
-        }}
-        className={`btn-danger mt-6 ${collapsed ? "px-3" : ""}`}
-      >
-        <FiLogOut className="text-lg" />
-        {!collapsed && "Logout"}
-      </button>
     </aside>
   );
 }
