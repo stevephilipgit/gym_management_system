@@ -16,7 +16,7 @@ import {
   YAxis,
 } from "recharts";
 
-const COLORS = ["#ccff00", "#6ca8ff", "#3ddc84", "#ffb800"];
+const COLORS = ["#D4AF37", "#6ca8ff", "#3ddc84", "#ffb800"];
 
 export default function AdminDashboardHome() {
   const [todayData, setTodayData] = useState(null);
@@ -170,53 +170,39 @@ export default function AdminDashboardHome() {
   const safeMemberCounts = displayData?.memberCountsByTraining || {};
 
   return (
-    <div className="section-stack">
-      <section className="panel">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="section-heading">
-            <span className="eyebrow">Finance Console</span>
-            <h2 className="text-3xl sm:text-4xl">Revenue dashboard</h2>
-            <p className="panel-subtitle">
-              View live daily performance or generate historical reports without leaving the admin workspace.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <button onClick={() => setView("today")} className={view === "today" ? "btn-primary" : "btn-secondary"}>
-              Today's Analytics
-            </button>
-            <button onClick={() => setView("custom")} className={view === "custom" ? "btn-primary" : "btn-secondary"}>
-              Custom Range
-            </button>
+    <div className="saas-container">
+      <div className="saas-header" style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "16px" }}>
+        <div>
+          <h1>Revenue dashboard</h1>
+          <p>View live daily performance or generate historical reports without leaving the admin workspace.</p>
+          <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', background: 'var(--surface-muted)', padding: '4px 10px', borderRadius: '4px' }}>Auto refresh every 30 seconds</span>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', background: 'var(--surface-muted)', padding: '4px 10px', borderRadius: '4px' }}>Business hours 4:00 AM to 11:00 PM</span>
           </div>
         </div>
-
-        <div className="mt-6 flex flex-wrap gap-3">
-          <span className="chip">Auto refresh every 30 seconds</span>
-          <span className="chip">Business hours 4:00 AM to 11:00 PM</span>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={() => setView("today")} className={view === "today" ? "btn-primary" : "btn-secondary"} style={view === "today" ? { padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--accent)', color: '#000', fontWeight: 600, cursor: 'pointer' } : { padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 600, cursor: 'pointer' }}>
+            Today's Analytics
+          </button>
+          <button onClick={() => setView("custom")} className={view === "custom" ? "btn-primary" : "btn-secondary"} style={view === "custom" ? { padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--accent)', color: '#000', fontWeight: 600, cursor: 'pointer' } : { padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 600, cursor: 'pointer' }}>
+            Custom Range
+          </button>
         </div>
-      </section>
+      </div>
 
       {view === "custom" && (
-        <section className="panel">
-          <div className="section-heading">
-            <span className="eyebrow">Report Range</span>
-            <h3 className="panel-title">Select dates</h3>
+        <div className="saas-filter-bar" style={{ marginBottom: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>From</label>
+            <DatePicker selected={fromDate} onChange={setFromDate} dateFormat="yyyy-MM-dd" className="saas-input" />
           </div>
 
-          <div className="form-grid-2 mt-6">
-            <div className="field-group">
-              <label className="field-label">From</label>
-              <DatePicker selected={fromDate} onChange={setFromDate} dateFormat="yyyy-MM-dd" className="field-control" />
-            </div>
-
-            <div className="field-group">
-              <label className="field-label">To</label>
-              <DatePicker selected={toDate} onChange={setToDate} dateFormat="yyyy-MM-dd" className="field-control" />
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
+            <DatePicker selected={toDate} onChange={setToDate} dateFormat="yyyy-MM-dd" className="saas-input" />
           </div>
 
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div style={{ display: 'flex', gap: '12px', marginLeft: 'auto' }}>
             <button
               onClick={async () => {
                 if (!fromDate || !toDate) {
@@ -230,15 +216,16 @@ export default function AdminDashboardHome() {
                 });
               }}
               className="btn-primary"
+              style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--accent)', color: '#000', fontWeight: 600, cursor: 'pointer' }}
             >
               {customLoading ? "Loading..." : "Generate Report"}
             </button>
 
-            <button onClick={exportAnalyticsPDF} className="btn-secondary">
+            <button onClick={exportAnalyticsPDF} className="btn-secondary" style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 600, cursor: 'pointer' }}>
               Export PDF
             </button>
           </div>
-        </section>
+        </div>
       )}
 
       {!displayData && !todayLoading && view === "today" ? (
@@ -263,7 +250,7 @@ export default function AdminDashboardHome() {
                     <XAxis dataKey="plan" stroke="#818181" />
                     <YAxis stroke="#818181" />
                     <Tooltip />
-                    <Bar dataKey="amount" fill="#ccff00" radius={[8, 8, 0, 0]} />
+                    <Bar dataKey="amount" fill="#D4AF37" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartPanel>
@@ -351,24 +338,51 @@ export default function AdminDashboardHome() {
   );
 }
 
+const METRIC_ICONS = {
+  revenue: "₹",
+  warning: "↑",
+  info: "↻",
+  success: "#",
+};
+
+const METRIC_BORDER = {
+  revenue: "border-l-[var(--accent)]",
+  warning: "border-l-[var(--warning)]",
+  info: "border-l-[var(--info)]",
+  success: "border-l-[var(--success)]",
+};
+
+const METRIC_VALUE_COLOR = {
+  revenue: "text-[var(--accent)]",
+  warning: "text-[var(--warning)]",
+  info: "text-[var(--info)]",
+  success: "text-[var(--success)]",
+};
+
 function MetricCard({ title, value, accent = "default" }) {
-  const accentClass =
-    accent === "revenue"
-      ? "text-[#FF5CF7]"
-      : accent === "warning"
-      ? "text-warning"
-      : accent === "info"
-        ? "text-[#6ca8ff]"
-        : accent === "success"
-          ? "text-success"
-          : "light-text";
+  const borderClass = METRIC_BORDER[accent] ?? "border-l-[var(--border-strong)]";
+  const valueColorClass = METRIC_VALUE_COLOR[accent] ?? "";
+  const icon = METRIC_ICONS[accent] ?? "";
 
   return (
-    <article className="metric-card">
-      <span className="eyebrow">Summary</span>
+    <article
+      className="metric-card"
+      style={{ borderLeft: "3px solid", borderLeftColor: `var(--${accent === "revenue" ? "accent" : accent === "warning" ? "warning" : accent === "info" ? "info" : accent === "success" ? "success" : "border-strong"})` }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="eyebrow">Summary</span>
+        {icon && (
+          <span
+            style={{ color: `var(--${accent === "revenue" ? "accent" : accent})`, opacity: 0.6, fontSize: 13, fontWeight: 700 }}
+            aria-hidden="true"
+          >
+            {icon}
+          </span>
+        )}
+      </div>
       <div>
         <p className="muted-copy">{title}</p>
-        <p className={`metric-value mt-4 ${accentClass}`}>{value}</p>
+        <p className={`metric-value mt-3 ${valueColorClass}`}>{value}</p>
       </div>
     </article>
   );
@@ -376,13 +390,10 @@ function MetricCard({ title, value, accent = "default" }) {
 
 function ChartPanel({ title, children }) {
   return (
-    <section className="panel">
-      <div className="section-heading">
-        <span className="eyebrow">Visualization</span>
-        <h3 className="panel-title">{title}</h3>
-      </div>
-      <div className="mt-6">{children}</div>
-    </section>
+    <div style={{ background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '24px' }}>
+      <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '24px' }}>{title}</h3>
+      <div>{children}</div>
+    </div>
   );
 }
 
