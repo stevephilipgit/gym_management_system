@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { API_BASE_URL } from '../utils/apiClient';
 import { formatDate, formatTime, formatDuration } from '../utils/attendanceHelpers';
+import IconButton from './components/IconButton';
 
 export default function CorrectionPanel() {
   const [records, setRecords] = useState([]);
@@ -14,6 +15,8 @@ export default function CorrectionPanel() {
   const [editData, setEditData] = useState({});
   const [showAddModal, setShowAddModal] = useState(false);
   const [addData, setAddData] = useState({});
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [recordToDelete, setRecordToDelete] = useState(null);
 
   const searchCorrections = async () => {
     if (!searchQuery && !startDate && !endDate) {
@@ -96,8 +99,13 @@ export default function CorrectionPanel() {
     }
   };
 
-  const deleteRecord = async (id) => {
-    if (!window.confirm('Are you sure? This cannot be undone.')) return;
+  const confirmDelete = (id) => {
+    setRecordToDelete(id);
+    setDeleteModalOpen(true);
+  };
+
+  const deleteRecord = async () => {
+    if (!recordToDelete) return;
 
     try {
       const res = await fetch(`${API_BASE_URL}/attendance/${id}`, {
@@ -106,8 +114,10 @@ export default function CorrectionPanel() {
       });
 
       if (res.ok) {
-        setRecords(records.filter((r) => r._id !== id));
+        setRecords(records.filter((r) => r._id !== recordToDelete));
         showMsg('Record deleted', 'success');
+        setDeleteModalOpen(false);
+        setRecordToDelete(null);
       } else {
         const data = await res.json();
         showMsg(data.message || 'Failed to delete', 'error');
@@ -115,6 +125,7 @@ export default function CorrectionPanel() {
     } catch (err) {
       showMsg('Error deleting', 'error');
       console.error(err);
+      setDeleteModalOpen(false);
     }
   };
 
@@ -217,7 +228,7 @@ export default function CorrectionPanel() {
                 <th className="px-4 py-3 text-left">Check-in</th>
                 <th className="px-4 py-3 text-left">Check-out</th>
                 <th className="px-4 py-3 text-left">Duration</th>
-                <th className="px-4 py-3 text-left">Actions</th>
+                <th className="px-4 py-3 text-center" style={{ width: '100px' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -274,7 +285,7 @@ export default function CorrectionPanel() {
                   <td className="px-4 py-3">
                     {formatDuration(record.durationMin) || '-'}
                   </td>
-                  <td className="px-4 py-3 flex gap-2">
+                  <td className="px-4 py-3 flex gap-2 justify-center items-center">
                     {editingId === record._id ? (
                       <>
                         <button
@@ -292,18 +303,8 @@ export default function CorrectionPanel() {
                       </>
                     ) : (
                       <>
-                        <button
-                          onClick={() => startEdit(record)}
-                          className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => deleteRecord(record._id)}
-                          className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
-                        >
-                          Delete
-                        </button>
+                        <IconButton type="edit" onClick={() => startEdit(record)} />
+                        <IconButton type="delete" onClick={() => confirmDelete(record._id)} />
                       </>
                     )}
                   </td>
@@ -366,6 +367,20 @@ export default function CorrectionPanel() {
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] p-4">
+          <div className="w-full max-w-sm rounded-[var(--radius-md)] bg-[var(--surface-soft)] p-6 shadow-2xl border border-[var(--border-strong)]">
+            <h3 className="mb-2 text-xl font-semibold text-white">Delete Record?</h3>
+            <p className="mb-6 text-[var(--text-secondary)]">This action cannot be undone. Are you sure you want to delete this attendance record?</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setDeleteModalOpen(false)} className="btn-secondary min-h-0 px-4 py-2">Cancel</button>
+              <button onClick={deleteRecord} className="btn-danger min-h-0 px-4 py-2">Delete</button>
             </div>
           </div>
         </div>

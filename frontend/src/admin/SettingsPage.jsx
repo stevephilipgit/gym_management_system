@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { API_BASE_URL } from '../utils/apiClient';
 import { GoogleSheetsConnector } from '../components/GoogleSheetsConnector';
+import ToggleSwitch from './components/ToggleSwitch';
 
 const SECTION_TABS = [
   { id: 'attendance', label: '⏱ Attendance' },
@@ -105,14 +106,10 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-6">
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: '1.8rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-          System Settings
-        </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>
-          All changes take effect immediately. Last updated: {settings.updatedAt ? new Date(settings.updatedAt).toLocaleString('en-GB') : 'Never'}
-        </p>
+    <div className="saas-container">
+      <div className="saas-header">
+        <h1>System Settings</h1>
+        <p>All changes take effect immediately. Last updated: {settings.updatedAt ? new Date(settings.updatedAt).toLocaleString('en-GB') : 'Never'}</p>
       </div>
 
       {/* Toast */}
@@ -366,20 +363,7 @@ function Field({ label, help, children }) {
 function ToggleField({ label, value, onChange }) {
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-      <div
-        onClick={() => onChange(!value)}
-        style={{
-          width: 42, height: 22, borderRadius: 11,
-          background: value ? 'var(--accent)' : 'var(--border-strong)',
-          position: 'relative', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0,
-        }}
-      >
-        <div style={{
-          position: 'absolute', top: 3, left: value ? 21 : 3,
-          width: 16, height: 16, borderRadius: '50%', background: value ? '#000' : '#fff',
-          transition: 'left 0.2s',
-        }} />
-      </div>
+      <ToggleSwitch active={value} onClick={(val) => onChange(val)} />
       <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{label}</span>
     </label>
   );
@@ -429,12 +413,11 @@ function SaveRow({ onSave, onReset, loading }) {
   );
 }
 
-// ── Shared styles ─────────────────────────────────────────────────────────────
 const cardStyle = {
-  background: 'var(--surface-soft)',
-  border: '1px solid var(--border-color)',
-  borderRadius: 12,
-  padding: '20px 24px',
+  background: 'transparent',
+  border: '1px solid var(--row-even)',
+  borderRadius: 8,
+  padding: '24px',
 };
 
 const cardTitleStyle = {
@@ -447,14 +430,16 @@ const cardTitleStyle = {
 
 const inputStyle = {
   width: '100%',
-  padding: '9px 12px',
+  height: '38px',
+  padding: '0 12px',
   background: 'var(--surface-muted)',
   border: '1px solid var(--border-color)',
-  borderRadius: 8,
+  borderRadius: 6,
   color: 'var(--text-primary)',
-  fontSize: 13,
+  fontSize: 14,
   outline: 'none',
   boxSizing: 'border-box',
+  transition: 'border-color 0.15s',
 };
 
 const gridStyle = {
