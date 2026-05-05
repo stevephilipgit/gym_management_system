@@ -1,8 +1,15 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import Admin from "./models/Admin.js";
+import dotenv from "dotenv";
+dotenv.config();
 
-const MONGO_URI = "mongodb+srv://<db_user>:<db_password>@cluster.mongodb.net/gym_db";
+const MONGO_URI = process.env.MONGO_URI || process.env.DATABASE_URL;
+
+if (!MONGO_URI) {
+  console.error("❌ ERROR: MONGO_URI or DATABASE_URL is not defined in environment variables.");
+  process.exit(1);
+}
 
 async function createAdmin() {
   try {
@@ -47,17 +54,17 @@ async function createAdmin() {
 
     await admin.save();
 
-    console.log("=" * 70);
+    console.log("=".repeat(70));
     console.log("✅ NEW ADMIN ACCOUNT CREATED SUCCESSFULLY!");
-    console.log("=" * 70);
+    console.log("=".repeat(70));
     console.log("\n📋 Login Credentials:\n");
     console.log(`  Username: ${newAdmin.username}`);
     console.log(`  Email:    ${newAdmin.email}`);
     console.log(`  Password: ${newAdmin.password}`);
     console.log(`  Role:     ${newAdmin.role}\n`);
-    console.log("=" * 70);
+    console.log("=".repeat(70));
     console.log("✅ Ready to login!");
-    console.log("=" * 70 + "\n");
+    console.log("=".repeat(70) + "\n");
 
     process.exit(0);
   } catch (error) {

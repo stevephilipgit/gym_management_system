@@ -9,7 +9,15 @@ import DynamicField from "./models/DynamicField.js";
 // ============================================================================
 // MONGODB ATLAS CONNECTION
 // ============================================================================
-const MONGO_URI = "mongodb+srv://<db_user>:<db_password>@cluster.mongodb.net/gym_db";
+import dotenv from "dotenv";
+dotenv.config();
+
+const MONGO_URI = process.env.MONGO_URI || process.env.DATABASE_URL;
+
+if (!MONGO_URI) {
+  console.error("❌ ERROR: MONGO_URI or DATABASE_URL is not defined in environment variables.");
+  process.exit(1);
+}
 
 // ============================================================================
 // SEED FUNCTION
