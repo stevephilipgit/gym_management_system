@@ -57,30 +57,32 @@ export default function AdminUpdate() {
   };
 
   return (
-    <div className="section-stack">
-      <section className="panel">
-        <div className="section-heading">
-          <span className="eyebrow">Update Workspace</span>
-          <h2 className="text-3xl">Update member details</h2>
-          <p className="panel-subtitle">Search by Gym ID and then edit the stored member profile.</p>
+    <div className="saas-container">
+      <div className="saas-header">
+        <h1>Update member details</h1>
+        <p>Search by Gym ID and then edit the stored member profile.</p>
+      </div>
+
+      <div className="saas-filter-bar">
+        <input
+          type="text"
+          value={gymId}
+          onChange={(e) => setGymId(normalizeGymId(e.target.value))}
+          placeholder="Enter Gym ID"
+          className="saas-input"
+          style={{ flex: '1 1 300px' }}
+        />
+
+        <button onClick={searchMember} disabled={loading} className="btn-primary" style={{ padding: '8px 24px', borderRadius: '6px', border: 'none', background: 'var(--accent)', color: '#000', fontWeight: 600, cursor: 'pointer' }}>
+          {loading ? "Searching..." : "Search"}
+        </button>
+      </div>
+
+      {memberData && (
+        <div style={{ marginTop: '24px' }}>
+          <RegisterForm defaultData={memberData} onSubmit={updateMember} buttonLabel="Save Changes" />
         </div>
-
-        <div className="mt-6 flex flex-col gap-4 sm:flex-row">
-          <input
-            type="text"
-            value={gymId}
-            onChange={(e) => setGymId(normalizeGymId(e.target.value))}
-            placeholder="Enter Gym ID"
-            className="field-control sm:max-w-xs"
-          />
-
-          <button onClick={searchMember} disabled={loading} className="btn-primary sm:w-auto">
-            {loading ? "Searching..." : "Search"}
-          </button>
-        </div>
-      </section>
-
-      {memberData && <RegisterForm defaultData={memberData} onSubmit={updateMember} buttonLabel="Save Changes" />}
+      )}
     </div>
   );
 }

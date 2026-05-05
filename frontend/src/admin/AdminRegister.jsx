@@ -178,7 +178,7 @@ export default function AdminRegister() {
   const submitRegistration = async () => {
     setSubmitError(null);
     setSubmitting(true);
-    
+
     try {
       const fd = new FormData();
       const trainingTypeMap = {
@@ -288,7 +288,7 @@ export default function AdminRegister() {
       setSelectedDietDescription("");
       setSubmitError(null);
       setFieldErrors({});
-      
+
       alert("Member Registered Successfully");
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.message || "Registration Failed. Please try again.";
@@ -300,32 +300,29 @@ export default function AdminRegister() {
   };
 
   return (
-    <div className="section-stack">
-      <section className="panel">
-        <div className="section-heading">
-          <span className="eyebrow">Member Intake</span>
-          <h2 className="text-3xl">Register new member</h2>
-          <p className="panel-subtitle">Create a complete member profile, choose a package, and confirm billing.</p>
-        </div>
-      </section>
+    <div className="saas-container">
+      <div className="saas-header">
+        <h1>Register new member</h1>
+        <p>Create a complete member profile, choose a package, and confirm billing.</p>
+      </div>
 
-      <form onSubmit={openPopup} className="panel">
-        <div className="form-grid-3">
-          <div className="grid gap-6 md:grid-cols-2 lg:col-span-2">
+      <form onSubmit={openPopup} style={{ background: 'var(--surface-muted)', padding: '24px', borderRadius: '12px', border: '1px solid var(--border-color)', marginTop: '24px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px' }}>
+          <div style={{ flex: '2 1 500px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
             <Field label="Full Name">
-              <input name="fullName" value={form.fullName} onChange={handleChange} className="field-control" />
+              <input name="fullName" value={form.fullName} onChange={handleChange} className="saas-input" style={{ width: '100%' }} />
               {fieldErrors.fullName && <p className="text-xs text-red-600 mt-1">{fieldErrors.fullName}</p>}
             </Field>
             <Field label="Father's Name">
-              <input name="fatherName" value={form.fatherName} onChange={handleChange} className="field-control" />
+              <input name="fatherName" value={form.fatherName} onChange={handleChange} className="saas-input" style={{ width: '100%' }} />
               {fieldErrors.fatherName && <p className="text-xs text-red-600 mt-1">{fieldErrors.fatherName}</p>}
             </Field>
             <Field label="Date of Birth">
-              <input type="date" name="dob" value={form.dob} onChange={handleChange} className="field-control" />
+              <input type="date" name="dob" value={form.dob} onChange={handleChange} className="saas-input" style={{ width: '100%' }} />
               {fieldErrors.dob && <p className="text-xs text-red-600 mt-1">{fieldErrors.dob}</p>}
             </Field>
             <Field label="Blood Group">
-              <select name="bloodGroup" value={form.bloodGroup} onChange={handleChange} className="field-control">
+              <select name="bloodGroup" value={form.bloodGroup} onChange={handleChange} className="saas-input" style={{ width: '100%' }}>
                 <option value="">Select</option>
                 {["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"].map((bg) => (
                   <option key={bg}>{bg}</option>
@@ -334,7 +331,7 @@ export default function AdminRegister() {
               {fieldErrors.bloodGroup && <p className="text-xs text-red-600 mt-1">{fieldErrors.bloodGroup}</p>}
             </Field>
             <Field label="Occupation">
-              <input name="occupation" value={form.occupation} onChange={handleChange} className="field-control" />
+              <input name="occupation" value={form.occupation} onChange={handleChange} className="saas-input" style={{ width: '100%' }} />
               {fieldErrors.occupation && <p className="text-xs text-red-600 mt-1">{fieldErrors.occupation}</p>}
             </Field>
             <Field label="Aadhar">
@@ -342,7 +339,7 @@ export default function AdminRegister() {
                 value={form.aadhar}
                 maxLength="12"
                 onChange={(e) => setForm({ ...form, aadhar: e.target.value.replace(/\D/g, "") })}
-                className="field-control"
+                className="saas-input" style={{ width: '100%' }}
               />
               {fieldErrors.aadhar && <p className="text-xs text-red-600 mt-1">{fieldErrors.aadhar}</p>}
             </Field>
@@ -351,12 +348,12 @@ export default function AdminRegister() {
                 value={form.phone}
                 maxLength="10"
                 onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, "") })}
-                className="field-control"
+                className="saas-input" style={{ width: '100%' }}
               />
               {fieldErrors.phone && <p className="text-xs text-red-600 mt-1">{fieldErrors.phone}</p>}
             </Field>
             <Field label="Training Type">
-              <select name="trainingType" value={form.trainingType} onChange={handleChange} className="field-control">
+              <select name="trainingType" value={form.trainingType} onChange={handleChange} className="saas-input" style={{ width: '100%' }}>
                 <option value="">Select</option>
                 <option value="WeightLoss">Weight Loss</option>
                 <option value="WeightGain">Weight Gain</option>
@@ -365,7 +362,7 @@ export default function AdminRegister() {
               {fieldErrors.trainingType && <p className="text-xs text-red-600 mt-1">{fieldErrors.trainingType}</p>}
             </Field>
             <Field label="Gym Plan">
-              <select name="gymPlan" value={form.gymPlan} onChange={handleChange} className="field-control">
+              <select name="gymPlan" value={form.gymPlan} onChange={handleChange} className="saas-input" style={{ width: '100%' }}>
                 <option value="">Select Package</option>
                 {packages.map((item) => (
                   <option key={item._id} value={item._id}>
@@ -390,7 +387,7 @@ export default function AdminRegister() {
                         }
                       }}
                       required={field.required}
-                      className="field-control"
+                      className="saas-input" style={{ width: '100%' }}
                     >
                       <option value="">Select</option>
                       {(field.options || []).map((opt) => (
@@ -410,7 +407,7 @@ export default function AdminRegister() {
                         }
                       }}
                       required={field.required}
-                      className="field-control"
+                      className="saas-input" style={{ width: '100%' }}
                     />
                   )}
                   {fieldErrors[field.key] && <p className="text-xs text-red-600 mt-1">{fieldErrors[field.key]}</p>}
@@ -419,31 +416,31 @@ export default function AdminRegister() {
 
             <div className="md:col-span-2">
               <Field label="Address">
-                <textarea name="address" value={form.address} onChange={handleChange} className="field-control" />
+                <textarea name="address" value={form.address} onChange={handleChange} className="saas-input" style={{ width: '100%' }} />
                 {fieldErrors.address && <p className="text-xs text-red-600 mt-1">{fieldErrors.address}</p>}
               </Field>
             </div>
             <div className="md:col-span-2">
               <Field label="Medical Issues">
-                <textarea name="medicalIssues" value={form.medicalIssues} onChange={handleChange} className="field-control" />
+                <textarea name="medicalIssues" value={form.medicalIssues} onChange={handleChange} className="saas-input" style={{ width: '100%' }} />
               </Field>
             </div>
           </div>
 
-          <div className="section-stack">
+          <div style={{ flex: '1 1 250px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <Field label="Upload Photo">
-              <input type="file" accept="image/*" onChange={handlePhoto} className="field-control" />
+              <input type="file" accept="image/*" onChange={handlePhoto} className="saas-input" style={{ width: '100%', padding: '6px' }} />
             </Field>
             {photoPreview && (
-              <div className="image-preview">
-                <img src={photoPreview} alt="Member preview" className="h-full w-full" />
+              <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)', marginTop: '8px' }}>
+                <img src={photoPreview} alt="Member preview" style={{ width: '100%', height: 'auto', display: 'block' }} />
               </div>
             )}
 
             {form.selectedPrice > 0 && (
-              <div className="metric-card">
-                <span className="eyebrow">Selected Price</span>
-                <div className="metric-value text-success">Rs. {form.selectedPrice}</div>
+              <div style={{ background: 'var(--surface-soft)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)', marginTop: '16px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>Selected Price</div>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: '#3ddc84' }}>Rs. {form.selectedPrice}</div>
               </div>
             )}
 
@@ -471,52 +468,36 @@ export default function AdminRegister() {
           </div>
         </div>
 
-        <button className="btn-primary mt-6 w-full" disabled={!isFormValidForSubmit() || submitting}>Register</button>
+        <button className="btn-primary" style={{ width: '100%', marginTop: '24px', padding: '12px', borderRadius: '8px', border: 'none', background: 'var(--accent)', color: '#000', fontWeight: 700, fontSize: '15px', cursor: (!isFormValidForSubmit() || submitting) ? 'not-allowed' : 'pointer', opacity: (!isFormValidForSubmit() || submitting) ? 0.6 : 1 }} disabled={!isFormValidForSubmit() || submitting}>
+          {submitting ? "Registering..." : "Register"}
+        </button>
       </form>
 
       {showPopup && (
-        <div className="modal-shell">
-          <div className="modal-card">
-            <div className="section-heading">
-              <span className="eyebrow">Payment Confirmation</span>
-              <h3 className="panel-title">Confirm billing</h3>
-              <p className="panel-subtitle">Amount: Rs. {form.selectedPrice}</p>
-            </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] p-4">
+          <div className="w-full max-w-sm rounded-[var(--radius-md)] bg-[var(--surface-soft)] p-6 shadow-2xl border border-[var(--border-strong)]">
+            <h3 className="mb-2 text-xl font-semibold">Confirm billing</h3>
+            <p className="mb-6 text-[var(--text-secondary)]">Amount: Rs. {form.selectedPrice}</p>
 
             {submitError && (
-              <div style={{
-                padding: "12px",
-                backgroundColor: "#fee",
-                borderLeft: "4px solid #c33",
-                borderRadius: "4px",
-                color: "#c33",
-                fontSize: "14px",
-                margin: "16px 0"
-              }}>
+              <div className="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">
                 {submitError}
               </div>
             )}
 
-            <div className="section-stack mt-6">
-              <div className="radio-row">
-                <label className="radio-row">
-                  <input type="radio" checked={paymentStatus === "paid"} onChange={() => setPaymentStatus("paid")} className="accent-check" />
-                  Paid
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500 }}>
+                  <input type="radio" checked={paymentStatus === "paid"} onChange={() => setPaymentStatus("paid")} /> Paid
                 </label>
-                <label className="radio-row">
-                  <input
-                    type="radio"
-                    checked={paymentStatus === "not_paid"}
-                    onChange={() => setPaymentStatus("not_paid")}
-                    className="accent-check"
-                  />
-                  Not Paid
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500 }}>
+                  <input type="radio" checked={paymentStatus === "not_paid"} onChange={() => setPaymentStatus("not_paid")} /> Not Paid
                 </label>
               </div>
 
               {paymentStatus === "paid" && (
                 <Field label="Payment Mode">
-                  <select className="field-control" value={paymentMode} onChange={(e) => setPaymentMode(e.target.value)}>
+                  <select className="saas-input" style={{ width: '100%' }} value={paymentMode} onChange={(e) => setPaymentMode(e.target.value)}>
                     <option value="cash">Cash</option>
                     <option value="gpay">GPay</option>
                     <option value="card">Card</option>
@@ -524,22 +505,12 @@ export default function AdminRegister() {
                 </Field>
               )}
 
-              <div className="flex flex-wrap gap-3">
-                <button 
-                  type="button" 
-                  className="btn-primary" 
-                  onClick={submitRegistration}
-                  disabled={submitting}
-                >
-                  {submitting ? "Submitting..." : "Confirm and Submit"}
-                </button>
-                <button 
-                  type="button" 
-                  className="btn-secondary" 
-                  onClick={() => setShowPopup(false)}
-                  disabled={submitting}
-                >
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
+                <button type="button" onClick={() => setShowPopup(false)} className="btn-secondary" style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 600, cursor: 'pointer' }} disabled={submitting}>
                   Cancel
+                </button>
+                <button type="button" onClick={submitRegistration} className="btn-primary" style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--accent)', color: '#000', fontWeight: 600, cursor: 'pointer' }} disabled={submitting}>
+                  {submitting ? "..." : "Confirm"}
                 </button>
               </div>
             </div>
