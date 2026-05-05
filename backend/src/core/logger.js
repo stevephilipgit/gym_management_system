@@ -1,6 +1,5 @@
 // core/logger.js - Winston logging setup
 import winston from "winston";
-import env from "./config.js";
 
 const { combine, timestamp, printf, colorize, errors } = winston.format;
 
@@ -17,7 +16,7 @@ const customFormat = printf(({ level, message, timestamp, ...meta }) => {
 
 // Create logger instance
 const logger = winston.createLogger({
-  level: env.LOG_LEVEL,
+  level: process.env.LOG_LEVEL || "info",
   format: combine(
     timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
     errors({ stack: true }),
