@@ -218,7 +218,21 @@ export const addAttendanceEntry = async (tokens, _spreadsheetId, attendanceData)
   }
 };
 
+export const saveConnector = async (adminEmail, data) => {
+  return await GoogleSheetsConnector.findOneAndUpdate(
+    { adminEmail },
+    { ...data, adminEmail },
+    { new: true, upsert: true }
+  );
+};
 
+export const getConnector = async (adminEmail) => {
+  return await GoogleSheetsConnector.findOne({ adminEmail });
+};
+
+export const disconnectSheets = async (adminEmail) => {
+  return await GoogleSheetsConnector.deleteOne({ adminEmail });
+};
 
 export const addEnquiryEntry = async (tokens, _spreadsheetId, enquiryData) => {
   try {
