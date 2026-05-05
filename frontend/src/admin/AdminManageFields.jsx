@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import apiClient from "../utils/apiClient.js";
+import ToggleSwitch from "./components/ToggleSwitch";
+import IconButton from "./components/IconButton";
 
 export default function AdminManageFields() {
   const [fields, setFields] = useState([]);
@@ -10,6 +12,8 @@ export default function AdminManageFields() {
     options: "",
   });
   const [loading, setLoading] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [fieldToDelete, setFieldToDelete] = useState(null);
 
   useEffect(() => {
     loadFields();
@@ -62,11 +66,17 @@ export default function AdminManageFields() {
     }
   };
 
-  const deleteField = async (id) => {
-    if (!window.confirm("Delete this field permanently?")) return;
+  const confirmDelete = (id) => {
+    setFieldToDelete(id);
+    setDeleteModalOpen(true);
+  };
 
+  const deleteField = async () => {
+    if (!fieldToDelete) return;
     try {
-      await apiClient.delete(`/fields/member/${id}`);
+      await apiClient.delete(`/fields/member/${fieldToDelete}`);
+      setDeleteModalOpen(false);
+      setFieldToDelete(null);
       loadFields();
     } catch (err) {
       alert(err.response?.data?.message || "Failed to delete field");
@@ -137,8 +147,8 @@ export default function AdminManageFields() {
                 <th>Type</th>
                 <th>Required</th>
                 <th>Options</th>
-                <th>Enable or Disable</th>
-                <th>Actions</th>
+                <th>Status</th>
+                <th style={{ width: '80px', textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
 
@@ -150,14 +160,20 @@ export default function AdminManageFields() {
                   <td>{field.required ? "Yes" : "No"}</td>
                   <td>{field.type === "dropdown" ? field.options.join(", ") : "-"}</td>
                   <td>
-                    <button onClick={() => toggleField(field._id)} disabled={loading} className={field.isEnabled ? "btn-primary min-h-0 px-4 py-2" : "btn-secondary min-h-0 px-4 py-2"}>
-                      {field.isEnabled ? "Enabled" : "Disabled"}
-                    </button>
+                    <ToggleSwitch 
+                      active={field.isEnabled} 
+                      onClick={() => toggleField(field._id)} 
+                      disabled={loading} 
+                    />
                   </td>
-                  <td>
-                    <button onClick={() => deleteField(field._id)} className="btn-danger min-h-0 px-4 py-2" disabled={loading}>
-                      Delete
-                    </button>
+                  <td style={{ textAlign: 'center' }}>
+                    <div className="flex justify-center gap-2">
+                      <IconButton 
+                        type="delete" 
+                        onClick={() => confirmDelete(field._id)} 
+                        disabled={loading} 
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -173,6 +189,19 @@ export default function AdminManageFields() {
           </table>
         </div>
       </section>
+
+      {deleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] p-4">
+          <div className="w-full max-w-sm rounded-[var(--radius-md)] bg-[var(--surface-soft)] p-6 shadow-2xl border border-[var(--border-strong)]">
+            <h3 className="mb-2 text-xl font-semibold">Delete Field?</h3>
+            <p className="mb-6 text-[var(--text-secondary)]">This action cannot be undone. Are you sure you want to permanently delete this field?</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setDeleteModalOpen(false)} className="btn-secondary min-h-0 px-4 py-2">Cancel</button>
+              <button onClick={deleteField} className="btn-danger min-h-0 px-4 py-2">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
