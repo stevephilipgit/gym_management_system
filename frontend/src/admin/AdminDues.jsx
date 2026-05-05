@@ -60,75 +60,72 @@ export default function AdminDues() {
   const totalPages = Math.ceil(filtered.length / recordsPerPage) || 1;
 
   return (
-    <div className="section-stack">
-      <section className="panel">
-        <div className="section-heading">
-          <span className="eyebrow">Renewal Radar</span>
-          <h2 className="text-3xl">Due members</h2>
-          <p className="panel-subtitle">Track expiring memberships and sort by urgency.</p>
-        </div>
+    <div className="saas-container">
+      <div className="saas-header">
+        <h1>Due members</h1>
+        <p>Track expiring memberships and sort by urgency.</p>
+      </div>
 
-        <div className="mt-6 max-w-md">
-          <input
-            type="text"
-            className="field-control"
-            placeholder="Search by name or Gym ID"
-            value={searchText}
-            onChange={(e) => handleSearch(e.target.value)}
-          />
-        </div>
-      </section>
+      <div className="saas-filter-bar">
+        <input
+          type="text"
+          className="saas-input"
+          style={{ flex: '1 1 300px' }}
+          placeholder="Search by name or Gym ID"
+          value={searchText}
+          onChange={(e) => handleSearch(e.target.value)}
+        />
+      </div>
 
-      <section className="table-shell">
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Gym ID</th>
-                <th>Name</th>
-                <th>Due Date</th>
-                <th>Plan</th>
-                <th onClick={sortByDaysLeft} className="cursor-pointer">
-                  Days Left {sortAsc ? "Up" : "Down"}
-                </th>
+      <div className="saas-table-container">
+        <table className="saas-table">
+          <thead>
+            <tr>
+              <th>Gym ID</th>
+              <th>Name</th>
+              <th>Due Date</th>
+              <th>Plan</th>
+              <th onClick={sortByDaysLeft} style={{ cursor: 'pointer' }}>
+                Days Left {sortAsc ? "↑" : "↓"}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {paginated.map((due) => (
+              <tr key={due.gymId}>
+                <td>{due.gymId}</td>
+                <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{due.name || due.fullName}</td>
+                <td>{formatDate(due.validityEnd || due.due)}</td>
+                <td>{due.gymPlan || due.plan}</td>
+                <td>
+                  <span className={getDaysIndicatorClass(due.daysLeft)}>{due.daysLeft}</span>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {paginated.map((due) => (
-                <tr key={due.gymId}>
-                  <td>{due.gymId}</td>
-                  <td>{due.name || due.fullName}</td>
-                  <td>{formatDate(due.validityEnd || due.due)}</td>
-                  <td>{due.gymPlan || due.plan}</td>
-                  <td>
-                    <span className={getDaysIndicatorClass(due.daysLeft)}>{due.daysLeft}</span>
-                  </td>
-                </tr>
-              ))}
+            ))}
 
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan="5">
-                    <div className="empty-state">No dues found.</div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan="5" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                  No dues found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
-      <div className="flex items-center justify-center gap-3">
-        <button onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))} disabled={currentPage === 1} className="btn-secondary">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginTop: '24px' }}>
+        <button onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))} disabled={currentPage === 1} className="btn-secondary" style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 600, cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.5 : 1 }}>
           Previous
         </button>
-        <span className="chip">
+        <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 600 }}>
           Page {currentPage} of {totalPages}
         </span>
         <button
           onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
           disabled={currentPage === totalPages}
           className="btn-secondary"
+          style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 600, cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.5 : 1 }}
         >
           Next
         </button>

@@ -3,6 +3,8 @@ import { DietSelector } from "../components/DietSelector";
 import apiClient from "../utils/apiClient.js";
 import { downloadMembershipInvoice } from "../utils/invoicePdf.js";
 import { getDaysRemaining, getDaysIndicatorClass } from "../utils/memberStatus.js";
+import IconButton from "./components/IconButton";
+import ToggleSwitch from "./components/ToggleSwitch";
 
 const MS_DAY = 1000 * 60 * 60 * 24;
 
@@ -378,92 +380,89 @@ export default function AdminMembers() {
     .sort((a, b) => (sortAsc ? a.daysLeft - b.daysLeft : b.daysLeft - a.daysLeft));
 
   return (
-    <div className="section-stack">
-      <section className="panel">
-        <div className="section-heading">
-          <span className="eyebrow">Members</span>
-          <h2 className="text-3xl">Member management</h2>
-          <p className="panel-subtitle">Review members, sort by urgency, renew plans, and remove records when needed.</p>
+    <div className="saas-container">
+      <div className="saas-header" style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <h1>Member management</h1>
+          <p>Review members, sort by urgency, renew plans, and remove records.</p>
         </div>
-        {renewError && (
-          <div className="mt-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-            {renewError}
-          </div>
-        )}
-
-        <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center">
-          <div className="field-group sm:max-w-xs">
-            <label className="field-label">Payment Status</label>
-            <select className="field-control" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-              <option value="all">All Members</option>
-              <option value="paid">Paid</option>
-              <option value="not_paid">Not Paid</option>
-            </select>
-          </div>
-
-          <button onClick={() => setSortAsc((prev) => !prev)} className="btn-secondary sm:mt-7">
-            Sort Days Left {sortAsc ? "Ascending" : "Descending"}
-          </button>
+      </div>
+      
+      {renewError && (
+        <div className="mt-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700 mb-6">
+          {renewError}
         </div>
-      </section>
+      )}
 
-      <section className="table-shell">
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Gym ID</th>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Valid Till</th>
-                <th>Days Left</th>
-                <th>Plan</th>
-                <th>Payment</th>
-                <th>Action</th>
+      <div className="saas-filter-bar">
+        <select className="saas-input" style={{ flex: '1 1 200px' }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+          <option value="all">All Members</option>
+          <option value="paid">Paid</option>
+          <option value="not_paid">Not Paid</option>
+        </select>
+        <button onClick={() => setSortAsc((prev) => !prev)} className="saas-input" style={{ cursor: "pointer", background: "var(--surface-muted)", border: "1px solid var(--border-color)", color: "var(--text-primary)" }}>
+          Sort Days Left {sortAsc ? "↑ Ascending" : "↓ Descending"}
+        </button>
+      </div>
+
+      <div className="saas-table-container">
+        <table className="saas-table">
+          <thead>
+            <tr>
+              <th>Gym ID</th>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Valid Till</th>
+              <th>Days Left</th>
+              <th>Plan</th>
+              <th>Payment</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedMembers.map((member) => (
+              <tr key={member.gymId}>
+                <td>{member.gymId}</td>
+                <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{member.name || member.fullName}</td>
+                <td>{member.phone}</td>
+                <td>{formatDate(member.validTill || member.validityEnd)}</td>
+                <td>
+                  <span className={getDaysIndicatorClass(member.daysLeft)}>
+                    {member.daysLeft}
+                  </span>
+                </td>
+                <td>{member.plan || member.gymPlan}</td>
+                <td>
+                  <span className={`saas-badge-pill ${member.paymentStatus === 'paid' ? 'saas-badge-success' : 'saas-badge-warning'}`}>
+                    {member.paymentStatus.replace('_', ' ').toUpperCase()}
+                  </span>
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  <div className="flex justify-center items-center gap-2">
+                    <button 
+                      onClick={() => openRenew(member.gymId)} 
+                      className="btn-primary min-h-0 px-4 py-2"
+                      style={{ fontSize: 11, padding: "4px 10px", borderRadius: 5, background: "var(--accent)", color: "#000", border: "none", fontWeight: 700 }}
+                      disabled={renewLoading}
+                    >
+                      {renewLoading ? "..." : "RENEW"}
+                    </button>
+                    <IconButton type="delete" onClick={() => confirmDelete(member.gymId)} />
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {sortedMembers.map((member) => (
-                <tr key={member.gymId}>
-                  <td>{member.gymId}</td>
-                  <td>{member.name || member.fullName}</td>
-                  <td>{member.phone}</td>
-                  <td>{formatDate(member.validTill || member.validityEnd)}</td>
-                  <td>
-                    <span className={getDaysIndicatorClass(member.daysLeft)}>
-                      {member.daysLeft}
-                    </span>
-                  </td>
-                  <td>{member.plan || member.gymPlan}</td>
-                  <td>{member.paymentStatus}</td>
-                  <td>
-                    <div className="flex flex-wrap gap-2">
-                      <button 
-                        onClick={() => openRenew(member.gymId)} 
-                        className="btn-primary min-h-0 px-4 py-2"
-                        disabled={renewLoading}
-                      >
-                        {renewLoading ? "Loading..." : "Renew"}
-                      </button>
-                      <button onClick={() => confirmDelete(member.gymId)} className="btn-danger min-h-0 px-4 py-2">
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+            ))}
 
-              {sortedMembers.length === 0 && (
-                <tr>
-                  <td colSpan="8">
-                    <div className="empty-state">No members found.</div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+            {sortedMembers.length === 0 && (
+              <tr>
+                <td colSpan="8" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                  No members found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {showDeletePopup && (
         <div className="modal-shell">
@@ -494,15 +493,10 @@ export default function AdminMembers() {
                 <p className="panel-subtitle">Gym ID {selectedMember.gymId}</p>
               </div>
 
-              <label className="checkbox-row rounded-xl border border-[var(--border-color)] px-4 py-3">
-                <input
-                  type="checkbox"
-                  checked={renewMode}
-                  onChange={(e) => handleModeToggle(e.target.checked)}
-                  className="accent-check"
-                />
-                <span>{renewMode ? "Renew Mode" : "Bill Mode"}</span>
-              </label>
+              <div className="flex items-center gap-3 rounded-xl border border-[var(--border-color)] px-4 py-3">
+                <ToggleSwitch active={renewMode} onClick={(val) => handleModeToggle(val)} />
+                <span className="font-semibold text-white">{renewMode ? "Renew Mode" : "Bill Mode"}</span>
+              </div>
             </div>
 
             <div className="modal-body form-grid-2 mt-6 custom-scrollbar">
