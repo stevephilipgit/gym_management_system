@@ -5,9 +5,15 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const MONGO_URI = process.env.MONGO_URI || process.env.DATABASE_URL;
+const CREATE_ADMIN_PASSWORD = process.env.CREATE_ADMIN_PASSWORD;
 
 if (!MONGO_URI) {
   console.error("❌ ERROR: MONGO_URI or DATABASE_URL is not defined in environment variables.");
+  process.exit(1);
+}
+
+if (!CREATE_ADMIN_PASSWORD) {
+  console.error("ERROR: CREATE_ADMIN_PASSWORD is not defined in environment variables.");
   process.exit(1);
 }
 
@@ -30,7 +36,7 @@ async function createAdmin() {
       username: "steveadmin2026",
       email: "steveadmin2026@gymproject.com",
       role: "superadmin",
-      password: "Steve@2026Admin", // Plain password
+      password: CREATE_ADMIN_PASSWORD,
     };
 
     // Hash password
@@ -60,7 +66,7 @@ async function createAdmin() {
     console.log("\n📋 Login Credentials:\n");
     console.log(`  Username: ${newAdmin.username}`);
     console.log(`  Email:    ${newAdmin.email}`);
-    console.log(`  Password: ${newAdmin.password}`);
+    console.log("  Password: configured from CREATE_ADMIN_PASSWORD");
     console.log(`  Role:     ${newAdmin.role}\n`);
     console.log("=".repeat(70));
     console.log("✅ Ready to login!");

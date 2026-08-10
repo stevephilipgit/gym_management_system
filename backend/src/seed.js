@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
 import Admin from "./models/Admin.js";
 import Member from "./models/Member.js";
 import Package from "./models/Package.js";
@@ -13,9 +14,18 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const MONGO_URI = process.env.MONGO_URI || process.env.DATABASE_URL;
+const SEED_SUPERADMIN_PASSWORD = process.env.SEED_SUPERADMIN_PASSWORD;
+const SEED_TRAINER_PASSWORD = process.env.SEED_TRAINER_PASSWORD;
 
 if (!MONGO_URI) {
   console.error("❌ ERROR: MONGO_URI or DATABASE_URL is not defined in environment variables.");
+  process.exit(1);
+}
+
+if (!SEED_SUPERADMIN_PASSWORD || !SEED_TRAINER_PASSWORD) {
+  console.error(
+    "ERROR: SEED_SUPERADMIN_PASSWORD and SEED_TRAINER_PASSWORD must be defined in environment variables."
+  );
   process.exit(1);
 }
 
@@ -32,7 +42,7 @@ async function seedDatabase() {
     });
 
     console.log("✅ Connected to MongoDB Atlas successfully!");
-    console.log(`📊 Database: gym_db`);
+    console.log(`📊 Database: ${mongoose.connection.name}`);
 
     // ========================================================================
     // 1. CREATE INDEXES FOR ALL COLLECTIONS
@@ -67,25 +77,62 @@ async function seedDatabase() {
     console.log("\n👤 Seeding Admin collection...");
 
     const adminCount = await Admin.countDocuments();
-    
-    if (adminCount === 0) {
-      const adminData = {
+    const adminUsers = [
+      {
         fullName: "Super Admin",
         username: "superadmin",
-        email: "admin@gymproject.com",
+        email: "superadmin@gymproject.com",
         role: "superadmin",
-        passwordHash: "$2b$10$...", // Placeholder - use BCrypt to hash actual password
-        lastLogin: null,
-        resetOtp: null,
-        otpExpiry: null,
-      };
+        password: SEED_SUPERADMIN_PASSWORD,
+      },
+      {
+        fullName: "Test Trainer",
+        username: "testtrainer",
+        email: "trainer@gymproject.com",
+        role: "trainer",
+        password: SEED_TRAINER_PASSWORD,
+      },
+    ];
 
-      const admin = new Admin(adminData);
-      await admin.save();
-      console.log("  ✓ Admin created (username: superadmin, email: admin@gymproject.com)");
-      console.log("    ⚠️  Note: Password hash is a placeholder. Update this in MongoDB directly.");
+    if (adminCount === 0) {
+      for (const user of adminUsers) {
+        const passwordHash = await bcrypt.hash(user.password, 10);
+        const admin = new Admin({
+          fullName: user.fullName,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+          passwordHash,
+          lastLogin: null,
+          resetOtp: null,
+          otpExpiry: null,
+        });
+        await admin.save();
+        console.log(`  ✓ Admin created (username: ${user.username}, email: ${user.email})`);
+      }
+      console.log("  ℹ️  Two admin accounts created for testing.");
     } else {
-      console.log(`  ℹ️  Admin collection already has ${adminCount} records. Skipping...`);
+      console.log(`  ℹ️  Admin collection already has ${adminCount} records. Checking required test accounts...`);
+      for (const user of adminUsers) {
+        const existingAdmin = await Admin.findOne({ username: user.username });
+        if (!existingAdmin) {
+          const passwordHash = await bcrypt.hash(user.password, 10);
+          const admin = new Admin({
+            fullName: user.fullName,
+            username: user.username,
+            email: user.email,
+            role: user.role,
+            passwordHash,
+            lastLogin: null,
+            resetOtp: null,
+            otpExpiry: null,
+          });
+          await admin.save();
+          console.log(`  ✓ Missing admin created (username: ${user.username}, email: ${user.email})`);
+        } else {
+          console.log(`  ✓ Admin already exists: ${user.username}`);
+        }
+      }
     }
 
     // ========================================================================
