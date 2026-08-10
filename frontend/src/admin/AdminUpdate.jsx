@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import apiClient from "../utils/apiClient.js";
 import RegisterForm from "./components/RegisterForm";
 
@@ -6,12 +7,12 @@ export default function AdminUpdate() {
   const [gymId, setGymId] = useState("");
   const [memberData, setMemberData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const location = useLocation();
 
   const normalizeGymId = (value) => value.replace(/\D/g, "");
 
-  const searchMember = async () => {
-    const normalizedGymId = normalizeGymId(gymId);
-    if (!normalizedGymId) return alert("Please enter a valid Gym ID");
+  const fetchMemberByGymId = async (normalizedGymId) => {
+    if (!normalizedGymId) return;
 
     try {
       setLoading(true);
@@ -24,6 +25,12 @@ export default function AdminUpdate() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const searchMember = async () => {
+    const normalizedGymId = normalizeGymId(gymId);
+    if (!normalizedGymId) return alert("Please enter a valid Gym ID");
+    await fetchMemberByGymId(normalizedGymId);
   };
 
   const updateMember = async (updated) => {
@@ -55,6 +62,15 @@ export default function AdminUpdate() {
       console.log("Update Error:", err);
     }
   };
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const gymIdQuery = normalizeGymId(searchParams.get("gymId") || "");
+    if (gymIdQuery) {
+      fetchMemberByGymId(gymIdQuery);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
 
   return (
     <div className="saas-container">

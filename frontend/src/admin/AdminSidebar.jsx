@@ -32,7 +32,6 @@ const NAV_GROUPS = [
       { label: "Register Member", icon: <FiUserPlus />, path: "/admin/register" },
       { label: "View Dues",       icon: <FiCalendar />, path: "/admin/due" },
       { label: "All Members",    icon: <FiUsers />,    path: "/admin/members" },
-      { label: "Update Member",  icon: <FiEdit />,     path: "/admin/update" },
     ],
   },
   {

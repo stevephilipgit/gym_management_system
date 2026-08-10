@@ -4,6 +4,7 @@ import apiClient from "../utils/apiClient.js";
 import { downloadMembershipInvoice } from "../utils/invoicePdf.js";
 import { getDaysRemaining, getDaysIndicatorClass } from "../utils/memberStatus.js";
 import IconButton from "./components/IconButton";
+import RegisterForm from "./components/RegisterForm";
 import ToggleSwitch from "./components/ToggleSwitch";
 
 const MS_DAY = 1000 * 60 * 60 * 24;
@@ -16,12 +17,17 @@ export default function AdminMembers() {
   const [deleteId, setDeleteId] = useState(null);
   const [showRenewPopup, setShowRenewPopup] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
+  const [showEditPopup, setShowEditPopup] = useState(false);
+  const [selectedEditMember, setSelectedEditMember] = useState(null);
+  const [editLoadingGymId, setEditLoadingGymId] = useState(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editSubmitError, setEditSubmitError] = useState(null);
   const [renewMode, setRenewMode] = useState(false);
   const [sortAsc, setSortAsc] = useState(true);
   const [renewSubmitting, setRenewSubmitting] = useState(false);
   const [currentAdmin, setCurrentAdmin] = useState(null);
   const [renewError, setRenewError] = useState(null);
-  const [renewLoading, setRenewLoading] = useState(false);
+  const [renewLoadingGymId, setRenewLoadingGymId] = useState(null);
   const [renewSubmitError, setRenewSubmitError] = useState(null);
   const [renewData, setRenewData] = useState({
     packageId: "",
@@ -72,6 +78,32 @@ export default function AdminMembers() {
       setCurrentAdmin(res.data?.admin || res.data?.data || res.data || null);
     } catch (err) {
       console.log("Error loading current admin:", err);
+    }
+  };
+
+  const closeEditModal = () => {
+    setShowEditPopup(false);
+    setSelectedEditMember(null);
+    setEditSubmitting(false);
+    setEditSubmitError(null);
+  };
+
+  const openEditModal = async (gymId) => {
+    setEditSubmitError(null);
+    setEditLoadingGymId(gymId);
+    try {
+      const res = await apiClient.get(`/members/${gymId}`);
+      const member = res.data?.data || res.data;
+      if (!member || !member._id) {
+        throw new Error("Member data not found");
+      }
+      setSelectedEditMember(member);
+      setShowEditPopup(true);
+    } catch (err) {
+      console.error("Failed to load member details for edit:", err);
+      alert(err.response?.data?.message || err.message || "Unable to load member details");
+    } finally {
+      setEditLoadingGymId(null);
     }
   };
 
@@ -173,7 +205,7 @@ export default function AdminMembers() {
 
   const openRenew = async (gymId) => {
     setRenewError(null);
-    setRenewLoading(true);
+    setRenewLoadingGymId(gymId);
     try {
       const res = await apiClient.get(`/members/${gymId}`);
       const member = res.data?.data || res.data;
@@ -214,7 +246,7 @@ export default function AdminMembers() {
       setSelectedMember(null);
       setShowRenewPopup(false);
     } finally {
-      setRenewLoading(false);
+      setRenewLoadingGymId(null);
     }
   };
 
@@ -366,6 +398,42 @@ export default function AdminMembers() {
     }
   };
 
+  const submitMemberUpdate = async (updated) => {
+    if (!selectedEditMember) {
+      return;
+    }
+
+    const normalizedGymId = selectedEditMember.gymId;
+    setEditSubmitting(true);
+    setEditSubmitError(null);
+
+    try {
+      const fd = new FormData();
+      Object.keys(updated).forEach((key) => {
+        if (key !== "photo" && key !== "customFields") {
+          fd.append(key, updated[key]);
+        }
+      });
+      if (updated.photo instanceof File) {
+        fd.append("photo", updated.photo);
+      }
+      fd.append("customFields", JSON.stringify(updated.customFields || {}));
+
+      await apiClient.put(`/members/${normalizedGymId}`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      await loadMembers();
+      closeEditModal();
+      alert("Member details updated successfully");
+    } catch (err) {
+      console.error("Update failed:", err);
+      setEditSubmitError(err.response?.data?.message || err.message || "Update failed. Please try again.");
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
   const filteredMembers = members.filter((member) => {
     if (filterStatus === "paid") return member.paymentStatus === "paid";
     if (filterStatus === "not_paid") return member.paymentStatus === "not_paid";
@@ -439,15 +507,24 @@ export default function AdminMembers() {
                 </td>
                 <td style={{ textAlign: 'center' }}>
                   <div className="flex justify-center items-center gap-2">
-                    <button 
-                      onClick={() => openRenew(member.gymId)} 
-                      className="btn-primary min-h-0 px-4 py-2"
-                      style={{ fontSize: 11, padding: "4px 10px", borderRadius: 5, background: "var(--accent)", color: "#000", border: "none", fontWeight: 700 }}
-                      disabled={renewLoading}
-                    >
-                      {renewLoading ? "..." : "RENEW"}
-                    </button>
-                    <IconButton type="delete" onClick={() => confirmDelete(member.gymId)} />
+                    <IconButton
+                      type="refresh"
+                      onClick={() => openRenew(member.gymId)}
+                      title="Renew membership"
+                      disabled={renewLoadingGymId === member.gymId}
+                      className={renewLoadingGymId === member.gymId ? "cursor-wait" : ""}
+                    />
+                                    <IconButton
+                      type="edit"
+                      onClick={() => openEditModal(member.gymId)}
+                      title="Edit member details"
+                      disabled={editLoadingGymId === member.gymId}
+                    />
+                    <IconButton
+                      type="delete"
+                      onClick={() => confirmDelete(member.gymId)}
+                      title="Delete member"
+                    />
                   </div>
                 </td>
               </tr>
@@ -465,39 +542,84 @@ export default function AdminMembers() {
       </div>
 
       {showDeletePopup && (
-        <div className="modal-shell">
-          <div className="modal-card">
-            <div className="section-heading">
-              <span className="eyebrow">Confirm Delete</span>
-              <h3 className="panel-title">Remove member record?</h3>
+        <div className="modal-shell" onClick={() => setShowDeletePopup(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="section-heading">
+                <span className="eyebrow">Confirm Delete</span>
+                <h3 className="panel-title">Remove member record?</h3>
+              </div>
+              <button type="button" onClick={() => setShowDeletePopup(false)} className="icon-close-btn" aria-label="Close delete modal">
+                ✕
+              </button>
             </div>
-            <div className="mt-6 flex gap-3">
-              <button onClick={deleteMember} className="btn-danger">
-                Yes
+            <div className="modal-content">
+              <div className="mt-6 flex gap-3">
+                <button onClick={deleteMember} className="btn-danger">
+                  Yes
+                </button>
+                <button onClick={() => setShowDeletePopup(false)} className="btn-secondary">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditPopup && selectedEditMember && (
+        <div className="modal-shell" onClick={closeEditModal}>
+          <div className="modal-card" style={{ width: "min(100%, 860px)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="section-heading">
+                <span className="eyebrow">Edit Member</span>
+                <h3 className="panel-title">{selectedEditMember.fullName || selectedEditMember.name || 'Member details'}</h3>
+                <p className="panel-subtitle">Gym ID {selectedEditMember.gymId}</p>
+              </div>
+              <button type="button" onClick={closeEditModal} className="icon-close-btn" aria-label="Close edit modal">
+                ✕
               </button>
-              <button onClick={() => setShowDeletePopup(false)} className="btn-secondary">
-                Cancel
-              </button>
+            </div>
+
+            <div className="modal-content">
+              {editSubmitError && (
+                <div className="modal-error">
+                  {editSubmitError}
+                </div>
+              )}
+
+              <RegisterForm
+                defaultData={selectedEditMember}
+                onSubmit={submitMemberUpdate}
+                buttonLabel={editSubmitting ? 'Saving...' : 'Save Changes'}
+              />
             </div>
           </div>
         </div>
       )}
 
       {showRenewPopup && selectedMember && (
-        <div className="modal-shell">
-          <div className="modal-card" style={{ width: "min(100%, 860px)" }}>
-            <div className="flex flex-col gap-4 border-b border-[var(--border-color)] pb-5 md:flex-row md:items-start md:justify-between">
+        <div className="modal-shell" onClick={closeRenewModal}>
+          <div className="modal-card" style={{ width: "min(100%, 860px)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
               <div className="section-heading">
                 <span className="eyebrow">Membership Billing</span>
                 <h3 className="panel-title">{selectedMember.fullName}</h3>
                 <p className="panel-subtitle">Gym ID {selectedMember.gymId}</p>
               </div>
 
-              <div className="flex items-center gap-3 rounded-xl border border-[var(--border-color)] px-4 py-3">
-                <ToggleSwitch active={renewMode} onClick={(val) => handleModeToggle(val)} />
-                <span className="font-semibold text-white">{renewMode ? "Renew Mode" : "Bill Mode"}</span>
-              </div>
+              <button type="button" onClick={closeRenewModal} className="icon-close-btn" aria-label="Close renew modal">
+                ✕
+              </button>
             </div>
+
+            <div className="modal-content">
+              <div className="modal-subheader">
+                <div className="flex items-center gap-3 rounded-xl border border-[var(--border-color)] px-4 py-3">
+                  <ToggleSwitch active={renewMode} onClick={(val) => handleModeToggle(val)} />
+                  <span className="font-semibold text-white">{renewMode ? "Renew Mode" : "Bill Mode"}</span>
+                </div>
+              </div>
 
             <div className="modal-body form-grid-2 mt-6 custom-scrollbar">
               <div className="panel" style={{ padding: "20px", background: "var(--surface-muted)" }}>
@@ -648,6 +770,7 @@ export default function AdminMembers() {
                 )}
               </div>
             </div>
+          </div>
 
             {renewSubmitError && (
               <div style={{

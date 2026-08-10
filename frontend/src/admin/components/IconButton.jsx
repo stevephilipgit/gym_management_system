@@ -1,11 +1,12 @@
 import React from 'react';
-import { FiEdit, FiTrash2, FiEye, FiCheck, FiX } from 'react-icons/fi';
+import { FiEdit, FiTrash2, FiEye, FiCheck, FiX, FiRefreshCcw } from 'react-icons/fi';
 
 const IconButton = ({ type, onClick, title, disabled, className = "" }) => {
   const getIcon = () => {
     switch (type) {
       case 'edit': return <FiEdit size={16} />;
       case 'delete': return <FiTrash2 size={16} />;
+      case 'refresh': return <FiRefreshCcw size={16} />;
       case 'view': return <FiEye size={16} />;
       case 'check': return <FiCheck size={16} />;
       case 'close': return <FiX size={16} />;
@@ -17,6 +18,7 @@ const IconButton = ({ type, onClick, title, disabled, className = "" }) => {
     switch (type) {
       case 'edit': return 'text-[var(--text-secondary)] hover:text-[#D4AF37] hover:bg-[rgba(255,255,255,0.05)]';
       case 'delete': return 'text-[var(--text-secondary)] hover:text-[#ff4d4f] hover:bg-[rgba(255,0,0,0.08)]';
+      case 'refresh': return 'text-[var(--text-secondary)] hover:text-[#6ca8ff] hover:bg-[rgba(108,168,255,0.08)]';
       case 'view': return 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[rgba(255,255,255,0.05)]';
       case 'check': return 'text-[var(--text-secondary)] hover:text-[#3ddc84] hover:bg-[rgba(61,220,132,0.1)]';
       case 'close': return 'text-[var(--text-secondary)] hover:text-[#818181] hover:bg-[rgba(129,129,129,0.1)]';

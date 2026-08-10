@@ -164,46 +164,121 @@ export default function AdminDashboardHome() {
     };
   }, [view]);
 
+  const applyPresetRange = async (preset) => {
+    if (preset === "today") {
+      setView("today");
+      await fetchTodayData();
+      const today = new Date().toISOString().split("T")[0];
+      await fetchAnalytics({ from: today, to: today });
+      return;
+    }
+
+    if (preset === "custom") {
+      setView("custom");
+      return;
+    }
+
+    // compute date ranges for other presets
+    const now = new Date();
+    let from, to;
+    to = now.toISOString().split("T")[0];
+    if (preset === "yesterday") {
+      const y = new Date(now);
+      y.setDate(now.getDate() - 1);
+      from = y.toISOString().split("T")[0];
+    } else if (preset === "7day") {
+      const d = new Date(now);
+      d.setDate(now.getDate() - 6);
+      from = d.toISOString().split("T")[0];
+    } else if (preset === "30day") {
+      const d = new Date(now);
+      d.setDate(now.getDate() - 29);
+      from = d.toISOString().split("T")[0];
+    }
+
+    if (from && to) {
+      setView("custom");
+      setFromDate(new Date(from));
+      setToDate(new Date(to));
+      // fetch income and analytics for this range
+      try {
+        setCustomLoading(true);
+        const res = await apiClient.get("/finance/income", { params: { from, to } });
+        setCustomData(res.data?.data || res.data || null);
+      } catch {
+        setCustomData(null);
+      } finally {
+        setCustomLoading(false);
+      }
+
+      await fetchAnalytics({ from, to });
+    }
+  };
+
   const displayData = view === "today" ? todayData : customData;
   const safePlans = displayData?.plans || {};
   const safeTrainingIncome = displayData?.trainingTypes || {};
   const safeMemberCounts = displayData?.memberCountsByTraining || {};
 
   return (
-    <div className="saas-container">
-      <div className="saas-header" style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "16px" }}>
-        <div>
+    <div className="saas-container dashboard-shell">
+      <header className="dashboard-hero">
+        <div className="dashboard-hero-meta">
           <h1>Revenue dashboard</h1>
           <p>View live daily performance or generate historical reports without leaving the admin workspace.</p>
-          <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', background: 'var(--surface-muted)', padding: '4px 10px', borderRadius: '4px' }}>Auto refresh every 30 seconds</span>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', background: 'var(--surface-muted)', padding: '4px 10px', borderRadius: '4px' }}>Business hours 4:00 AM to 11:00 PM</span>
+          <div className="dashboard-hero-tags">
+            <span>Auto refresh every 30 seconds</span>
+            <span>Business hours 4:00 AM to 11:00 PM</span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button onClick={() => setView("today")} className={view === "today" ? "btn-primary" : "btn-secondary"} style={view === "today" ? { padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--accent)', color: '#000', fontWeight: 600, cursor: 'pointer' } : { padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 600, cursor: 'pointer' }}>
-            Today's Analytics
-          </button>
-          <button onClick={() => setView("custom")} className={view === "custom" ? "btn-primary" : "btn-secondary"} style={view === "custom" ? { padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--accent)', color: '#000', fontWeight: 600, cursor: 'pointer' } : { padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 600, cursor: 'pointer' }}>
-            Custom Range
-          </button>
+
+        <div className="dashboard-tab-group">
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <select
+              aria-label="Date range"
+              className="saas-input"
+              value={view === "today" && !fromDate ? "today" : fromDate && toDate && view === "custom" ? "custom" : "today"}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === "custom") {
+                  applyPresetRange("custom");
+                } else if (val === "today") {
+                  applyPresetRange("today");
+                } else if (val === "yesterday") {
+                  applyPresetRange("yesterday");
+                } else if (val === "7day") {
+                  applyPresetRange("7day");
+                } else if (val === "30day") {
+                  applyPresetRange("30day");
+                }
+              }}
+            >
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="7day">Last 7 days</option>
+              <option value="30day">Last 30 days</option>
+              <option value="custom">Custom range</option>
+            </select>
+          </div>
         </div>
-      </div>
+      </header>
 
       {view === "custom" && (
-        <div className="saas-filter-bar" style={{ marginBottom: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>From</label>
+        <div className="saas-filter-bar dashboard-filter-bar">
+          <div className="dashboard-filter-item">
+            <label>From</label>
             <DatePicker selected={fromDate} onChange={setFromDate} dateFormat="yyyy-MM-dd" className="saas-input" />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
+          <div className="dashboard-filter-item">
+            <label>To</label>
             <DatePicker selected={toDate} onChange={setToDate} dateFormat="yyyy-MM-dd" className="saas-input" />
           </div>
 
-          <div style={{ display: 'flex', gap: '12px', marginLeft: 'auto' }}>
+          <div className="dashboard-filter-actions">
             <button
+              type="button"
+              className="btn-primary"
               onClick={async () => {
                 if (!fromDate || !toDate) {
                   alert("Please select both dates");
@@ -215,13 +290,11 @@ export default function AdminDashboardHome() {
                   to: toDate.toISOString().split("T")[0],
                 });
               }}
-              className="btn-primary"
-              style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--accent)', color: '#000', fontWeight: 600, cursor: 'pointer' }}
             >
               {customLoading ? "Loading..." : "Generate Report"}
             </button>
 
-            <button onClick={exportAnalyticsPDF} className="btn-secondary" style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 600, cursor: 'pointer' }}>
+            <button type="button" className="btn-secondary" onClick={exportAnalyticsPDF}>
               Export PDF
             </button>
           </div>
@@ -244,25 +317,22 @@ export default function AdminDashboardHome() {
           {Object.keys(safePlans).length > 0 ? (
             <section className="dashboard-grid dashboard-grid-charts">
               <ChartPanel title={view === "today" ? "Today's Income by Plan" : "Income by Plan"}>
-                <ResponsiveContainer width="100%" height={320}>
+                <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={Object.entries(safePlans).map(([plan, amount]) => ({ plan, amount }))}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
-                    <XAxis dataKey="plan" stroke="#818181" />
-                    <YAxis stroke="#818181" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                    <XAxis dataKey="plan" stroke="var(--text-muted)" />
+                    <YAxis stroke="var(--text-muted)" />
                     <Tooltip />
-                    <Bar dataKey="amount" fill="#D4AF37" radius={[8, 8, 0, 0]} />
+                    <Bar dataKey="amount" fill="var(--accent)" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartPanel>
 
               <ChartPanel title={view === "today" ? "Income by Training Type" : "Members by Training Type"}>
-                <ResponsiveContainer width="100%" height={320}>
+                <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie
-                      data={Object.entries(view === "today" ? safeTrainingIncome : safeMemberCounts).map(([name, value]) => ({
-                        name,
-                        value,
-                      }))}
+                      data={Object.entries(view === "today" ? safeTrainingIncome : safeMemberCounts).map(([name, value]) => ({ name, value }))}
                       dataKey="value"
                       outerRadius={110}
                       label
@@ -290,11 +360,11 @@ export default function AdminDashboardHome() {
           <section className="dashboard-grid dashboard-grid-analytics">
             <ChartPanel title="Age Distribution">
               <AnalyticsBlock loading={analyticsLoading} hasData={ageDistribution.length > 0}>
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={ageDistribution}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
-                    <XAxis dataKey="ageRange" stroke="#818181" />
-                    <YAxis stroke="#818181" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                    <XAxis dataKey="ageRange" stroke="var(--text-muted)" />
+                    <YAxis stroke="var(--text-muted)" />
                     <Tooltip />
                     <Bar dataKey="count" fill="#6ca8ff" radius={[8, 8, 0, 0]} />
                   </BarChart>
@@ -304,7 +374,7 @@ export default function AdminDashboardHome() {
 
             <ChartPanel title="Source Contribution">
               <AnalyticsBlock loading={analyticsLoading} hasData={sourceContribution.length > 0}>
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={260}>
                   <PieChart>
                     <Pie data={sourceContribution} cx="50%" cy="50%" outerRadius={96} dataKey="value" label>
                       {sourceContribution.map((_, index) => (
@@ -312,6 +382,7 @@ export default function AdminDashboardHome() {
                       ))}
                     </Pie>
                     <Tooltip />
+                    <Legend />
                   </PieChart>
                 </ResponsiveContainer>
               </AnalyticsBlock>
@@ -319,7 +390,7 @@ export default function AdminDashboardHome() {
 
             <ChartPanel title="Plan Distribution">
               <AnalyticsBlock loading={analyticsLoading} hasData={planDistribution.length > 0}>
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={260}>
                   <PieChart>
                     <Pie data={planDistribution} cx="50%" cy="50%" outerRadius={96} dataKey="value" label>
                       {planDistribution.map((_, index) => (
@@ -327,6 +398,7 @@ export default function AdminDashboardHome() {
                       ))}
                     </Pie>
                     <Tooltip />
+                    <Legend />
                   </PieChart>
                 </ResponsiveContainer>
               </AnalyticsBlock>
@@ -338,18 +410,54 @@ export default function AdminDashboardHome() {
   );
 }
 
+function CompactBreakdown({ data = [], currency = true }) {
+  const total = data.reduce((s, item) => s + (item.value || 0), 0);
+  if (!data || data.length === 0) return <p className="muted-copy">No data available.</p>;
+
+  // If only one category, present a compact single-metric (no progress bar)
+  if (data.length === 1) {
+    const d = data[0];
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+          <div style={{ fontSize: "1rem", fontWeight: 700 }}>{d.name || d.label || d.key}</div>
+          <div style={{ textAlign: "right" }}>
+            <div className="metric-value" style={{ margin: 0 }}>{currency ? `Rs. ${d.value || 0}` : d.value || 0}</div>
+            <div className="muted-copy">100%</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {data.map((d, idx) => {
+        const pct = total > 0 ? Math.round((d.value / total) * 100) : 0;
+        return (
+          <div key={idx} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <div style={{ fontWeight: 700 }}>{d.name || d.label || d.key}</div>
+                <div className="muted-copy">{currency ? `Rs. ${d.value || 0}` : d.value || 0}</div>
+              </div>
+              <div style={{ height: 8, background: "var(--row-odd)", borderRadius: 999 }}>
+                <div style={{ height: 8, width: `${pct}%`, background: "var(--accent)", borderRadius: 999 }} />
+              </div>
+            </div>
+            <div style={{ minWidth: 48, textAlign: "right" }} className="muted-copy">{pct}%</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const METRIC_ICONS = {
   revenue: "₹",
   warning: "↑",
   info: "↻",
   success: "#",
-};
-
-const METRIC_BORDER = {
-  revenue: "border-l-[var(--accent)]",
-  warning: "border-l-[var(--warning)]",
-  info: "border-l-[var(--info)]",
-  success: "border-l-[var(--success)]",
 };
 
 const METRIC_VALUE_COLOR = {
@@ -360,28 +468,21 @@ const METRIC_VALUE_COLOR = {
 };
 
 function MetricCard({ title, value, accent = "default" }) {
-  const borderClass = METRIC_BORDER[accent] ?? "border-l-[var(--border-strong)]";
   const valueColorClass = METRIC_VALUE_COLOR[accent] ?? "";
   const icon = METRIC_ICONS[accent] ?? "";
 
   return (
-    <article
-      className="metric-card"
-      style={{ borderLeft: "3px solid", borderLeftColor: `var(--${accent === "revenue" ? "accent" : accent === "warning" ? "warning" : accent === "info" ? "info" : accent === "success" ? "success" : "border-strong"})` }}
-    >
-      <div className="flex items-start justify-between gap-2">
+    <article className={`dashboard-metric-card accent-${accent}`}>
+      <div className="dashboard-metric-card-header">
         <span className="eyebrow">Summary</span>
         {icon && (
-          <span
-            style={{ color: `var(--${accent === "revenue" ? "accent" : accent})`, opacity: 0.6, fontSize: 13, fontWeight: 700 }}
-            aria-hidden="true"
-          >
+          <span className="dashboard-metric-card-icon" aria-hidden="true">
             {icon}
           </span>
         )}
       </div>
       <div>
-        <p className="muted-copy">{title}</p>
+        <p className="metric-title">{title}</p>
         <p className={`metric-value mt-3 ${valueColorClass}`}>{value}</p>
       </div>
     </article>
@@ -390,10 +491,10 @@ function MetricCard({ title, value, accent = "default" }) {
 
 function ChartPanel({ title, children }) {
   return (
-    <div style={{ background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '24px' }}>
-      <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '24px' }}>{title}</h3>
-      <div>{children}</div>
-    </div>
+    <section className="dashboard-chart-panel">
+      <h3 className="dashboard-chart-title">{title}</h3>
+      <div className="dashboard-chart-body">{children}</div>
+    </section>
   );
 }
 

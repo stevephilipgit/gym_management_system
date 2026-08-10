@@ -8,12 +8,12 @@ export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${collapsed ? "sidebar-collapsed" : ""}`}>
       {/* Sidebar */}
       <div
         className={`sidebar transition-transform duration-300 md:static ${
           sidebarOpen ? "fixed left-0 top-0 translate-x-0" : "hidden md:block"
-        } ${collapsed ? "w-16" : "w-64"}`}
+        } ${collapsed ? "collapsed" : ""}`}
       >
         <AdminSidebar
           closeSidebar={() => setSidebarOpen(false)}
