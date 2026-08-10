@@ -64,18 +64,18 @@ export default function Login() {
   };
 
   return (
-    <div className="admin-login-shell">
-      <div className="admin-login-wrap">
-        <section className="admin-login-hero">
+    <div className="homepage-shell auth-shell admin-login-shell">
+      <div className="auth-grid admin-login-wrap">
+        <section className="auth-panel admin-login-hero">
           <p className="admin-login-eyebrow">Operations Console</p>
           <h1>Secure entry for the gym management workspace.</h1>
           <p>Login keeps billing, members, renewals, and package operations inside a single controlled dashboard.</p>
-          <button onClick={() => navigate("/")} className="admin-login-home" aria-label="Go to home page">
+          <button onClick={() => navigate("/")} className="btn btn-secondary admin-login-home" aria-label="Go to home page">
             Home
           </button>
         </section>
 
-        <section className="admin-login-card">
+        <section className="auth-panel admin-login-card">
           <p className="admin-login-eyebrow">Admin Access</p>
           <h2>GIRI GYM</h2>
           <p className="admin-login-sub">Use your admin username and password to continue.</p>
@@ -127,7 +127,7 @@ export default function Login() {
               />
             </div>
 
-            <button type="submit" disabled={loading} className="admin-login-submit">
+            <button type="submit" disabled={loading} className="btn btn-primary admin-login-submit">
               {loading ? "Logging in..." : "Login"}
             </button>
           </form>

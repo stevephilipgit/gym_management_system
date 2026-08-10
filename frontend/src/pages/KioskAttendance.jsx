@@ -163,8 +163,8 @@ export default function KioskAttendance() {
   };
 
   return (
-    <div className="kiosk-shell">
-      <div className="kiosk-card">
+    <div className="homepage-shell auth-shell kiosk-shell">
+      <div className="auth-panel kiosk-card">
         <p className="kiosk-eyebrow">Premium Fitness Club</p>
         <h1>GIRI GYM</h1>
         <p className="kiosk-clock">{displayClock}</p>
@@ -196,7 +196,7 @@ export default function KioskAttendance() {
             aria-label="Gym ID or Phone"
           />
           {validationError ? <p className="kiosk-error">{validationError}</p> : null}
-          <button type="submit" className="kiosk-punch" id="kiosk-search-btn" disabled={loading || isClosed}>
+          <button type="submit" className="btn btn-primary kiosk-punch" id="kiosk-search-btn" disabled={loading || isClosed}>
             {loading ? "Processing..." : "Punch"}
           </button>
           {isClosed ? <p className="kiosk-error">Kiosk opens daily at 04:00 AM IST.</p> : null}

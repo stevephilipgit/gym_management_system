@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import apiClient from '../utils/apiClient';
 
-const BRANCHES = ['Mathur', 'Vepery', 'Any Branch'];
+const BRANCHES = ['Mathur'];
 const REASONS = [
   'Membership Plans',
   'Weight Loss',
@@ -64,7 +64,7 @@ function validate(form) {
   return errors;
 }
 
-export default function EnquiryModal({ isOpen, onClose }) {
+export default function EnquiryModal({ isOpen, onClose, initialReason = '', initialMessage = '' }) {
   const [form, setForm] = useState(INITIAL_FORM);
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
@@ -75,16 +75,27 @@ export default function EnquiryModal({ isOpen, onClose }) {
   const firstInputRef = useRef(null);
   const modalRef = useRef(null);
 
-  // Lock background scroll when open
+  // Lock background scroll when open and prefill form context
   useEffect(() => {
     if (isOpen) {
+      setForm({
+        ...INITIAL_FORM,
+        reason: initialReason || '',
+        message: initialMessage || '',
+      });
+      setErrors({});
+      setTouched({});
+      setSubmitting(false);
+      setSubmitted(false);
+      setServerError('');
+      setSuccessMsg('');
       document.body.style.overflow = 'hidden';
       setTimeout(() => firstInputRef.current?.focus(), 100);
     } else {
       document.body.style.overflow = '';
     }
     return () => { document.body.style.overflow = ''; };
-  }, [isOpen]);
+  }, [isOpen, initialReason, initialMessage]);
 
   // ESC key close
   useEffect(() => {
@@ -385,14 +396,6 @@ export default function EnquiryModal({ isOpen, onClose }) {
                   ) : (
                     'Submit Enquiry'
                   )}
-                </button>
-                <button
-                  type="button"
-                  className="enq-btn-outline"
-                  onClick={() => { handleReset(); onClose(); }}
-                  disabled={submitting}
-                >
-                  Cancel
                 </button>
               </div>
             </form>
