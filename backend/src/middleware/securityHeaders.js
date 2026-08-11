@@ -1,6 +1,17 @@
 import helmet from "helmet";
 import config from "../config/index.js";
 
+// Build connectSrc from configured origins (ALLOWED_ORIGINS env var)
+// In development this includes localhost; in production only the real origins.
+const connectSrcOrigins = config.app.allowedOrigins.map((o) => {
+  try {
+    const url = new URL(o);
+    return url.origin;
+  } catch {
+    return o;
+  }
+});
+
 export const helmetMiddleware = helmet({
   contentSecurityPolicy: {
     directives: {
@@ -8,7 +19,7 @@ export const helmetMiddleware = helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "http://localhost:5000", "http://localhost:5173"],
+      connectSrc: ["'self'", ...connectSrcOrigins],
       fontSrc: ["'self'", "https:", "data:"],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],

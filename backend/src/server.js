@@ -96,9 +96,16 @@ app.use(additionalHeaders);
 /* ============================================================
    CORS — MUST COME BEFORE ALL ROUTES
 ============================================================ */
+const allowedOrigins = config.app.allowedOrigins;
+
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:3000"],
+    origin(origin, callback) {
+      // Allow requests with no origin (server-to-server, curl, mobile apps)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
   })
 );

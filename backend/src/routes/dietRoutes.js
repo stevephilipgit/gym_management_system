@@ -16,12 +16,12 @@ router.post("/", adminLimiter, adminAuth, validateSchema(createDietSchema), diet
 
 /**
  * GET /api/diets
- * List all active diets
+ * List all active diets (admin only — not needed by public website)
  */
-router.get("/", sensitiveLimiter, dietController.getAllDiets);
+router.get("/", sensitiveLimiter, adminAuth, dietController.getAllDiets);
 
 // GET /api/diets/:id
-router.get("/:id", sensitiveLimiter, dietController.getDietById);
+router.get("/:id", sensitiveLimiter, adminAuth, dietController.getDietById);
 
 // PUT /api/diets/:id
 router.put("/:id", adminLimiter, adminAuth, validateSchema(updateDietSchema), dietController.updateDiet);

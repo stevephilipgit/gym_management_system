@@ -9,8 +9,8 @@ const router = express.Router();
  * System Settings Routes
  */
 
-// GET /api/settings - Get all settings (public, cached)
-router.get('/', systemSettingsController.getSettings);
+// GET /api/settings - Get settings (admin only — not needed by public website)
+router.get('/', adminAuth, systemSettingsController.getSettings);
 
 // PUT /api/settings - Update settings (admin only)
 router.put(

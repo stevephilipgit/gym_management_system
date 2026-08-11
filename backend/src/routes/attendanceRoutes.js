@@ -9,9 +9,10 @@ const router = express.Router();
  * Attendance Routes
  */
 
-// POST /api/attendance/search-punch - Combined search + attendance (from header bar)
+// POST /api/attendance/search-punch - Combined search + attendance (admin only)
 router.post(
   '/search-punch',
+  adminAuth,
   attendanceController.searchPunch
 );
 
