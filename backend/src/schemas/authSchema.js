@@ -4,6 +4,8 @@ import Joi from "joi";
 export const loginSchema = Joi.object({
   username: Joi.string().min(3).max(50).required(),
   password: Joi.string().min(8).required(),
+  captchaId: Joi.string().max(64).required(),
+  captchaAnswer: Joi.string().min(1).max(6).required(),
 });
 
 export const createAdminSchema = Joi.object({

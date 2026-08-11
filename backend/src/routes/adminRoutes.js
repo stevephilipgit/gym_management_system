@@ -6,7 +6,7 @@ import adminAuth from "../middleware/adminAuth.js";
 import requireRole from "../middleware/requireRole.js";
 import { validateSchema } from "../middleware/schemaValidator.js";
 import { loginSchema, createAdminSchema, changePasswordSchema } from "../schemas/authSchema.js";
-import { adminLimiter, otpLimiter, sensitiveLimiter } from "../middleware/rateLimiter.js";
+import { adminLimiter, otpLimiter, sensitiveLimiter, captchaLimiter } from "../middleware/rateLimiter.js";
 
 const router = express.Router();
 router.use(adminLimiter);
@@ -26,6 +26,9 @@ const loginLimiter = rateLimit({
 
 // POST /api/admin/login
 router.post("/login", loginLimiter, validateSchema(loginSchema), authController.login);
+
+// GET /api/admin/captcha - issue a server-validated CAPTCHA challenge
+router.get("/captcha", captchaLimiter, authController.getCaptcha);
 
 // GET /api/admin/me
 router.get("/me", sensitiveLimiter, adminAuth, authController.getCurrentAdmin);

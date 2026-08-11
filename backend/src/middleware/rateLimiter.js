@@ -37,7 +37,7 @@ export const defaultLimiter = createLimiter(
   config.rateLimit.defaultMax,
   config.rateLimit.windowMs / 1000
 );
-export const loginLimiter = createLimiter("rl_login", config.rateLimit.loginMax, 60);
 export const otpLimiter = createLimiter("rl_otp", config.rateLimit.otpMax, 300);
 export const adminLimiter = createLimiter("rl_admin", 300, 60);
 export const sensitiveLimiter = createLimiter("rl_sensitive", 50, 60);
+export const captchaLimiter = createLimiter("rl_captcha", 30, 60);

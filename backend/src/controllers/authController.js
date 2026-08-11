@@ -1,10 +1,12 @@
 // controllers/authController.js - Authentication and admin user management
+import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import Admin from "../models/Admin.js";
-import logger from "../core/logger.js";
 import config from "../config/index.js";
 import { auditActions } from "../utils/auditLog.js";
+import captchaService from "../services/captchaService.js";
+import { sendEmail } from "../services/emailService.js";
 import { asyncHandler, ValidationError, AuthError, ConflictError } from "../core/errorHandler.js";
 
 const validatePasswordStrength = (password) => {
@@ -24,9 +26,23 @@ const validatePasswordStrength = (password) => {
 };
 
 export const authController = {
+  // GET captcha challenge (no authentication required)
+  getCaptcha: asyncHandler(async (req, res) => {
+    const { captchaId, svgBase64 } = await captchaService.create();
+    return res.json({ success: true, captchaId, svgBase64 });
+  }),
+
   // Login admin
   login: asyncHandler(async (req, res) => {
-    const { username, password } = req.body;
+    const { username, password, captchaId, captchaAnswer } = req.body;
+
+    // CAPTCHA is verified server-side BEFORE any credential processing.
+    // The expected answer never leaves the server; verification consumes the
+    // challenge (single-use) regardless of outcome.
+    const captchaCheck = await captchaService.verify(captchaId, captchaAnswer);
+    if (!captchaCheck.ok) {
+      throw new ValidationError("Invalid or expired CAPTCHA. Please try again.");
+    }
 
     if (!username || !password) {
       throw new ValidationError("Username and password are required");
@@ -306,23 +322,34 @@ export const authController = {
 
     const admin = await Admin.findOne({ email });
 
+    // Generic response prevents account enumeration.
     if (!admin) {
-      throw new ValidationError("No admin with this email");
+      return res.json({
+        success: true,
+        message: "If an account exists for this email, an OTP has been sent.",
+      });
     }
 
-    // Generate OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate OTP with cryptographically secure random
+    const otp = crypto.randomInt(100000, 1000000).toString();
+    const otpHash = crypto.createHash("sha256").update(otp).digest("hex");
 
-    admin.resetOtp = otp;
-    admin.otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    admin.resetOtp = otpHash;
+    admin.otpExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
     await admin.save();
 
-    // TODO: integrate email service (nodemailer)
-    logger.info(`🔐 Password reset OTP for ${email}: ${otp}`);
+    // Delivery via the existing email service (SMTP configured at deploy time).
+    // No OTP is ever logged or returned in an API response.
+    await sendEmail({
+      to: email,
+      subject: "Giri Gym - Password Reset OTP",
+      text: `Your password reset OTP is ${otp}. It expires in 10 minutes.`,
+      html: `<p>Your password reset OTP is <strong>${otp}</strong>.</p><p>It expires in 10 minutes.</p>`,
+    });
 
     return res.json({
       success: true,
-      message: "OTP sent to registered email (check console for demo)",
+      message: "If an account exists for this email, an OTP has been sent.",
     });
   }),
 
@@ -337,15 +364,17 @@ export const authController = {
     const admin = await Admin.findOne({ email });
 
     if (!admin) {
-      throw new ValidationError("Invalid email or OTP");
+      throw new ValidationError("Invalid or expired OTP");
     }
 
-    // Verify OTP
+    const otpHash = crypto.createHash("sha256").update(String(otp)).digest("hex");
+
+    // Verify OTP against the stored hash (never plaintext)
     if (
       !admin.resetOtp ||
       !admin.otpExpiry ||
-      admin.resetOtp !== otp ||
-      admin.otpExpiry < new Date()
+      admin.resetOtp !== otpHash ||
+      admin.otpExpiry < Date.now()
     ) {
       throw new ValidationError("Invalid or expired OTP");
     }
