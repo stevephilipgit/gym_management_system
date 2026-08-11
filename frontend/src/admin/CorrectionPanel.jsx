@@ -108,7 +108,7 @@ export default function CorrectionPanel() {
     if (!recordToDelete) return;
 
     try {
-      const res = await fetch(`${API_BASE_URL}/attendance/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/attendance/${recordToDelete}`, {
         method: 'DELETE',
         credentials: 'include',
       });
