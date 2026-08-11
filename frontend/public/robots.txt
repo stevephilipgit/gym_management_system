@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Block admin and API routes from crawling
+Disallow: /admin
+Disallow: /api/
+
+Sitemap: __SITE_URL__/sitemap.xml

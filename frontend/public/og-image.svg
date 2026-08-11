@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Giri Gym in Mathur, Chennai">
+  <rect width="1200" height="630" fill="#050505"/>
+  <rect x="84" y="90" width="1032" height="450" rx="30" fill="#131313" stroke="#F5C24B" stroke-width="4"/>
+  <text x="140" y="250" fill="#F5C24B" font-family="Arial, sans-serif" font-size="28" letter-spacing="4">GIRI GYM</text>
+  <text x="140" y="330" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="56" font-weight="700">Gym &amp; Fitness Centre</text>
+  <text x="140" y="390" fill="#D6D6D6" font-family="Arial, sans-serif" font-size="34">Mathur, Chennai</text>
+  <text x="140" y="470" fill="#F5C24B" font-family="Arial, sans-serif" font-size="28">Strength • Transformation • Enquiries</text>
+</svg>

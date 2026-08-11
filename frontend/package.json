@@ -6,7 +6,7 @@
   "scripts": {
     "start": "vite",
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/replace-domain.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },

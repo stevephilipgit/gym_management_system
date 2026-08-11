@@ -1,4 +1,4 @@
-const REQUIRED_ENV_VARS = ["VITE_API_URL"];
+const REQUIRED_ENV_VARS = ["VITE_API_URL", "VITE_SITE_URL"];
 
 export const validateEnv = () => {
   const missing = REQUIRED_ENV_VARS.filter((key) => !import.meta.env[key]);
@@ -7,7 +7,7 @@ export const validateEnv = () => {
     return;
   }
 
-  const message = `Missing recommended env vars: ${missing.join(", ")}. Falling back to localhost defaults.`;
+  const message = `Missing recommended env vars: ${missing.join(", ")}. Set them before production deployment.`;
 
   console.warn(message);
 };
