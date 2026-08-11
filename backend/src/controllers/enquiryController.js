@@ -54,8 +54,8 @@ export const submitEnquiry = async (req, res) => {
     }
 
     const cleanEmail = sanitize(email).toLowerCase();
-    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      errors.push('A valid email address is required.');
+    if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      errors.push('If provided, email must be a valid address.');
     }
 
     const cleanPhone = sanitize(phone).replace(/\s+/g, '');

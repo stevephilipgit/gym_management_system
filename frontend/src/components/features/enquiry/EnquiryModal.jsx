@@ -4,7 +4,7 @@
  * Black + Gold theme, full validation, loading states.
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
-import apiClient from '../utils/apiClient';
+import apiClient from '../../../utils/apiClient';
 
 const BRANCHES = ['Mathur'];
 const REASONS = [
@@ -47,8 +47,7 @@ function validate(form) {
   else if (!/^[A-Za-z\s'.,-]+$/.test(name)) errors.name = 'Only letters and spaces allowed.';
 
   const email = form.email.trim();
-  if (!email) errors.email = 'Email address is required.';
-  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Enter a valid email address.';
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Enter a valid email address.';
 
   const phone = form.phone.replace(/\s+/g, '');
   if (!phone) errors.phone = 'Phone number is required.';
@@ -172,7 +171,7 @@ export default function EnquiryModal({ isOpen, onClose, initialReason = '', init
       };
 
       const res = await apiClient.post('/enquiries', payload);
-      setSuccessMsg(res.data?.message || 'Thank you! Our team will reach out to you shortly.');
+      setSuccessMsg(res.data?.message || 'Thanks! Your enquiry has been received. Giri Gym will get in touch with you.');
       setSubmitted(true);
     } catch (err) {
       const msg = err.response?.data?.message;
@@ -272,7 +271,7 @@ export default function EnquiryModal({ isOpen, onClose, initialReason = '', init
                 {/* Email */}
                 <div className="enq-field">
                   <label htmlFor="enq-email" className="enq-label">
-                    Email Address <span className="enq-required">*</span>
+                    Email Address <span className="enq-optional">(optional)</span>
                   </label>
                   <input
                     id="enq-email"
