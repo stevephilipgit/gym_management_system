@@ -44,12 +44,6 @@ const FEATURE_ITEMS = [
   },
 ];
 
-const TESTIMONIALS = [
-  { quote: "I dropped 11kg and gained noticeable strength without burnout.", name: "Ananth R.", score: "★★★★★" },
-  { quote: "The equipment quality here is miles ahead. The layout feels spacious during peak hours.", name: "Monika S.", score: "★★★★★" },
-  { quote: "This is the first gym where I actually stayed consistent past 3 months.", name: "Vipin K.", score: "★★★★★" },
-];
-
 const BRANCHES_CONFIG = [
   {
     tag: "Flagship Branch",
@@ -177,29 +171,18 @@ export default function Home() {
       try {
         setPlansLoadFailed(false);
 
-        // 1) Preferred public endpoint
-        try {
-          const publicRes = await apiClient.get("/public/packages");
-          const publicList = normalizePackages(publicRes.data);
-          if (publicList.length > 0) {
-            setPackages(publicList);
-            return;
-          }
-        } catch {
-          // fallback below
-        }
-
-        // 2) Fallback to existing packages endpoint (works for logged-in admins)
-        try {
-          const privateRes = await apiClient.get("/packages");
-          const privateList = normalizePackages(privateRes.data);
-          setPackages(privateList);
-          return;
-        } catch (fallbackErr) {
-          console.error("Package Load Error:", fallbackErr);
+        const publicRes = await apiClient.get("/public/packages");
+        const publicList = normalizePackages(publicRes.data);
+        if (publicList.length > 0) {
+          setPackages(publicList);
+        } else {
           setPackages([]);
-          setPlansLoadFailed(true);
+          setPlansLoadFailed(false);
         }
+      } catch {
+        console.error("Package Load Error");
+        setPackages([]);
+        setPlansLoadFailed(true);
       } finally {
         setLoadingPlans(false);
       }
@@ -274,26 +257,31 @@ export default function Home() {
     ];
   }, [packages]);
 
-  const branchesSchema = useMemo(
+  const SITE_URL = import.meta.env.VITE_SITE_URL || "";
+
+  const businessSchema = useMemo(
     () => ({
       "@context": "https://schema.org",
-      "@graph": BRANCHES_CONFIG.map((branch) => ({
-        "@type": "SportsActivityLocation",
-        name: branch.name,
-        image: branch.imageUrl,
-        telephone: branch.phone,
-        address: {
-          "@type": "PostalAddress",
-          streetAddress: branch.address,
-          addressLocality: "Chennai",
-          addressRegion: "Tamil Nadu",
-          postalCode: branch.name.includes("Vepery") ? "600007" : "600068",
-          addressCountry: "IN",
-        },
-        url: branch.mapUrl,
-      })),
+      "@type": "HealthClub",
+      name: "Giri Gym",
+      url: SITE_URL,
+      telephone: "+919342393935",
+      email: "girigym@gmail.com",
+      description:
+        "Giri Gym is a gym and fitness centre in Mathur, Chennai offering strength training, transformation coaching, weight loss, weight gain, and membership enquiry support.",
+      address: {
+        "@type": "PostalAddress",
+        streetAddress: "Flat #18, Ponnaiamman Koil Street, Kamaraj Nagar",
+        addressLocality: "Mathur",
+        addressRegion: "Tamil Nadu",
+        postalCode: "600068",
+        addressCountry: "IN",
+      },
+      areaServed: ["Mathur", "Chennai", "Kamaraj Nagar"],
+      hasMap: "https://www.google.com/maps/search/?api=1&query=Giri+Gym+Mathur+Chennai",
+      sameAs: [],
     }),
-    []
+    [SITE_URL]
   );
 
   const scrollToId = (id) => {
@@ -343,9 +331,9 @@ export default function Home() {
         <section className="hero">
           <div className="container hero-grid">
             <div className="hero-content">
-              <span className="badge">Elite Training Center</span>
-              <h1>Transform Your Body At Chennai&apos;s Premium Gym</h1>
-              <p>High-performance coaching, imported equipment, and a disciplined community focused on real, measurable results.</p>
+              <span className="badge">Giri Gym • Mathur, Chennai</span>
+              <h1>Giri Gym | Gym &amp; Fitness Centre in Mathur, Chennai</h1>
+              <p>Giri Gym in Mathur, Chennai offers strength training, transformation coaching, and a disciplined fitness environment for members in Kamaraj Nagar and surrounding areas.</p>
               <div className="hero-actions">
                 <button className="btn btn-primary" onClick={openEnquiry} id="hero-join-now-btn">
                   Explore Membership
@@ -356,16 +344,16 @@ export default function Home() {
               </div>
               <div className="hero-stats">
                 <div className="stat-item">
-                  <h3>4.9/5</h3>
-                  <p>Member Rating</p>
-                </div>
-                <div className="stat-item">
                   <h3>25+ Years</h3>
-                  <p>In Chennai</p>
+                  <p>Serving Chennai</p>
                 </div>
                 <div className="stat-item">
-                  <h3>120+</h3>
-                  <p>Imported Machines</p>
+                  <h3>2 Locations</h3>
+                  <p>Mathur &amp; Ladies Gym</p>
+                </div>
+                <div className="stat-item">
+                  <h3>12000+</h3>
+                  <p>sq. ft. Training Area</p>
                 </div>
               </div>
             </div>
@@ -376,6 +364,8 @@ export default function Home() {
                     key={image.src}
                     src={image.src}
                     alt={image.alt}
+                    loading={index === 0 ? "eager" : "lazy"}
+                    decoding="async"
                     className={`hero-slide ${index === activeHeroImage ? "is-active" : ""}`}
                   />
                 ))}
@@ -416,9 +406,9 @@ export default function Home() {
 
         <section className="features" id="why-us">
           <div className="container">
-            <span className="badge">The Difference</span>
-            <h2 className="section-title">Built For Results, Not Distractions.</h2>
-            <p className="section-subtitle">We offer an environment designed to deliver outcomes that actually show.</p>
+            <span className="badge">About Giri Gym</span>
+            <h2 className="section-title">A fitness centre built around coaching, discipline, and measurable progress.</h2>
+            <p className="section-subtitle">Giri Gym in Mathur, Chennai supports members looking for structured strength training, guided transformation support, and a professional gym environment.</p>
             <div className="features-grid">
               {FEATURE_ITEMS.map((item) => {
                 const Icon = item.icon;
@@ -438,9 +428,9 @@ export default function Home() {
 
         <section className="plans" id="plans">
           <div className="container">
-            <span className="badge">Membership Options</span>
-            <h2 className="section-title">Flexible Premium Plans</h2>
-            <p className="section-subtitle">Choose a program suited to your consistency goals.</p>
+            <span className="badge">Training &amp; Membership</span>
+            <h2 className="section-title">Membership options for strength, weight loss, and transformation goals.</h2>
+            <p className="section-subtitle">Explore membership options at Giri Gym in Mathur with support for personal training, transformation coaching, and structured fitness plans.</p>
 
             <div className="plans-grid">
               {loadingPlans ? (
@@ -465,44 +455,36 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="proof">
+          <section className="proof">
           <div className="container proof-grid">
             <div className="rating-box">
-              <div className="big-rating">4.9/5</div>
-              <div className="stars">★★★★★</div>
+              <div className="big-rating">Established</div>
+              <div className="stars">≈ 2001</div>
               <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-                <a href="https://www.justdial.com/Chennai/Giri-Gym-Next-To-Beloved-School-Mathur/044PXX44-XX44-150721153754-F8J2_BZDET" target="_blank" rel="noreferrer" style={{ color: "var(--text-muted)", textDecoration: "underline" }}>
-                  455+ Reviews on Justdial
-                </a>
+                Public business details are being verified for the website and Google Business Profile.
               </p>
               <div className="metrics-list">
                 <div className="metric-row">
-                  <span>Justdial Reviews</span>
-                  <span>455+</span>
+                  <span>Location</span>
+                  <span>Mathur, Chennai</span>
                 </div>
                 <div className="metric-row">
-                  <span>Renewal Rate</span>
-                  <span>92%</span>
+                  <span>Service Focus</span>
+                  <span>Gym • Fitness • Training</span>
                 </div>
                 <div className="metric-row">
-                  <span>Monthly Sessions</span>
-                  <span>8,000+</span>
+                  <span>Owner Confirmation</span>
+                  <span>Required</span>
                 </div>
               </div>
             </div>
 
-            <div className="testimonials-grid">
-              {TESTIMONIALS.map((item) => (
-                <article key={item.name} className="testimonial-card">
-                  <p className="testimonial-text">&quot;{item.quote}&quot;</p>
-                  <div className="testimonial-author">
-                    <div className="avatar">{item.name.split(" ")[1]?.[0] ?? "G"}</div>
-                    <div>
-                      <h4 style={{ fontSize: "0.95rem" }}>{item.name}</h4>
-                      <span style={{ fontSize: "0.8rem", color: "var(--accent-gold)" }}>{item.score}</span>
-                    </div>
-                  </div>
-                </article>
+            <div className="legacy-grid" style={{ gap: "1rem" }}>
+              {legacyCards.map((item) => (
+                <div key={item.title} className="legacy-item">
+                  <h4>{item.title}</h4>
+                  <p>{item.desc}</p>
+                </div>
               ))}
             </div>
           </div>
@@ -510,15 +492,15 @@ export default function Home() {
 
         <section className="branches" id="branches">
           <div className="container">
-            <span className="badge">Our Location</span>
-            <h2 className="section-title">Train At Giri Gym, Chennai</h2>
-            <p className="section-subtitle">Our premium flagship locations are designed for serious training.</p>
-            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(branchesSchema) }} />
+            <span className="badge">Location</span>
+            <h2 className="section-title">Visit Giri Gym in Mathur, Chennai</h2>
+            <p className="section-subtitle">Located next to Beloved School in Kamaraj Nagar, Mathur, Giri Gym is easy to reach for members across Chennai.</p>
+            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(businessSchema) }} />
 
             <div className="branches-grid">
               {BRANCHES_CONFIG.map((branch) => (
                 <article key={branch.name} className="branch-card">
-                  <img src={branch.imageUrl} alt={branch.imageAlt} loading="lazy" />
+                  <img src={branch.imageUrl} alt={branch.imageAlt} loading="lazy" decoding="async" />
                   <div className="branch-info">
                     <div className="branch-badge">{branch.pin}</div>
                     <h3>{branch.name}</h3>
@@ -564,7 +546,7 @@ export default function Home() {
             <a href="#home" className="logo" onClick={(event) => { event.preventDefault(); scrollToId("home"); }}>
               GIRI <span>GYM</span>
             </a>
-            <p>High-performance fitness, specialized transformation coaching, and imported equipment standards.</p>
+            <p>Giri Gym in Mathur, Chennai offers structured fitness coaching, transformation support, and direct enquiry assistance for local members.</p>
           </div>
           <div className="footer-column">
             <h4>Quick Links</h4>
