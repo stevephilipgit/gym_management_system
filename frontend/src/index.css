@@ -28,7 +28,7 @@
 }
 
 .homepage-shell .section-title {
-  font-size: clamp(2rem, 4vw, 2.5rem);
+  font-size: clamp(1.5rem, 3vw, 2rem);
   font-weight: 800;
   line-height: 1.2;
   letter-spacing: -0.5px;
@@ -174,7 +174,7 @@
 }
 
 .homepage-shell .hero-content h1 {
-  font-size: clamp(2rem, 3.3vw, 2.9rem);
+  font-size: clamp(1.6rem, 2.8vw, 2.4rem);
   font-weight: 800;
   line-height: 1.08;
   letter-spacing: -0.03em;
@@ -470,17 +470,17 @@
 }
 
 .homepage-shell .big-rating {
-  font-size: 4rem;
+  font-size: clamp(1.5rem, 3vw, 2rem);
   font-weight: 800;
   color: #c9a146;
-  line-height: 1;
-  margin-bottom: 0.5rem;
+  line-height: 1.2;
+  margin-bottom: 0.25rem;
 }
 
 .homepage-shell .stars {
   color: #c9a146;
-  font-size: 1.25rem;
-  margin-bottom: 1.5rem;
+  font-size: 1rem;
+  margin-bottom: 1rem;
 }
 
 .homepage-shell .metrics-list {
@@ -1868,13 +1868,6 @@
     font-family: "Sora", -apple-system, BlinkMacSystemFont, sans-serif;
   }
 
-  .auth-grid {
-    width: min(100%, 1180px);
-    display: grid;
-    grid-template-columns: 1.15fr 0.85fr;
-    gap: 18px;
-  }
-
   .auth-panel {
     border: 1px solid rgba(201, 161, 70, 0.28);
     border-radius: 24px;
@@ -1883,110 +1876,129 @@
     backdrop-filter: blur(8px);
   }
 
-  .admin-login-shell {
-    padding: 24px;
-  }
+  /* ══════════════════════════════════════════════════════════════
+     GIRI GYM — ADMIN LOGIN (premium dark-gold)
+     ══════════════════════════════════════════════════════════════ */
 
-  .admin-login-wrap {
-    width: min(100%, 1180px);
-    display: grid;
-    grid-template-columns: 1.15fr 0.85fr;
-    gap: 18px;
-  }
-
-  .admin-login-hero,
-  .admin-login-card {
-    border: 1px solid rgba(201, 161, 70, 0.28);
-    border-radius: 24px;
-    background: linear-gradient(180deg, rgba(15, 15, 15, 0.96) 0%, rgba(8, 8, 8, 0.95) 100%);
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
-    backdrop-filter: blur(8px);
-  }
-
-  .admin-login-hero {
-    padding: clamp(24px, 6vw, 54px);
-    display: grid;
-    align-content: end;
-    gap: 14px;
-    min-height: 620px;
-    background:
-      linear-gradient(180deg, rgba(10, 10, 10, 0.62), rgba(8, 8, 8, 0.95)),
-      radial-gradient(circle at 26% 28%, rgba(219, 180, 102, 0.26), transparent 34%),
-      #0c0c0c;
-  }
-
-  .admin-login-home {
-    width: fit-content;
-    min-height: 42px;
-    border-radius: 999px;
-    padding: 10px 16px;
-    border: 1px solid rgba(201, 161, 70, 0.44);
-    color: #fff5dd;
-    font-weight: 700;
-    background: linear-gradient(135deg, #d5b04b 0%, #b98c2d 100%);
-    box-shadow: 0 8px 24px rgba(201, 161, 70, 0.16);
-  }
-
-  .admin-login-eyebrow {
-    color: #c9a146;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    font-size: 11px;
-    font-weight: 800;
-  }
-
-  .admin-login-hero h1,
-  .admin-login-card h2 {
-    margin: 0;
-    color: #f5f3ef;
+  .admin-login-page {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 20px;
+    overflow: hidden;
+    background: #0b0b0b;
+    color: #f5f5f5;
     font-family: "Sora", -apple-system, BlinkMacSystemFont, sans-serif;
-    line-height: 1.05;
-    letter-spacing: -0.02em;
-    font-weight: 800;
   }
 
-  .admin-login-hero h1 {
-    font-size: clamp(32px, 4.9vw, 54px);
+  /* Subtle gym interior texture — dark, low-opacity, blended into the page */
+  .admin-login-bg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(90deg, rgba(11, 11, 11, 0.98) 0%, rgba(11, 11, 11, 0.62) 55%, rgba(11, 11, 11, 0.9) 100%),
+      url("https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=1200&q=80")
+        center left / cover no-repeat;
+    opacity: 0.16;
+    -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 58%, transparent 100%);
+    mask-image: linear-gradient(90deg, #000 0%, #000 58%, transparent 100%);
   }
 
-  .admin-login-hero p {
-    color: #a1a1aa;
-    max-width: 52ch;
-    font-size: 1rem;
-    line-height: 1.7;
+  /* Very subtle thin diagonal gold accent lines */
+  .admin-login-accent {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: repeating-linear-gradient(
+      118deg,
+      transparent 0px,
+      transparent 64px,
+      rgba(212, 169, 54, 0.05) 64px,
+      rgba(212, 169, 54, 0.05) 65px,
+      transparent 65px,
+      transparent 132px
+    );
   }
 
-  .admin-login-card {
-    padding: clamp(20px, 4vw, 34px);
+  .admin-login-frame {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  /* ── Brand area ─────────────────────────────────────────────── */
+  .admin-login-brand {
     display: grid;
-    gap: 12px;
+    justify-items: center;
+    gap: 4px;
+    margin-bottom: 26px;
   }
 
-  .admin-login-card h2 {
-    font-size: clamp(30px, 4.2vw, 42px);
-    letter-spacing: 0.02em;
+  .admin-login-brand-name {
+    margin: 0;
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    line-height: 1;
+    color: #f5f5f5;
   }
 
-  .admin-login-sub,
-  .admin-login-copy {
-    color: #a1a1aa;
-    font-size: 14px;
+  .admin-login-brand-name span {
+    color: #d9ae3d;
+  }
+
+  .admin-login-brand-portal {
+    margin: 0;
+    margin-top: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: #d9ae3d;
+  }
+
+  .admin-login-brand-sub {
+    margin: 0;
+    margin-top: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #9a9a9a;
+  }
+
+  /* ── Login card ─────────────────────────────────────────────── */
+  .admin-login-card {
+    width: 100%;
+    max-width: 400px;
+    padding: 24px;
+    border-radius: 16px;
+    background: #141414;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+    text-align: left;
   }
 
   .admin-login-form {
     display: grid;
-    gap: 12px;
-    margin-top: 10px;
+    gap: 18px;
   }
 
   .admin-login-error {
-    border-radius: 12px;
-    border: 1px solid rgba(255, 112, 112, 0.45);
-    background: rgba(255, 72, 72, 0.12);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 112, 112, 0.4);
+    background: rgba(255, 72, 72, 0.1);
     color: #ffaeae;
     padding: 10px 12px;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
+    line-height: 1.5;
   }
 
   .admin-login-field {
@@ -1995,94 +2007,225 @@
   }
 
   .admin-login-field label {
-    color: #c9a146;
+    color: #9a9a9a;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
     font-size: 11px;
     font-weight: 700;
   }
 
-  .admin-login-field input,
-  .admin-login-captcha input {
-    min-height: 50px;
-    border-radius: 12px;
-    border: 1px solid rgba(201, 161, 70, 0.34);
-    background: rgba(255, 255, 255, 0.04);
-    color: #f7eedf;
-    padding: 0 14px;
+  /* Input wrapper with leading icon */
+  .admin-login-input {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .admin-login-input-icon {
+    position: absolute;
+    left: 14px;
+    width: 16px;
+    height: 16px;
+    color: #6f6f6f;
+    pointer-events: none;
+  }
+
+  .admin-login-input input {
+    width: 100%;
+    min-height: 48px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    background: #191919;
+    color: #f5f5f5;
+    font-size: 15px;
+    font-weight: 500;
+    padding: 0 14px 0 42px;
     transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
   }
 
-  .admin-login-field input:focus,
-  .admin-login-captcha input:focus {
+  .admin-login-input input::placeholder {
+    color: #6f6f6f;
+    font-weight: 400;
+  }
+
+  .admin-login-input input:focus {
     outline: none;
-    border-color: rgba(201, 161, 70, 0.62);
-    box-shadow: 0 0 0 3px rgba(201, 161, 70, 0.12);
-    background: rgba(201, 161, 70, 0.06);
+    border-color: rgba(217, 174, 61, 0.45);
+    box-shadow: 0 0 0 3px rgba(217, 174, 61, 0.12);
+    background: #1c1c1c;
   }
 
-  .admin-login-captcha {
-    border-radius: 14px;
-    border: 1px solid rgba(213, 173, 92, 0.24);
-    background: rgba(255, 255, 255, 0.02);
-    padding: 14px;
+  .admin-login-password-toggle {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
     display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: #8a8a8a;
+    cursor: pointer;
+    transition: color 0.2s ease, background 0.2s ease;
+  }
+
+  .admin-login-password-toggle:hover {
+    color: #d9ae3d;
+    background: rgba(217, 174, 61, 0.12);
+  }
+
+  .admin-login-password-toggle:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(217, 174, 61, 0.25);
+  }
+
+  .admin-login-password-toggle svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  /* ── Captcha ────────────────────────────────────────────────── */
+  .admin-login-captcha-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
     gap: 10px;
-  }
-
-  .admin-login-captcha-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-
-  .admin-login-captcha-head p {
-    color: #dcc497;
-    margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-size: 11px;
-    font-weight: 700;
-  }
-
-  .admin-login-captcha-head button {
-    color: #eacb8f;
-    font-weight: 700;
-    text-decoration: underline;
-    font-size: 13px;
+    align-items: stretch;
   }
 
   .admin-login-captcha-code {
-    min-height: 54px;
-    border-radius: 12px;
+    min-height: 48px;
+    border-radius: 10px;
     display: grid;
     place-items: center;
-    border: 1px solid rgba(213, 173, 92, 0.44);
-    background: rgba(221, 177, 84, 0.1);
-    color: #ffe9be;
-    letter-spacing: 0.32em;
-    font-size: 26px;
+    overflow: hidden;
+    border: 1px solid rgba(217, 174, 61, 0.3);
+    background: rgba(217, 174, 61, 0.08);
+    color: #d9ae3d;
+    letter-spacing: 0.24em;
+    padding-left: 0.24em;
+    font-size: 22px;
     font-weight: 800;
+    user-select: none;
   }
 
+  .admin-login-captcha-img {
+    display: block;
+    width: 100%;
+    height: 48px;
+    object-fit: cover;
+    object-position: center;
+  }
+
+  .admin-login-captcha-placeholder {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: #8a8a8a;
+    user-select: none;
+  }
+
+  .admin-login-captcha-refresh {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 48px;
+    padding: 0 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    background: #191919;
+    color: #9a9a9a;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  }
+
+  .admin-login-captcha-refresh:hover {
+    color: #d9ae3d;
+    border-color: rgba(217, 174, 61, 0.35);
+    background: rgba(217, 174, 61, 0.08);
+  }
+
+  .admin-login-captcha-refresh svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  /* ── Login button ───────────────────────────────────────────── */
   .admin-login-submit {
-    min-height: 52px;
-    border-radius: 999px;
+    min-height: 50px;
+    margin-top: 2px;
+    border-radius: 10px;
     border: 0;
-    background: linear-gradient(135deg, #d5b04b 0%, #b98c2d 100%);
-    color: #fff8e9;
-    font-size: 15px;
-    font-weight: 800;
-    box-shadow: 0 8px 24px rgba(201, 161, 70, 0.16);
+    background: linear-gradient(135deg, #e0b746 0%, #c79a2f 100%);
+    color: #1a1405;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: 0 10px 26px rgba(217, 174, 61, 0.22);
+    transition: filter 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+  }
+
+  .admin-login-submit:hover:not(:disabled) {
+    filter: brightness(1.06);
+    box-shadow: 0 12px 30px rgba(217, 174, 61, 0.28);
+  }
+
+  .admin-login-submit:active:not(:disabled) {
+    transform: translateY(1px);
   }
 
   .admin-login-submit:disabled {
     opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  /* ── Bottom meta ────────────────────────────────────────────── */
+  .admin-login-secure {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 24px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #9a9a9a;
+  }
+
+  .admin-login-secure-icon {
+    width: 13px;
+    height: 13px;
+    color: rgba(217, 174, 61, 0.85);
+  }
+
+  .admin-login-home {
+    margin-top: 16px;
+    border: 0;
+    background: none;
+    color: #9a9a9a;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: color 0.2s ease;
+  }
+
+  .admin-login-home:hover {
+    color: #d9ae3d;
   }
 
   .admin-login-copy {
-    margin-top: 4px;
+    margin-top: 26px;
+    font-size: 12px;
+    font-weight: 400;
+    color: #6f6f6f;
   }
 
   .lp-page {
@@ -2798,14 +2941,6 @@
 }
 
 @media (max-width: 1200px) {
-  .admin-login-wrap {
-    grid-template-columns: 1fr;
-  }
-
-  .admin-login-hero {
-    min-height: 360px;
-  }
-
   .lp-grid-4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2847,12 +2982,29 @@
 }
 
 @media (max-width: 760px) {
-  .admin-login-shell {
-    padding: 14px;
+  .admin-login-page {
+    padding: 24px 16px;
   }
 
-  .admin-login-card h2 {
-    letter-spacing: 0.08em;
+  .admin-login-brand {
+    margin-bottom: 22px;
+  }
+
+  .admin-login-brand-name {
+    font-size: 26px;
+  }
+
+  .admin-login-card {
+    padding: 20px;
+  }
+
+  .admin-login-form {
+    gap: 16px;
+  }
+
+  /* Heavily reduce gym background on small screens */
+  .admin-login-bg {
+    opacity: 0.08;
   }
 
   .lp-container {
@@ -3036,6 +3188,7 @@
 }
 
 .enq-required { color: #c9a146; font-size: 13px; }
+.enq-optional { color: #818181; font-size: 12px; font-weight: 400; }
 .enq-char-count { font-size: 11px; color: #818181; font-weight: 400; }
 
 .enq-input {
