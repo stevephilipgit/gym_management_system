@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 import mongoose from "mongoose";
-import DailySummary from "./models/DailySummary.js";
+import DailySummary from "../src/models/DailySummary.js";
 
 dotenv.config();
 

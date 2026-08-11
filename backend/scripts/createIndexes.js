@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
-import FinanceLog from "./models/FinanceLog.js";
-import Member from "./models/Member.js";
+import FinanceLog from "../src/models/FinanceLog.js";
+import Member from "../src/models/Member.js";
 
 import dotenv from "dotenv";
 dotenv.config();
