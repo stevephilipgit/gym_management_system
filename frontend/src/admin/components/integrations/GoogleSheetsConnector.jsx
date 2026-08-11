@@ -4,7 +4,7 @@ import {
   disconnectGoogleSheets,
   testGoogleSheetsConnection,
   openGoogleAuthFlow,
-} from "../utils/googleSheetsClient";
+} from "../../../utils/googleSheetsClient";
 
 export const GoogleSheetsConnector = () => {
   const [isConnected, setIsConnected] = useState(false);

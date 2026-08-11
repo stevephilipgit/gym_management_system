@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { API_BASE_URL } from "../utils/apiClient.js";
-import { getDaysIndicatorClass } from "../utils/memberStatus.js";
+import { API_BASE_URL } from "../../utils/apiClient.js";
+import { getDaysIndicatorClass } from "../../utils/memberStatus.js";
 
 const AUTO_CLOSE_MS = 5000;
 

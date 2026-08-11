@@ -7,8 +7,8 @@
  */
 import { useEffect, useState } from 'react';
 import { API_BASE_URL } from '../utils/apiClient';
-import { GoogleSheetsConnector } from '../components/GoogleSheetsConnector';
-import ToggleSwitch from './components/ToggleSwitch';
+import { GoogleSheetsConnector } from './components/integrations/GoogleSheetsConnector';
+import ToggleSwitch from './components/ui/ToggleSwitch';
 
 const SECTION_TABS = [
   { id: 'attendance', label: '⏱ Attendance' },

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { DietSelector } from "../components/DietSelector";
+import { DietSelector } from "./components/DietSelector";
 import apiClient from "../utils/apiClient.js";
-import { downloadMembershipInvoice } from "../utils/invoicePdf.js";
+import { downloadMembershipInvoice } from "./utils/invoicePdf.js";
 import { getDaysRemaining, getDaysIndicatorClass } from "../utils/memberStatus.js";
-import IconButton from "./components/IconButton";
-import RegisterForm from "./components/RegisterForm";
-import ToggleSwitch from "./components/ToggleSwitch";
+import IconButton from "./components/ui/IconButton";
+import RegisterForm from "./components/forms/RegisterForm";
+import ToggleSwitch from "./components/ui/ToggleSwitch";
 
 const MS_DAY = 1000 * 60 * 60 * 24;
 

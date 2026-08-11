@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import apiClient from "../utils/apiClient.js";
-import RegisterForm from "./components/RegisterForm";
+import RegisterForm from "./components/forms/RegisterForm";
 
 export default function AdminUpdate() {
   const [gymId, setGymId] = useState("");

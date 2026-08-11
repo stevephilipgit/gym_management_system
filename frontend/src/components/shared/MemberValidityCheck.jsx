@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { API_BASE_URL } from '../utils/apiClient';
-import { detectInputType, isValidPhone, isValidGymId } from '../utils/attendanceHelpers';
+import { API_BASE_URL } from '../../utils/apiClient';
+import { detectInputType, isValidPhone, isValidGymId } from '../../admin/utils/attendanceHelpers';
 
 export default function MemberValidityCheck() {
   const [input, setInput] = useState('');

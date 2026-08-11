@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import apiClient from '../utils/apiClient';
-import IconButton from './components/IconButton';
+import IconButton from './components/ui/IconButton';
 
 const BRANCH_OPTS = ['all', 'Mathur', 'Vepery', 'Any Branch'];
 const STATUS_OPTS = ['all', 'new', 'contacted', 'closed', 'spam'];

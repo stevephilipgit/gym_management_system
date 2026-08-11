@@ -11,7 +11,7 @@ import {
   FiTrendingUp,
 } from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
-import EnquiryModal from "../components/EnquiryModal.jsx";
+import EnquiryModal from "../components/features/enquiry/EnquiryModal.jsx";
 
 const NAV_ITEMS = [
   { label: "Home", id: "home" },

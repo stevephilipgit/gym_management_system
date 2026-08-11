@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API_BASE_URL } from "../utils/apiClient.js";
+import { API_BASE_URL } from "../../utils/apiClient.js";
 
 export const DietSelector = ({ trainingType, onDietSelect, initialDietId }) => {
   const [diets, setDiets] = useState([]);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { API_BASE_URL } from '../utils/apiClient';
-import { formatDate, formatTime, formatDuration } from '../utils/attendanceHelpers';
-import IconButton from './components/IconButton';
+import { formatDate, formatTime, formatDuration } from './utils/attendanceHelpers';
+import IconButton from './components/ui/IconButton';
 
 export default function CorrectionPanel() {
   const [records, setRecords] = useState([]);

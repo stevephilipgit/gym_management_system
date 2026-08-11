@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import apiClient, { API_BASE_URL } from "../../utils/apiClient.js";
+import apiClient, { API_BASE_URL } from "../../../utils/apiClient.js";
 
 export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel = "Submit" }) {
   const [dynamicFields, setDynamicFields] = useState([]);

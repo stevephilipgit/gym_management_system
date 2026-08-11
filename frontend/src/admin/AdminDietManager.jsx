@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import apiClient from "../utils/apiClient.js";
-import IconButton from "./components/IconButton";
+import IconButton from "./components/ui/IconButton";
 
 export const AdminDietManager = () => {
   const [diets, setDiets] = useState([]);

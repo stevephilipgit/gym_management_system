@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import apiClient from "../utils/apiClient.js";
-import ToggleSwitch from "./components/ToggleSwitch";
-import IconButton from "./components/IconButton";
+import ToggleSwitch from "./components/ui/ToggleSwitch";
+import IconButton from "./components/ui/IconButton";
 
 export default function AdminManageFields() {
   const [fields, setFields] = useState([]);

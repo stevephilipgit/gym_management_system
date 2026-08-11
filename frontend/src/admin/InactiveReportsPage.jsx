@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { API_BASE_URL } from '../utils/apiClient';
-import { formatDate, downloadCSV } from '../utils/attendanceHelpers';
+import { formatDate, downloadCSV } from './utils/attendanceHelpers';
 
 export default function InactiveReportsPage() {
   const [members, setMembers] = useState([]);

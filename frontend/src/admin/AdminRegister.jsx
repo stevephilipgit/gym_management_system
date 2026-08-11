@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { DietSelector } from "../components/DietSelector";
+import { DietSelector } from "./components/DietSelector";
 import apiClient from "../utils/apiClient.js";
-import { downloadMembershipInvoice } from "../utils/invoicePdf.js";
+import { downloadMembershipInvoice } from "./utils/invoicePdf.js";
 
 export default function AdminRegister() {
   const [form, setForm] = useState({

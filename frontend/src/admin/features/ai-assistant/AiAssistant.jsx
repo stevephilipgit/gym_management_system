@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import apiClient from "../../utils/apiClient.js";
+import apiClient from "../../../utils/apiClient.js";
 import ChatWindow from "./ChatWindow.jsx";
-import "./AiAssistant.css";
+import "../../styles/AiAssistant.css";
 
 const createMessage = (role, content, type = "text", data = null) => ({
   id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

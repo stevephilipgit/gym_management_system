@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import apiClient from "../utils/apiClient.js";
-import PunchModal from "../components/PunchModal.jsx";
+import PunchModal from "../components/shared/PunchModal.jsx";
 
 const KIOSK_PIN_ENABLED = false;
 const KIOSK_PIN = "2580";
