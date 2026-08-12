@@ -14,14 +14,14 @@ router.use(adminLimiter);
    FIELD ROUTES
 ============================================================ */
 
-// GET /api/fields/member
+// GET /api/fields/member (readable by any authenticated admin — register form renders them)
 router.get("/member", adminAuth, fieldController.getAllFields);
 
-// POST /api/fields/member
-router.post("/member", adminAuth, validateSchema(createFieldSchema), fieldController.createField);
+// POST /api/fields/member (Superadmin only)
+router.post("/member", adminAuth, requireRole("superadmin"), validateSchema(createFieldSchema), fieldController.createField);
 
-// PATCH /api/fields/member/:id/toggle
-router.patch("/member/:id/toggle", adminAuth, fieldController.toggleField);
+// PATCH /api/fields/member/:id/toggle (Superadmin only)
+router.patch("/member/:id/toggle", adminAuth, requireRole("superadmin"), fieldController.toggleField);
 
 // DELETE /api/fields/member/:id
 router.delete("/member/:id", adminAuth, requireRole("superadmin"), fieldController.deleteField);

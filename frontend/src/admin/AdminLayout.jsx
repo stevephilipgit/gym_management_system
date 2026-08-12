@@ -3,7 +3,7 @@ import { Outlet } from "react-router-dom";
 import AdminSidebar from "./AdminSidebar";
 import AdminHeader from "./AdminHeader";
 
-export default function AdminLayout() {
+export default function AdminLayout({ admin }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
@@ -19,6 +19,7 @@ export default function AdminLayout() {
           closeSidebar={() => setSidebarOpen(false)}
           collapsed={collapsed}
           setCollapsed={setCollapsed}
+          admin={admin}
         />
       </div>
 
@@ -29,12 +30,12 @@ export default function AdminLayout() {
 
       {/* Header */}
       <div className="header bg-[var(--bg-primary)]">
-        <AdminHeader toggleSidebar={() => setSidebarOpen(true)} />
+        <AdminHeader admin={admin} toggleSidebar={() => setSidebarOpen(true)} />
       </div>
 
       {/* Main Content */}
       <main className="main-content bg-[var(--bg-primary)]">
-        <div className="page-frame h-full">
+        <div className="page-frame admin-page-frame h-full">
           <Outlet />
         </div>
       </main>

@@ -46,36 +46,11 @@ router.get(
   attendanceController.getTodayStats
 );
 
-// ========== CORRECTIONS ==========
-
-// PUT /api/attendance/:id/correct-time - Correct check-in or check-out time
-router.put(
-  '/:id/correct-time',
-  adminAuth,
-  attendanceValidation.validateCorrectionInput,
-  attendanceController.correctTime
-);
-
-// POST /api/attendance/add-missing - Add missed attendance
-router.post(
-  '/add-missing',
-  adminAuth,
-  attendanceValidation.validateMissingAttendanceInput,
-  attendanceController.addMissing
-);
-
-// DELETE /api/attendance/:id - Delete duplicate attendance
-router.delete(
-  '/:id',
-  adminAuth,
-  attendanceController.deleteAttendance
-);
-
-// GET /api/attendance/search/corrections - Search for corrections
+// GET /api/attendance/logs - Search attendance records by date/member (admin only)
 router.get(
-  '/search/corrections',
+  '/logs',
   adminAuth,
-  attendanceController.searchCorrections
+  attendanceController.searchAttendanceLogs
 );
 
 export default router;

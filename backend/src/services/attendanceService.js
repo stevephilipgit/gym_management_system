@@ -144,74 +144,6 @@ class AttendanceService {
   }
 
   /**
-   * Correct check-in time
-   */
-  async correctCheckInTime(attendanceId, newCheckInTime, adminId) {
-    try {
-      const attendance = await Attendance.findByIdAndUpdate(
-        attendanceId,
-        {
-          checkInTime: newCheckInTime,
-          correctedBy: adminId,
-        },
-        { new: true }
-      );
-
-      if (attendance.checkOutTime) {
-        const durationMin = Math.floor(
-          (attendance.checkOutTime - newCheckInTime) / (1000 * 60)
-        );
-        attendance.durationMin = durationMin;
-        await attendance.save();
-      }
-
-      logger.info(`Check-in time corrected for attendance ${attendanceId}`, {
-        newCheckInTime,
-        correctedBy: adminId,
-      });
-
-      return attendance;
-    } catch (error) {
-      logger.error('Error correcting check-in time', { attendanceId, error });
-      throw error;
-    }
-  }
-
-  /**
-   * Correct check-out time
-   */
-  async correctCheckOutTime(attendanceId, newCheckOutTime, adminId) {
-    try {
-      const attendance = await Attendance.findByIdAndUpdate(
-        attendanceId,
-        {
-          checkOutTime: newCheckOutTime,
-          correctedBy: adminId,
-        },
-        { new: true }
-      );
-
-      if (attendance.checkInTime) {
-        const durationMin = Math.floor(
-          (newCheckOutTime - attendance.checkInTime) / (1000 * 60)
-        );
-        attendance.durationMin = durationMin;
-        await attendance.save();
-      }
-
-      logger.info(`Check-out time corrected for attendance ${attendanceId}`, {
-        newCheckOutTime,
-        correctedBy: adminId,
-      });
-
-      return attendance;
-    } catch (error) {
-      logger.error('Error correcting check-out time', { attendanceId, error });
-      throw error;
-    }
-  }
-
-  /**
    * Auto-close open records (missing checkout)
    */
   async autoCloseOpenRecords(date, closingTime = '22:00') {
@@ -250,62 +182,6 @@ class AttendanceService {
       return updated;
     } catch (error) {
       logger.error('Error auto-closing open records', { error });
-      throw error;
-    }
-  }
-
-  /**
-   * Add missed attendance manually
-   */
-  async addMissedAttendance(memberId, date, checkInTime, checkOutTime, adminId) {
-    try {
-      const normalizedDate = new Date(date);
-      normalizedDate.setHours(0, 0, 0, 0);
-
-      // Check if record already exists
-      const existing = await Attendance.findOne({
-        memberId,
-        date: normalizedDate,
-      });
-
-      if (existing) {
-        throw new Error('Attendance record already exists for this date');
-      }
-
-      const durationMin = checkOutTime
-        ? Math.floor((checkOutTime - checkInTime) / (1000 * 60))
-        : null;
-
-      const attendance = new Attendance({
-        memberId,
-        date: normalizedDate,
-        checkInTime,
-        checkOutTime: checkOutTime || null,
-        durationMin,
-        state: checkOutTime ? 'completed' : 'inside',
-        source: 'manual',
-        correctedBy: adminId,
-      });
-
-      await attendance.save();
-
-      // Update member's lastAttendanceDate if checkout exists
-      if (checkOutTime) {
-        await Member.updateOne(
-          { _id: memberId },
-          { lastAttendanceDate: checkOutTime }
-        );
-      }
-
-      logger.info(`Missed attendance added for member ${memberId}`, {
-        attendanceId: attendance._id,
-        date: normalizedDate,
-        addedBy: adminId,
-      });
-
-      return attendance;
-    } catch (error) {
-      logger.error('Error adding missed attendance', { memberId, error });
       throw error;
     }
   }

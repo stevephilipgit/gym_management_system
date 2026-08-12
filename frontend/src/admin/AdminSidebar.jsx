@@ -6,7 +6,6 @@ import {
   FiCalendar,
   FiClock,
   FiCpu,
-  FiEdit,
   FiHome,
   FiInbox,
   FiLogOut,
@@ -18,7 +17,12 @@ import {
   FiUsers,
 } from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
+import { canAccess } from "./authContext.js";
 
+// Navigation is the single role-aware menu definition.
+// Items without a `roles` list are visible to every role.
+// Restricted items list the roles allowed to see them
+// (superadmin always passes via canAccess).
 const NAV_GROUPS = [
   {
     label: "Overview",
@@ -37,17 +41,16 @@ const NAV_GROUPS = [
   {
     label: "Training",
     items: [
-      { label: "Packages",     icon: <FiPackage />,  path: "/admin/packages" },
+      { label: "Packages",     icon: <FiPackage />,  path: "/admin/packages",     roles: ["superadmin"] },
       { label: "Diet Manager", icon: <FiActivity />, path: "/admin/diet-manager" },
-      { label: "AI Assistant", icon: <FiCpu />,      path: "/admin/ai-assistant" },
-      { label: "Form Fields",  icon: <FiSliders />,  path: "/admin/fields" },
+      { label: "AI Assistant", icon: <FiCpu />,      path: "/admin/ai-assistant", roles: ["superadmin"] },
+      { label: "Form Fields",  icon: <FiSliders />,  path: "/admin/fields",       roles: ["superadmin"] },
     ],
   },
   {
     label: "Operations",
     items: [
       { label: "Attendance",  icon: <FiClock />,     path: "/admin/attendance-front-desk" },
-      { label: "Corrections", icon: <FiEdit />,      path: "/admin/corrections" },
       { label: "Reports",     icon: <FiBarChart2 />, path: "/admin/inactivity-reports" },
     ],
   },
@@ -55,18 +58,25 @@ const NAV_GROUPS = [
     label: "System",
     items: [
       { label: "Enquiries", icon: <FiInbox />,    path: "/admin/enquiries" },
-      { label: "Settings",  icon: <FiSettings />, path: "/admin/settings" },
+      { label: "Settings",  icon: <FiSettings />, path: "/admin/settings", roles: ["superadmin"] },
     ],
   },
 ];
 
-export default function AdminSidebar({ closeSidebar, collapsed, setCollapsed }) {
+export default function AdminSidebar({ closeSidebar, collapsed, setCollapsed, admin }) {
   const navigate  = useNavigate();
   const location  = useLocation();
 
   const isActive = (path) =>
     location.pathname === path ||
     (path !== "/admin" && location.pathname.startsWith(path));
+
+  const visibleGroups = NAV_GROUPS
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => canAccess(admin?.role, item.roles)),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <aside className="admin-sidebar h-full flex flex-col">
@@ -101,8 +111,8 @@ export default function AdminSidebar({ closeSidebar, collapsed, setCollapsed }) 
       </div>
 
       {/* ── Navigation ─────────────────────────────── */}
-      <nav className="admin-sidebar-content flex-1 overflow-y-auto py-3 custom-scrollbar" aria-label="Admin navigation">
-        {NAV_GROUPS.map((group) => (
+      <nav className="admin-sidebar-content flex-1 overflow-y-auto py-2 custom-scrollbar" aria-label="Admin navigation">
+        {visibleGroups.map((group) => (
           <div key={group.label} className="admin-nav-group">
             {!collapsed && (
               <p className="admin-nav-group-label">{group.label}</p>

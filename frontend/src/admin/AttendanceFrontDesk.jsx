@@ -72,7 +72,7 @@ export default function AttendanceFrontDesk() {
     setLoading(true);
     try {
       const today = new Date().toISOString().split('T')[0];
-      const url = `${API_BASE_URL}/attendance/search/corrections?startDate=${today}&endDate=${today}`;
+      const url = `${API_BASE_URL}/attendance/logs?startDate=${today}&endDate=${today}`;
       
       const res = await fetch(url, { credentials: 'include' });
       const data = await res.json();
