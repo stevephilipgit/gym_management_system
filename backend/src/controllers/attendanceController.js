@@ -5,6 +5,7 @@ import { auditActions } from '../utils/auditLog.js';
 import logger from '../core/logger.js';
 import attendanceLogger from '../core/attendanceLogger.js';
 import { shouldSyncToSheets, syncAttendanceToSheets } from "../services/attendanceSyncService.js";
+import scopeResolver from "../core/scopeResolver.js";
 
 const Attendance = mongoose.model('Attendance');
 const Member = mongoose.model('Member');
@@ -310,7 +311,7 @@ export const searchPunch = async (req, res) => {
 };
 
 /**
- * Attendance Controller - Punch, corrections, and stats
+ * Attendance Controller - Punch, search logs, and stats
  */
 
 // POST /api/attendance/punch
@@ -318,6 +319,23 @@ export const markAttendance = async (req, res) => {
   try {
     const { memberId } = req.body;
     const adminId = req.admin?.id || null;
+
+    // Load member and verify admin scope
+    let member = await Member.findById(memberId).select("gender");
+    if (!member) {
+      return res.status(404).json({
+        success: false,
+        message: 'Member not found',
+      });
+    }
+
+    // Verify admin scope against member gender
+    if (!scopeResolver.checkMemberScope(req, member.gender)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: insufficient scope for this member\'s attendance',
+      });
+    }
 
     // Get settings
     const settings = await systemSettingsService.getSettings();
@@ -354,7 +372,7 @@ export const markAttendance = async (req, res) => {
     const { attendance, isCheckOut } = await attendanceService.markAttendance(memberId);
 
     // Get member details
-    const member = await Member.findById(memberId).lean();
+    member = await Member.findById(memberId).lean();
     await syncAttendanceIfConnected(attendance, member);
 
     // Audit log
@@ -481,6 +499,23 @@ export const getAttendanceHistory = async (req, res) => {
     const limit = parseInt(req.query.limit) || 30;
     const skip = parseInt(req.query.skip) || 0;
 
+    // Load member and verify admin scope
+    const member = await Member.findById(memberId).select("gender");
+    if (!member) {
+      return res.status(404).json({
+        success: false,
+        message: 'Member not found',
+      });
+    }
+
+    // Verify admin scope against member gender
+    if (!scopeResolver.checkMemberScope(req, member.gender)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: insufficient scope for this member\'s attendance history',
+      });
+    }
+
     const records = await Attendance.find({ memberId })
       .sort({ date: -1, checkInTime: -1 })
       .limit(limit)
@@ -520,172 +555,97 @@ export const getTodayStats = async (req, res) => {
   }
 };
 
-// ========== CORRECTIONS ENDPOINTS ==========
-
-// PUT /api/attendance/:id/correct-time
-export const correctTime = async (req, res) => {
+// GET /api/attendance/logs
+export const searchAttendanceLogs = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { checkInTime, checkOutTime } = req.body;
-    const adminId = req.admin.id;
+    const { q = '', startDate, endDate, skip = 0, limit = 100 } = req.query;
+    const parsedLimit = Math.min(parseInt(limit, 10) || 100, 500);
+    const parsedSkip = Math.max(parseInt(skip, 10) || 0, 0);
 
-    const attendance = await Attendance.findById(id);
-    if (!attendance) {
-      return res.status(404).json({
-        success: false,
-        message: 'Attendance record not found',
-      });
-    }
-
-    if (checkInTime) {
-      await attendanceService.correctCheckInTime(id, new Date(checkInTime), adminId);
-    }
-
-    if (checkOutTime) {
-      await attendanceService.correctCheckOutTime(id, new Date(checkOutTime), adminId);
-    }
-
-    await auditActions.attendanceCorrected(req, attendance.memberId, {
-      field: checkInTime ? 'checkInTime' : 'checkOutTime',
-      newValue: checkInTime || checkOutTime,
-    });
-
-    const updated = await Attendance.findById(id).lean();
-
-    res.json({
-      success: true,
-      message: 'Time corrected',
-      attendance: updated,
-    });
-  } catch (error) {
-    logger.error('Error correcting time', { error });
-    res.status(500).json({
-      success: false,
-      message: 'Failed to correct time',
-    });
-  }
-};
-
-// POST /api/attendance/add-missing
-export const addMissing = async (req, res) => {
-  try {
-    const { memberId, date, checkInTime, checkOutTime } = req.body;
-    const adminId = req.admin.id;
-
-    const attendance = await attendanceService.addMissedAttendance(
-      memberId,
-      new Date(date),
-      new Date(checkInTime),
-      checkOutTime ? new Date(checkOutTime) : null,
-      adminId
-    );
-
-    const member = await Member.findById(memberId).lean();
-    await syncAttendanceIfConnected(attendance, member);
-
-    await auditActions.attendanceMarked(req, memberId, new Date(date));
-
-    res.json({
-      success: true,
-      message: 'Missed attendance added',
-      attendance,
-    });
-  } catch (error) {
-    logger.error('Error adding missing attendance', { error });
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to add attendance',
-    });
-  }
-};
-
-// DELETE /api/attendance/:id
-export const deleteAttendance = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const adminId = req.admin.id;
-
-    const attendance = await Attendance.findById(id);
-    if (!attendance) {
-      return res.status(404).json({
-        success: false,
-        message: 'Attendance record not found',
-      });
-    }
-
-    await Attendance.deleteOne({ _id: id });
-
-    await auditActions.attendanceDeleted(req, attendance.memberId, id);
-
-    res.json({
-      success: true,
-      message: 'Attendance record deleted',
-    });
-  } catch (error) {
-    logger.error('Error deleting attendance', { error });
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete attendance',
-    });
-  }
-};
-
-// GET /api/attendance/search/corrections
-export const searchCorrections = async (req, res) => {
-  try {
-    const { query, type, startDate, endDate } = req.query;
-
-    let filter = {};
-
+    const attendanceFilter = {};
     if (startDate || endDate) {
-      filter.date = {};
+      attendanceFilter.date = {};
+
       if (startDate) {
         const start = new Date(startDate);
         start.setHours(0, 0, 0, 0);
-        filter.date.$gte = start;
+        attendanceFilter.date.$gte = start;
       }
+
       if (endDate) {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
-        filter.date.$lte = end;
+        attendanceFilter.date.$lte = end;
       }
     }
 
-    // If query provided, search by member phone or gymId
-    if (query) {
-      const member = await Member.findOne({
-        $or: [
-          { phone: query },
-          { gymId: parseInt(query) || null },
-        ],
+    const memberFilter = {};
+    const adminScope = req.admin?.scope;
+    const allowedGenders = {
+      all: ["Male", "Female", "Transgender"],
+      male: ["Male"],
+      female_plus_transgender: ["Female", "Transgender"],
+    }[adminScope];
+
+    if (!allowedGenders) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: invalid admin scope',
       });
-
-      if (member) {
-        filter.memberId = member._id;
-      } else {
-        return res.json({
-          success: true,
-          records: [],
-          message: 'No member found',
-        });
-      }
     }
 
-    const records = await Attendance.find(filter)
-      .populate('memberId', 'fullName phone gymId')
-      .sort({ date: -1, checkInTime: -1 })
-      .limit(100)
-      .lean();
+    memberFilter.gender = { $in: allowedGenders };
+
+    const search = String(q).trim();
+    if (search) {
+      const digitsOnly = search.replace(/\D/g, '');
+      const searchTerms = [
+        { fullName: { $regex: search, $options: 'i' } },
+        { phone: { $regex: digitsOnly || search, $options: 'i' } },
+      ];
+
+      if (digitsOnly) {
+        searchTerms.push({ gymId: Number(digitsOnly) });
+      }
+
+      memberFilter.$or = searchTerms;
+    }
+
+    const matchingMembers = await Member.find(memberFilter).select('_id').lean();
+    const memberIds = matchingMembers.map((member) => member._id);
+
+    if (memberIds.length === 0) {
+      return res.json({
+        success: true,
+        total: 0,
+        count: 0,
+        records: [],
+      });
+    }
+
+    attendanceFilter.memberId = { $in: memberIds };
+
+    const [records, total] = await Promise.all([
+      Attendance.find(attendanceFilter)
+        .populate('memberId', 'gymId fullName phone gender gymPlan validityEnd status')
+        .sort({ date: -1, checkInTime: -1 })
+        .skip(parsedSkip)
+        .limit(parsedLimit)
+        .lean(),
+      Attendance.countDocuments(attendanceFilter),
+    ]);
 
     res.json({
       success: true,
+      total,
+      count: records.length,
       records,
     });
   } catch (error) {
-    logger.error('Error searching corrections', { error });
+    logger.error('Error searching attendance records', { error });
     res.status(500).json({
       success: false,
-      message: 'Failed to search',
+      message: 'Failed to search attendance records',
     });
   }
 };

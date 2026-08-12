@@ -137,26 +137,6 @@ export const auditActions = {
     });
   },
 
-  async attendanceCorrected(req, memberId, corrections) {
-    return auditLog(req, {
-      action: "ATTENDANCE_CORRECTED",
-      status: "SUCCESS",
-      resourceType: "Attendance",
-      resourceId: memberId,
-      changes: corrections,
-    });
-  },
-
-  async attendanceDeleted(req, memberId, attendanceId) {
-    return auditLog(req, {
-      action: "ATTENDANCE_DELETED",
-      status: "SUCCESS",
-      resourceType: "Attendance",
-      resourceId: attendanceId,
-      changes: { deletedFor: memberId },
-    });
-  },
-
   async settingsUpdated(req, updates) {
     return auditLog(req, {
       action: "SETTINGS_UPDATED",

@@ -1,6 +1,7 @@
 /**
  * Critical Test Cases for Attendance System
- * Tests the 5 core flows: check-in, check-out, duplicate block, expiry block, correction
+ * Tests the core flows: check-in, duplicate block, expiry block, days-left,
+ * auto-close, settings, and last-attendance tracking.
  */
 
 import mongoose from 'mongoose';
@@ -178,38 +179,6 @@ describe('Attendance System - Critical Flows', () => {
     });
   });
 
-  // TEST 6: Manual correction
-  describe('TEST 6: Admin Attendance Correction', () => {
-    it('should correct check-in time', async () => {
-      const member = await createTestMember(1005, '9876543214', 30);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      // Create initial record
-      const { attendance } = await attendanceService.markAttendance(
-        member._id,
-        today
-      );
-
-      const originalTime = attendance.checkInTime;
-
-      // Correct the time
-      const newCheckInTime = new Date(originalTime);
-      newCheckInTime.setHours(10, 30, 0, 0);
-
-      const corrected = await attendanceService.correctCheckInTime(
-        attendance._id,
-        newCheckInTime,
-        'admin-id'
-      );
-
-      expect(corrected.checkInTime.getTime()).to.not.equal(originalTime.getTime());
-      expect(corrected.correctedBy).to.equal('admin-id');
-
-      console.log('✓ TEST 6 PASSED: Attendance corrected successfully');
-    });
-  });
-
   // TEST 7: Auto-close job
   describe('TEST 7: Auto-Close Open Records', () => {
     it('should auto-close open attendance records', async () => {
@@ -239,37 +208,6 @@ describe('Attendance System - Critical Flows', () => {
       expect(closed[0].checkOutTime).to.exist;
 
       console.log('✓ TEST 7 PASSED: Auto-close job executed successfully');
-    });
-  });
-
-  // TEST 8: Add missed attendance
-  describe('TEST 8: Admin Add Missed Attendance', () => {
-    it('should add missed attendance record', async () => {
-      const member = await createTestMember(1007, '9876543216', 30);
-      const date = new Date();
-      date.setDate(date.getDate() - 1);
-      date.setHours(0, 0, 0, 0);
-
-      const checkInTime = new Date(date);
-      checkInTime.setHours(9, 0, 0, 0);
-
-      const checkOutTime = new Date(date);
-      checkOutTime.setHours(17, 0, 0, 0);
-
-      const attendance = await attendanceService.addMissedAttendance(
-        member._id,
-        date,
-        checkInTime,
-        checkOutTime,
-        'admin-id'
-      );
-
-      expect(attendance).to.exist;
-      expect(attendance.state).to.equal('completed');
-      expect(attendance.durationMin).to.be.greaterThan(0);
-      expect(attendance.source).to.equal('manual');
-
-      console.log('✓ TEST 8 PASSED: Missed attendance added successfully');
     });
   });
 
