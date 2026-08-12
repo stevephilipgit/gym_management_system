@@ -1,7 +1,7 @@
 import React from 'react';
 import { FiEdit, FiTrash2, FiEye, FiCheck, FiX, FiRefreshCcw } from 'react-icons/fi';
 
-const IconButton = ({ type, onClick, title, disabled, className = "" }) => {
+const IconButton = ({ type, onClick, title, disabled, className = "", ariaLabel }) => {
   const getIcon = () => {
     switch (type) {
       case 'edit': return <FiEdit size={16} />;
@@ -31,6 +31,7 @@ const IconButton = ({ type, onClick, title, disabled, className = "" }) => {
       onClick={onClick}
       disabled={disabled}
       title={title || type.charAt(0).toUpperCase() + type.slice(1)}
+      aria-label={ariaLabel || title || type.charAt(0).toUpperCase() + type.slice(1)}
       className={`inline-flex items-center justify-center w-[34px] h-[34px] rounded-lg bg-transparent transition-all duration-200 ${getCustomClass()} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
     >
       {getIcon()}
