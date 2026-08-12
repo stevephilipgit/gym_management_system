@@ -30,6 +30,9 @@ router.post("/login", loginLimiter, validateSchema(loginSchema), authController.
 // GET /api/admin/captcha - issue a server-validated CAPTCHA challenge
 router.get("/captcha", captchaLimiter, authController.getCaptcha);
 
+// POST /api/admin/refresh - rotate expired access token using the refresh cookie
+router.post("/refresh", sensitiveLimiter, authController.refreshToken);
+
 // GET /api/admin/me
 router.get("/me", sensitiveLimiter, adminAuth, authController.getCurrentAdmin);
 

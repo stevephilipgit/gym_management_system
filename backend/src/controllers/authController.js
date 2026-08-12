@@ -25,6 +25,55 @@ const validatePasswordStrength = (password) => {
   return null;
 };
 
+// Convert jwt-style duration strings ("15m", "7d") to milliseconds.
+const parseDurationToMs = (duration) => {
+  if (typeof duration === "number") return duration;
+  const match = String(duration).trim().match(/^(\d+)\s*(ms|s|m|h|d)?$/i);
+  if (!match) return 15 * 60 * 1000;
+  const value = Number(match[1]);
+  const unit = (match[2] || "m").toLowerCase();
+  const multipliers = { ms: 1, s: 1000, m: 60 * 1000, h: 60 * 60 * 1000, d: 24 * 60 * 60 * 1000 };
+  return value * (multipliers[unit] || 60 * 1000);
+};
+
+// Build access + refresh JWTs for an admin.
+const issueTokens = (admin) => {
+  const accessToken = jwt.sign(
+    { id: admin._id, username: admin.username, role: admin.role, email: admin.email },
+    config.jwt.accessSecret,
+    { expiresIn: config.jwt.accessExpires }
+  );
+  const refreshToken = jwt.sign(
+    { id: admin._id, username: admin.username },
+    config.jwt.refreshSecret,
+    { expiresIn: config.jwt.refreshExpires }
+  );
+  return { accessToken, refreshToken };
+};
+
+// Set both auth cookies (access + rotating refresh) on the response.
+const setAuthCookies = (res, { accessToken, refreshToken }) => {
+  res.cookie("gym_admin_token", accessToken, {
+    httpOnly: true,
+    secure: config.app.isProduction,
+    sameSite: "strict",
+    path: "/",
+    maxAge: parseDurationToMs(config.jwt.accessExpires),
+  });
+  res.cookie("gym_admin_refresh", refreshToken, {
+    httpOnly: true,
+    secure: config.app.isProduction,
+    sameSite: "strict",
+    path: "/api/admin",
+    maxAge: parseDurationToMs(config.jwt.refreshExpires),
+  });
+};
+
+const clearAuthCookies = (res) => {
+  res.clearCookie("gym_admin_token", { path: "/" });
+  res.clearCookie("gym_admin_refresh", { path: "/api/admin" });
+};
+
 export const authController = {
   // GET captcha challenge (no authentication required)
   getCaptcha: asyncHandler(async (req, res) => {
@@ -60,25 +109,11 @@ export const authController = {
       throw new AuthError("Invalid credentials");
     }
 
-    // Generate JWT
-    const token = jwt.sign(
-      {
-        id: admin._id,
-        username: admin.username,
-        role: admin.role,
-        email: admin.email,
-      },
-      config.jwt.accessSecret,
-      { expiresIn: config.jwt.accessExpires }
-    );
+    // Generate access + refresh JWTs
+    const { accessToken, refreshToken } = issueTokens(admin);
 
-    // Set cookie
-    res.cookie("gym_admin_token", token, {
-      httpOnly: true,
-      secure: config.app.isProduction,
-      sameSite: "strict",
-      maxAge: 15 * 60 * 1000, // 15 minutes
-    });
+    // Set cookies (access + rotating refresh)
+    setAuthCookies(res, { accessToken, refreshToken });
 
     // Audit log
     req.admin = { id: admin._id, username: admin.username };
@@ -87,7 +122,48 @@ export const authController = {
     return res.json({
       success: true,
       message: "Login successful",
-      token,
+      token: accessToken,
+      admin: {
+        id: admin._id,
+        username: admin.username,
+        fullName: admin.fullName,
+        email: admin.email,
+        role: admin.role,
+      },
+    });
+  }),
+
+  // Refresh the admin session by rotating the access + refresh tokens.
+  refreshToken: asyncHandler(async (req, res) => {
+    const refreshToken = req.cookies.gym_admin_refresh;
+
+    if (!refreshToken) {
+      throw new AuthError("Session expired. Please login again.");
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, config.jwt.refreshSecret);
+    } catch (err) {
+      clearAuthCookies(res);
+      throw new AuthError("Session expired. Please login again.");
+    }
+
+    const admin = await Admin.findById(decoded.id);
+
+    if (!admin) {
+      clearAuthCookies(res);
+      throw new AuthError("Session expired. Please login again.");
+    }
+
+    // Rotate tokens so a stolen refresh token can only be used once.
+    const { accessToken, refreshToken: newRefreshToken } = issueTokens(admin);
+    setAuthCookies(res, { accessToken, refreshToken: newRefreshToken });
+
+    return res.json({
+      success: true,
+      message: "Session refreshed",
+      token: accessToken,
       admin: {
         id: admin._id,
         username: admin.username,
@@ -105,8 +181,8 @@ export const authController = {
     if (adminId) {
       await auditActions.adminLogout(req, adminId);
     }
-    
-    res.clearCookie("gym_admin_token");
+
+    clearAuthCookies(res);
     return res.json({ success: true, message: "Logged out successfully" });
   }),
 

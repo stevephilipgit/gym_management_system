@@ -12,15 +12,45 @@ const apiClient = axios.create({
   },
 });
 
-apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem("accessToken");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+// Skip automatic auth handling for endpoints that manage authentication themselves.
+const isAuthRoute = (url = "") =>
+  url.includes("/admin/login") ||
+  url.includes("/admin/captcha") ||
+  url.includes("/admin/refresh") ||
+  url.includes("/admin/forgot") ||
+  url.includes("/admin/reset");
 
-    return config;
-  },
+// Single-flight refresh so concurrent 401s trigger one refresh call.
+let isRefreshing = false;
+let refreshQueue = [];
+
+const refreshSession = async () => {
+  const response = await axios.post(`${apiBaseUrl}/admin/refresh`, {}, { withCredentials: true });
+  return response.data;
+};
+
+const redirectToLogin = () => {
+  if (window.location.pathname !== "/login") {
+    window.location.href = "/login";
+  }
+};
+
+const flushRefreshQueue = () => {
+  const queue = refreshQueue;
+  refreshQueue = [];
+  queue.forEach(({ config, resolve, reject }) => {
+    apiClient(config).then(resolve).catch(reject);
+  });
+};
+
+const rejectRefreshQueue = () => {
+  const queue = refreshQueue;
+  refreshQueue = [];
+  queue.forEach(({ reject }) => reject(new Error("Session expired")));
+};
+
+apiClient.interceptors.request.use(
+  (config) => config,
   (error) => Promise.reject(error)
 );
 
@@ -28,19 +58,51 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     const requestUrl = error.config?.url || "";
-    const onProtectedPage = window.location.pathname.startsWith("/admin");
-    const authCheckRequest = requestUrl.includes("/admin/me");
 
-    if (error.response?.status === 401 && window.location.pathname !== "/login" && (onProtectedPage || authCheckRequest)) {
-      localStorage.removeItem("accessToken");
-      window.location.href = "/login";
-    }
-
+    // 429: rate limited — keep going, caller may retry.
     if (error.response?.status === 429) {
       console.warn("[API] Rate limited. Retry after:", error.response.headers["retry-after"]);
+      return Promise.reject(error);
     }
 
-    return Promise.reject(error);
+    if (error.response?.status !== 401) {
+      return Promise.reject(error);
+    }
+
+    if (window.location.pathname === "/login" || isAuthRoute(requestUrl)) {
+      return Promise.reject(error);
+    }
+
+    const originalRequest = error.config;
+
+    // If a refresh is already in flight, queue this request and retry after it completes.
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        refreshQueue.push({ config: originalRequest, resolve, reject });
+      });
+    }
+
+    // Mark as retried to prevent infinite retry loops.
+    if (originalRequest._retry) {
+      redirectToLogin();
+      return Promise.reject(error);
+    }
+
+    originalRequest._retry = true;
+    isRefreshing = true;
+
+    return refreshSession()
+      .then(() => {
+        isRefreshing = false;
+        flushRefreshQueue();
+        return apiClient(originalRequest);
+      })
+      .catch((refreshError) => {
+        isRefreshing = false;
+        rejectRefreshQueue();
+        redirectToLogin();
+        return Promise.reject(refreshError);
+      });
   }
 );
 
