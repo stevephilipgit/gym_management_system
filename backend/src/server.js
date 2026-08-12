@@ -41,7 +41,6 @@ import fieldRoutes from "./routes/fieldRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
 import dietRoutes from "./routes/dietRoutes.js";
 import publicRoutes from "./routes/publicRoutes.js";
-import invoiceRoutes from "./routes/invoiceRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import adminAuth from "./middleware/adminAuth.js";
 import { initDailyTasks } from "./services/summaryService.js";
@@ -148,7 +147,6 @@ app.use("/api/upload", uploadRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/diets", dietRoutes);
 app.use("/api/public", publicRoutes);
-app.use("/api/invoices", invoiceRoutes);
 
 // ⭐ FIX: Finance route must come AFTER CORS + JSON + COOKIE + limiter
 app.use("/api/finance", financeRoutes);
@@ -172,6 +170,15 @@ app.get("/", (req, res) => {
 
 app.get("/api/health", healthController.healthCheck);
 app.get("/api/health/info", healthController.healthInfo);
+
+/* ============================================================
+   API CATCH-ALL — Reject unknown /api paths.
+   Ensures any unregistered endpoint returns 404 and never leaks
+   resources to unauthenticated clients.
+============================================================ */
+app.use("/api", (req, res) => {
+  res.status(404).json({ success: false, message: "Endpoint not found" });
+});
 
 /* ============================================================
    ERROR HANDLER (Must be last)

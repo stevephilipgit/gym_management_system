@@ -49,9 +49,6 @@ const upload = multer({
 // POST /api/members/register
 router.post("/register", adminAuth, upload.single("photo"), validateSchema(memberRegisterSchema), memberController.registerMember);
 
-// GET /api/members/public-validity/:gymId (public, no auth)
-router.get("/public-validity/:gymId", validityLimiter, memberController.checkPublicValidity);
-
 // DELETE /api/members/:gymId
 router.delete("/:gymId", adminAuth, requireRole("superadmin"), memberController.deleteMember);
 
