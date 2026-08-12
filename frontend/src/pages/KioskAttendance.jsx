@@ -2,8 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import apiClient from "../utils/apiClient.js";
 import PunchModal from "../components/shared/PunchModal.jsx";
 
-const KIOSK_PIN_ENABLED = false;
-const KIOSK_PIN = "2580";
 const COOLDOWN_MS = 2500;
 
 function sanitizeInput(raw) {
@@ -24,7 +22,6 @@ export default function KioskAttendance() {
   const inputRef = useRef(null);
   const [clock, setClock] = useState(new Date());
   const [input, setInput] = useState("");
-  const [pin, setPin] = useState("");
   const [validationError, setValidationError] = useState("");
   const [loading, setLoading] = useState(false);
   const [cooldownUntil, setCooldownUntil] = useState(0);
@@ -116,11 +113,6 @@ export default function KioskAttendance() {
       return;
     }
 
-    if (KIOSK_PIN_ENABLED && pin !== KIOSK_PIN) {
-      setValidationError("Invalid kiosk PIN");
-      return;
-    }
-
     setLoading(true);
     setValidationError("");
 
@@ -169,17 +161,6 @@ export default function KioskAttendance() {
         <h1>GIRI GYM</h1>
         <p className="kiosk-clock">{displayClock}</p>
         <form onSubmit={handleSubmit} className="kiosk-form">
-          {KIOSK_PIN_ENABLED ? (
-            <input
-              type="password"
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-              placeholder="Admin PIN"
-              className="kiosk-input"
-              maxLength={6}
-              autoComplete="off"
-            />
-          ) : null}
           <input
             ref={inputRef}
             type="text"

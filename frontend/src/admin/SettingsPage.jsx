@@ -6,7 +6,7 @@
  * Reuses existing save/fetch pattern for zero-regression risk.
  */
 import { useEffect, useState } from 'react';
-import { API_BASE_URL } from '../utils/apiClient';
+import apiClient from '../utils/apiClient';
 import { GoogleSheetsConnector } from './components/integrations/GoogleSheetsConnector';
 import ToggleSwitch from './components/ui/ToggleSwitch';
 
@@ -51,9 +51,8 @@ export default function SettingsPage() {
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/settings`, { credentials: 'include' });
-      const data = await res.json();
-      if (data.settings) setSettings(data.settings);
+      const res = await apiClient.get('/settings');
+      if (res.data.settings) setSettings(res.data.settings);
     } catch {
       showMsg('Failed to load settings', 'error');
     }
@@ -78,18 +77,8 @@ export default function SettingsPage() {
         if (settings[f] !== undefined) updates[f] = settings[f];
       }
 
-      const res = await fetch(`${API_BASE_URL}/settings`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(updates),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showMsg('✓ Settings saved successfully', 'success', 2000);
-      } else {
-        showMsg(data.message || 'Failed to save settings', 'error');
-      }
+      await apiClient.put('/settings', updates);
+      showMsg('✓ Settings saved successfully', 'success', 2000);
     } catch {
       showMsg('Error saving settings', 'error');
     } finally {
