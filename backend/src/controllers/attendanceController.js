@@ -317,7 +317,7 @@ export const searchPunch = async (req, res) => {
 export const markAttendance = async (req, res) => {
   try {
     const { memberId } = req.body;
-    const adminId = req.user ? req.user.id : null;
+    const adminId = req.admin?.id || null;
 
     // Get settings
     const settings = await systemSettingsService.getSettings();
@@ -527,7 +527,7 @@ export const correctTime = async (req, res) => {
   try {
     const { id } = req.params;
     const { checkInTime, checkOutTime } = req.body;
-    const adminId = req.user.id;
+    const adminId = req.admin.id;
 
     const attendance = await Attendance.findById(id);
     if (!attendance) {
@@ -570,7 +570,7 @@ export const correctTime = async (req, res) => {
 export const addMissing = async (req, res) => {
   try {
     const { memberId, date, checkInTime, checkOutTime } = req.body;
-    const adminId = req.user.id;
+    const adminId = req.admin.id;
 
     const attendance = await attendanceService.addMissedAttendance(
       memberId,
@@ -603,7 +603,7 @@ export const addMissing = async (req, res) => {
 export const deleteAttendance = async (req, res) => {
   try {
     const { id } = req.params;
-    const adminId = req.user.id;
+    const adminId = req.admin.id;
 
     const attendance = await Attendance.findById(id);
     if (!attendance) {

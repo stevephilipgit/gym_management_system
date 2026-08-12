@@ -12,7 +12,7 @@ const createLimiter = (keyPrefix, points, durationSeconds) => {
   });
 
   return async (req, res, next) => {
-    const identifier = req.user?.id || req.admin?.id || req.ip;
+    const identifier = req.admin?.id || req.ip;
     try {
       await limiter.consume(identifier);
       next();

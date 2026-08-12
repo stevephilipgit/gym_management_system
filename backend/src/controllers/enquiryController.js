@@ -113,7 +113,8 @@ export const submitEnquiry = async (req, res) => {
     try {
       const settings = await systemSettingsService.getSettings();
       const notifyEmail = settings?.enquiry_notify_email;
-      if (notifyEmail) {
+      const notificationsEnabled = settings?.email_notifications_enabled !== false;
+      if (notifyEmail && notificationsEnabled) {
         sendEnquiryNotification(enquiry, notifyEmail).then((sent) => {
           logger.info('[Enquiry] Email notification', { sent, to: notifyEmail });
         });
@@ -273,7 +274,7 @@ export const updateEnquiryStatus = async (req, res) => {
     logger.info('[Enquiry] Status updated', {
       id: enquiry._id,
       status,
-      adminId: req.user?.id,
+      adminId: req.admin?.id,
     });
 
     return res.json({ success: true, enquiry });
@@ -291,7 +292,7 @@ export const deleteEnquiry = async (req, res) => {
     const enquiry = await Enquiry.findByIdAndDelete(req.params.id).lean();
     if (!enquiry) return res.status(404).json({ success: false, message: 'Enquiry not found.' });
 
-    logger.info('[Enquiry] Deleted', { id: req.params.id, adminId: req.user?.id });
+    logger.info('[Enquiry] Deleted', { id: req.params.id, adminId: req.admin?.id });
 
     return res.json({ success: true, message: 'Enquiry deleted.' });
   } catch (err) {

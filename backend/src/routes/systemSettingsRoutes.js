@@ -16,7 +16,7 @@ router.get('/', adminAuth, systemSettingsController.getSettings);
 router.put(
   '/',
   adminAuth,
-  requireRole(['admin', 'superadmin']),
+  requireRole('superadmin'),
   systemSettingsController.updateSettings
 );
 

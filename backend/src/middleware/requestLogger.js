@@ -28,7 +28,7 @@ export const auditLogger = (req, res, next) => {
     if (!shouldLog) return;
 
     AuditLog.create({
-      userId: req.user?.id || req.admin?.id || null,
+      userId: req.admin?.id || null,
       ipAddress: req.ip,
       method: req.method,
       path: req.path,

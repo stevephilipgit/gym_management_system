@@ -89,7 +89,7 @@ export const handleGoogleCallback = async (req, res) => {
  */
 export const getConnectionStatus = async (req, res) => {
   try {
-    const adminEmail = req.user?.email || req.admin?.email;
+    const adminEmail = req.admin?.email;
 
     if (!adminEmail) {
       return res.status(401).json({
@@ -136,7 +136,7 @@ export const getConnectionStatus = async (req, res) => {
  */
 export const disconnectGoogleSheets = async (req, res) => {
   try {
-    const adminEmail = req.user?.email || req.admin?.email;
+    const adminEmail = req.admin?.email;
 
     if (!adminEmail) {
       return res.status(401).json({
@@ -168,7 +168,7 @@ export const disconnectGoogleSheets = async (req, res) => {
  */
 export const testGoogleConnection = async (req, res) => {
   try {
-    const adminEmail = req.user?.email || req.admin?.email;
+    const adminEmail = req.admin?.email;
 
     if (!adminEmail) {
       return res.status(401).json({

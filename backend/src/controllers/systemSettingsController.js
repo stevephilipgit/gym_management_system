@@ -41,7 +41,7 @@ export const getSettings = async (req, res) => {
 // PUT /api/settings
 export const updateSettings = async (req, res) => {
   try {
-    const adminId = req.user ? req.user.id : null;
+    const adminId = req.admin?.id || null;
     const updates = req.body;
 
     // Whitelist filter
