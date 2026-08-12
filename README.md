@@ -116,9 +116,6 @@ gym_management_system/
 │   ├── package.json
 │   ├── server.js
 │   ├── seed.js
-│   ├── checkOptimization.js
-│   ├── createAdmin.js
-│   ├── createIndexes.js
 │   ├── src/
 │   │   ├── app.js
 │   │   ├── config/

@@ -4,7 +4,11 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "seed": "node scripts/seed.js",
+    "create-admin": "node scripts/createAdmin.js",
+    "create-indexes": "node scripts/createIndexes.js",
+    "test": "mocha \"src/tests/**/*.test.js\" --timeout 30000"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -36,5 +40,9 @@
     "recharts": "^3.6.0",
     "redis": "^5.11.0",
     "winston": "^3.19.0"
+  },
+  "devDependencies": {
+    "chai": "^6.2.2",
+    "mocha": "^11.8.0"
   }
 }
