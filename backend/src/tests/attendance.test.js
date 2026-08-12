@@ -10,11 +10,11 @@ import { expect } from 'chai';
 dotenv.config();
 
 // Import models and services
-import '../src/models/Attendance.js';
-import '../src/models/Member.js';
-import '../src/models/SystemSettings.js';
-import attendanceService from '../src/services/attendanceService.js';
-import systemSettingsService from '../src/services/systemSettingsService.js';
+import '../models/Attendance.js';
+import '../models/Member.js';
+import '../models/SystemSettings.js';
+import attendanceService from '../services/attendanceService.js';
+import systemSettingsService from '../services/systemSettingsService.js';
 
 const Attendance = mongoose.model('Attendance');
 const Member = mongoose.model('Member');
