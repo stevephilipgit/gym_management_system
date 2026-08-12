@@ -220,9 +220,7 @@ export default function AdminRegister() {
       if (paymentStatus === "paid") fd.append("paymentMode", paymentMode);
       if (photo) fd.append("photo", photo);
 
-      const response = await apiClient.post("/members/register", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const response = await apiClient.post("/members/register", fd);
 
       const newMember = response.data?.member || response.data?.data || response.data || {};
       let selectedDiet = null;

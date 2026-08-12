@@ -19,7 +19,7 @@ export default function AdminUpdate() {
       const res = await apiClient.get(`/members/${normalizedGymId}`);
       setMemberData(res.data?.data || res.data || null);
       setGymId(normalizedGymId);
-    } catch (err) {
+    } catch {
       alert("Member not found or unauthorized");
       setMemberData(null);
     } finally {
@@ -50,9 +50,7 @@ export default function AdminUpdate() {
       }
       fd.append("customFields", JSON.stringify(updated.customFields || {}));
 
-      await apiClient.put(`/members/${normalizedGymId}`, fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      await apiClient.put(`/members/${normalizedGymId}`, fd);
 
       alert("Member updated successfully");
       setMemberData(null);

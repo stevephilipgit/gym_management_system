@@ -419,9 +419,7 @@ export default function AdminMembers() {
       }
       fd.append("customFields", JSON.stringify(updated.customFields || {}));
 
-      await apiClient.put(`/members/${normalizedGymId}`, fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      await apiClient.put(`/members/${normalizedGymId}`, fd);
 
       await loadMembers();
       closeEditModal();
