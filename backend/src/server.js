@@ -43,6 +43,7 @@ import dietRoutes from "./routes/dietRoutes.js";
 import publicRoutes from "./routes/publicRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import adminAuth from "./middleware/adminAuth.js";
+import requireRole from "./middleware/requireRole.js";
 import { initDailyTasks } from "./services/summaryService.js";
 import healthController from "./controllers/healthController.js";
 
@@ -150,7 +151,8 @@ app.use("/api/public", publicRoutes);
 
 // ⭐ FIX: Finance route must come AFTER CORS + JSON + COOKIE + limiter
 app.use("/api/finance", financeRoutes);
-app.use("/api/ai", adminAuth, aiRoutes);
+// AI assistant is a superadmin-only module.
+app.use("/api/ai", adminAuth, requireRole("superadmin"), aiRoutes);
 
 // ✅ NEW: Attendance System Routes
 app.use("/api/attendance", attendanceRoutes);

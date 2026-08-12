@@ -9,6 +9,7 @@ const KioskAttendance = lazy(() => import("./pages/KioskAttendance"));
 
 /* ADMIN */
 import AuthGuard from "./admin/components/Authguard";
+import RoleGuard from "./admin/RoleGuard.jsx";
 const AdminLayout = lazy(() => import("./admin/AdminLayout"));
 const AdminDashboardHome = lazy(() => import("./admin/AdminDashboardHome"));
 const AdminRegister = lazy(() => import("./admin/AdminRegister"));
@@ -24,7 +25,6 @@ const AiAssistant = lazy(() => import("./admin/features/ai-assistant/AiAssistant
 
 /* ATTENDANCE + REPORTS */
 const AttendanceFrontDesk = lazy(() => import("./admin/AttendanceFrontDesk"));
-const CorrectionPanel = lazy(() => import("./admin/CorrectionPanel"));
 const InactiveReportsPage = lazy(() => import("./admin/InactiveReportsPage"));
 const SettingsPage = lazy(() => import("./admin/SettingsPage"));
 const AdminEnquiries = lazy(() => import("./admin/AdminEnquiries"));
@@ -60,14 +60,13 @@ function App() {
               <Route path="register" element={<AdminRegister />} />
               <Route path="update" element={<AdminUpdate />} />
               <Route path="due" element={<AdminDues />} />
-              <Route path="packages" element={<AdminManagePackages />} />
-              <Route path="fields" element={<AdminManageFields />} />
+              <Route path="packages" element={<RoleGuard roles={["superadmin"]}><AdminManagePackages /></RoleGuard>} />
+              <Route path="fields" element={<RoleGuard roles={["superadmin"]}><AdminManageFields /></RoleGuard>} />
               <Route path="diet-manager" element={<AdminDietManager />} />
-              <Route path="ai-assistant" element={<AiAssistant />} />
+              <Route path="ai-assistant" element={<RoleGuard roles={["superadmin"]}><AiAssistant /></RoleGuard>} />
               <Route path="attendance-front-desk" element={<AttendanceFrontDesk />} />
-              <Route path="corrections" element={<CorrectionPanel />} />
               <Route path="inactivity-reports" element={<InactiveReportsPage />} />
-              <Route path="settings" element={<SettingsPage />} />
+              <Route path="settings" element={<RoleGuard roles={["superadmin"]}><SettingsPage /></RoleGuard>} />
               <Route path="enquiries" element={<AdminEnquiries />} />
             </Route>
 

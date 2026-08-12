@@ -14,14 +14,14 @@ router.use(adminLimiter);
    PACKAGE ROUTES
 ============================================================ */
 
-// GET /api/packages
+// GET /api/packages (readable by any authenticated admin — register form needs the plans)
 router.get("/", adminAuth, packageController.getAllPackages);
 
-// POST /api/packages
-router.post("/", adminAuth, validateSchema(createPackageSchema), packageController.createPackage);
+// POST /api/packages (Superadmin only)
+router.post("/", adminAuth, requireRole("superadmin"), validateSchema(createPackageSchema), packageController.createPackage);
 
-// PUT /api/packages/:id
-router.put("/:id", adminAuth, validateSchema(updatePackageSchema), packageController.updatePackage);
+// PUT /api/packages/:id (Superadmin only)
+router.put("/:id", adminAuth, requireRole("superadmin"), validateSchema(updatePackageSchema), packageController.updatePackage);
 
 // DELETE /api/packages/:id (Superadmin only)
 router.delete("/:id", adminAuth, requireRole("superadmin"), packageController.deletePackage);
