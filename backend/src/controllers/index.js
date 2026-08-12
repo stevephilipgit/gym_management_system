@@ -6,6 +6,5 @@ export { default as paymentController } from "./paymentController.js";
 export { default as analyticsController } from "./analyticsController.js";
 export { default as dietController } from "./dietController.js";
 export { default as fieldController } from "./fieldController.js";
-export { default as invoiceController } from "./invoiceController.js";
 export { default as uploadController } from "./uploadController.js";
 export { default as healthController } from "./healthController.js";

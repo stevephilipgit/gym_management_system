@@ -138,7 +138,6 @@ DynamicField (name, type, required, options)
 PaymentLog (gymId, amount, paymentMode, type)
 FinanceLog (gymId, amount, type, date)
 DailySummary (date, totalRevenue, breakdown by type)
-SignedPDFLink (url, expiresAt)
 AuditLog (userId, action, resourceType, changes, timestamp)
 ```
 
@@ -155,14 +154,14 @@ AuditLog (userId, action, resourceType, changes, timestamp)
 ### Required Variables (.env)
 ```env
 # Database
-MONGO_URL=mongodb+srv://user:pass@cluster.mongodb.net/gym_db
+DATABASE_URL=mongodb+srv://user:pass@cluster.mongodb.net/gym_db
 
 # Server
 PORT=5000
 NODE_ENV=development
 
 # JWT Secrets
-JWT_SECRET=your-32-char-secret-key
+JWT_ACCESS_SECRET=your-32-char-secret-key
 
 # Redis (optional, defaults to localhost:6379)
 REDIS_URL=redis://localhost:6379
@@ -357,7 +356,7 @@ db.auditlogs.find({ adminId: ObjectId("...") })
 ### MongoDB Connection Issues
 **Problem:** `ECONNREFUSED ::1:27017`  
 **Solution:** 
-1. Check `.env` has `MONGO_URL` (not `MONGO_URI`)
+1. Check `.env` has `DATABASE_URL` (not `MONGO_URL`)
 2. Verify MongoDB Atlas connection string is correct
 3. Ensure IP whitelist includes your server
 
