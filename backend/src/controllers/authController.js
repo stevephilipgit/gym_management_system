@@ -36,10 +36,12 @@ const parseDurationToMs = (duration) => {
   return value * (multipliers[unit] || 60 * 1000);
 };
 
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // Build access + refresh JWTs for an admin.
 const issueTokens = (admin) => {
   const accessToken = jwt.sign(
-    { id: admin._id, username: admin.username, role: admin.role, email: admin.email },
+    { id: admin._id, username: admin.username, role: admin.role, scope: admin.scope, email: admin.email },
     config.jwt.accessSecret,
     { expiresIn: config.jwt.accessExpires }
   );
@@ -97,7 +99,14 @@ export const authController = {
       throw new ValidationError("Username and password are required");
     }
 
-    const admin = await Admin.findOne({ username });
+    const loginId = String(username).trim();
+    const exactLoginRegex = new RegExp(`^${escapeRegExp(loginId)}$`, "i");
+    const admin = await Admin.findOne({
+      $or: [
+        { username: exactLoginRegex },
+        { email: exactLoginRegex },
+      ],
+    });
 
     if (!admin) {
       throw new AuthError("Invalid credentials");
@@ -129,6 +138,7 @@ export const authController = {
         fullName: admin.fullName,
         email: admin.email,
         role: admin.role,
+        scope: admin.scope,
       },
     });
   }),
@@ -170,6 +180,7 @@ export const authController = {
         fullName: admin.fullName,
         email: admin.email,
         role: admin.role,
+        scope: admin.scope,
       },
     });
   }),
@@ -204,7 +215,7 @@ export const authController = {
 
   // Create new admin (superadmin only)
   createAdmin: asyncHandler(async (req, res) => {
-    const { username, password, fullName, email, role = "trainer" } = req.body;
+    const { username, password, fullName, email, role = "trainer", scope = "all" } = req.body;
 
     // Validate input
     if (!username || !password || !fullName || !email) {
@@ -243,6 +254,7 @@ export const authController = {
       fullName,
       email,
       role,
+      scope,
       passwordHash,
     });
 
@@ -257,6 +269,7 @@ export const authController = {
         fullName: admin.fullName,
         email: admin.email,
         role: admin.role,
+        scope: admin.scope,
       },
     });
   }),
@@ -264,7 +277,7 @@ export const authController = {
   // Update admin
   updateAdmin: asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { fullName, email, role } = req.body;
+    const { fullName, email, role, scope } = req.body;
 
     const admin = await Admin.findById(id);
 
@@ -285,6 +298,9 @@ export const authController = {
     if (role && ["superadmin", "trainer", "finance"].includes(role)) {
       admin.role = role;
     }
+    if (scope && ["all", "male", "female_plus_transgender"].includes(scope)) {
+      admin.scope = scope;
+    }
 
     await admin.save();
 
@@ -297,6 +313,7 @@ export const authController = {
         fullName: admin.fullName,
         email: admin.email,
         role: admin.role,
+        scope: admin.scope,
       },
     });
   }),

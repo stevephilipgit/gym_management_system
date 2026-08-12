@@ -13,18 +13,22 @@ import DynamicField from "./models/DynamicField.js";
 import dotenv from "dotenv";
 dotenv.config();
 
-const MONGO_URI = process.env.MONGO_URI || process.env.DATABASE_URL;
+const MONGO_URI =
+  process.env.MONGO_URI || process.env.DATABASE_URL || process.env.MONGO_URL;
 const SEED_SUPERADMIN_PASSWORD = process.env.SEED_SUPERADMIN_PASSWORD;
 const SEED_TRAINER_PASSWORD = process.env.SEED_TRAINER_PASSWORD;
+const SEED_FINANCE_PASSWORD = process.env.SEED_FINANCE_PASSWORD;
 
 if (!MONGO_URI) {
-  console.error("❌ ERROR: MONGO_URI or DATABASE_URL is not defined in environment variables.");
+  console.error(
+    "❌ ERROR: MONGO_URI, DATABASE_URL or MONGO_URL is not defined in environment variables."
+  );
   process.exit(1);
 }
 
-if (!SEED_SUPERADMIN_PASSWORD || !SEED_TRAINER_PASSWORD) {
+if (!SEED_SUPERADMIN_PASSWORD || !SEED_TRAINER_PASSWORD || !SEED_FINANCE_PASSWORD) {
   console.error(
-    "ERROR: SEED_SUPERADMIN_PASSWORD and SEED_TRAINER_PASSWORD must be defined in environment variables."
+    "ERROR: SEED_SUPERADMIN_PASSWORD, SEED_TRAINER_PASSWORD and SEED_FINANCE_PASSWORD must be defined in environment variables."
   );
   process.exit(1);
 }
@@ -74,15 +78,15 @@ async function seedDatabase() {
     // ========================================================================
     // 2. SEED ADMIN COLLECTION
     // ========================================================================
-    console.log("\n👤 Seeding Admin collection...");
+    console.log("\n👤 Resetting and seeding Admin collection...");
 
-    const adminCount = await Admin.countDocuments();
     const adminUsers = [
       {
         fullName: "Super Admin",
         username: "superadmin",
         email: "superadmin@gymproject.com",
         role: "superadmin",
+        scope: "all",
         password: SEED_SUPERADMIN_PASSWORD,
       },
       {
@@ -90,50 +94,40 @@ async function seedDatabase() {
         username: "testtrainer",
         email: "trainer@gymproject.com",
         role: "trainer",
+        scope: "all",
         password: SEED_TRAINER_PASSWORD,
+      },
+      {
+        fullName: "Test Finance",
+        username: "testfinance",
+        email: "finance@gymproject.com",
+        role: "finance",
+        scope: "all",
+        password: SEED_FINANCE_PASSWORD,
       },
     ];
 
-    if (adminCount === 0) {
-      for (const user of adminUsers) {
-        const passwordHash = await bcrypt.hash(user.password, 10);
-        const admin = new Admin({
-          fullName: user.fullName,
-          username: user.username,
-          email: user.email,
-          role: user.role,
-          passwordHash,
-          lastLogin: null,
-          resetOtp: null,
-          otpExpiry: null,
-        });
-        await admin.save();
-        console.log(`  ✓ Admin created (username: ${user.username}, email: ${user.email})`);
-      }
-      console.log("  ℹ️  Two admin accounts created for testing.");
-    } else {
-      console.log(`  ℹ️  Admin collection already has ${adminCount} records. Checking required test accounts...`);
-      for (const user of adminUsers) {
-        const existingAdmin = await Admin.findOne({ username: user.username });
-        if (!existingAdmin) {
-          const passwordHash = await bcrypt.hash(user.password, 10);
-          const admin = new Admin({
-            fullName: user.fullName,
-            username: user.username,
-            email: user.email,
-            role: user.role,
-            passwordHash,
-            lastLogin: null,
-            resetOtp: null,
-            otpExpiry: null,
-          });
-          await admin.save();
-          console.log(`  ✓ Missing admin created (username: ${user.username}, email: ${user.email})`);
-        } else {
-          console.log(`  ✓ Admin already exists: ${user.username}`);
-        }
-      }
+    // Delete every existing admin so the seeded credentials are always valid.
+    const deleted = await Admin.deleteMany({});
+    console.log(`  ✓ Deleted ${deleted.deletedCount} existing admin account(s)`);
+
+    for (const user of adminUsers) {
+      const passwordHash = await bcrypt.hash(user.password, 10);
+      const admin = new Admin({
+        fullName: user.fullName,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        scope: user.scope,
+        passwordHash,
+        lastLogin: null,
+        resetOtp: null,
+        otpExpiry: null,
+      });
+      await admin.save();
+      console.log(`  ✓ Admin created (username: ${user.username}, email: ${user.email}, role: ${user.role})`);
     }
+    console.log("  ℹ️  Three admin accounts created for testing (superadmin / trainer / finance).");
 
     // ========================================================================
     // 3. SEED PACKAGE COLLECTION
@@ -254,7 +248,7 @@ async function seedDatabase() {
     console.log("  6. dynamicfields");
 
     console.log("\n🔑 Sample Data Added:");
-    console.log("  ✓ 1 Super Admin user");
+    console.log("  ✓ 3 Admin users (superadmin, trainer, finance)");
     console.log("  ✓ 4 Package plans (1M, 3M, 6M, 12M)");
     console.log("  ✓ 6 Dynamic fields for member registration");
 

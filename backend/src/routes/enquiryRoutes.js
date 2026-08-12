@@ -6,6 +6,7 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import adminAuth from '../middleware/adminAuth.js';
+import requireRole from '../middleware/requireRole.js';
 import * as enquiryController from '../controllers/enquiryController.js';
 
 const router = express.Router();
@@ -41,6 +42,6 @@ router.get('/:id', adminAuth, enquiryController.getEnquiryById);
 router.patch('/:id/status', adminAuth, enquiryController.updateEnquiryStatus);
 
 // DELETE /api/enquiries/:id
-router.delete('/:id', adminAuth, enquiryController.deleteEnquiry);
+router.delete('/:id', adminAuth, requireRole("superadmin"), enquiryController.deleteEnquiry);
 
 export default router;

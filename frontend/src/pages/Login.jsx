@@ -38,7 +38,7 @@ export default function Login() {
     setLoginError("");
 
     if (!username.trim()) {
-      setLoginError("Username is required");
+      setLoginError("Username or email is required");
       return;
     }
 
@@ -91,13 +91,13 @@ export default function Login() {
             {loginError ? <div className="admin-login-error" role="alert">{loginError}</div> : null}
 
             <div className="admin-login-field">
-              <label htmlFor="username">Username</label>
+              <label htmlFor="username">Username or Email</label>
               <div className="admin-login-input">
                 <FiUser className="admin-login-input-icon" />
                 <input
                   id="username"
                   type="text"
-                  placeholder="username"
+                  placeholder="username or email"
                   autoComplete="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}

@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import apiClient from '../utils/apiClient';
 import { GoogleSheetsConnector } from './components/integrations/GoogleSheetsConnector';
 import ToggleSwitch from './components/ui/ToggleSwitch';
+import { getStoredTheme, applyTheme } from '../theme.js';
 
 const SECTION_TABS = [
   { id: 'attendance', label: '⏱ Attendance' },
@@ -171,6 +172,7 @@ export default function SettingsPage() {
 
             <Card title="🔊 Front Desk UX">
               <ToggleField label="Enable Success / Error Sounds" value={settings.soundEnabled} onChange={(v) => handleChange('soundEnabled', v)} />
+              <ThemeControl />
               <InfoBox>Sounds help receptionist quickly identify punch success/failure at the front desk.</InfoBox>
             </Card>
           </div>
@@ -370,6 +372,48 @@ function InfoBox({ children, type = 'info' }) {
       padding: '10px 14px', borderRadius: 8, fontSize: 12, marginTop: 8,
     }}>
       {children}
+    </div>
+  );
+}
+
+function ThemeControl() {
+  const [theme, setTheme] = useState(getStoredTheme());
+
+  const changeTheme = (next) => {
+    applyTheme(next);
+    setTheme(next);
+  };
+
+  return (
+    <div>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
+        Theme
+      </label>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {['light', 'dark'].map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => changeTheme(t)}
+            aria-pressed={theme === t}
+            style={{
+              flex: 1,
+              padding: '8px 0',
+              background: theme === t ? 'var(--accent)' : 'transparent',
+              color: theme === t ? '#000' : 'var(--text-secondary)',
+              border: `1px solid ${theme === t ? 'var(--accent)' : 'var(--border-color)'}`,
+              borderRadius: 6,
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: 'pointer',
+              textTransform: 'capitalize',
+              transition: 'all 0.15s',
+            }}
+          >
+            {t === 'light' ? '☀️ Light' : '🌙 Dark'}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

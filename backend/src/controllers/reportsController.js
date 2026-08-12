@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import logger from '../core/logger.js';
+import scopeResolver from '../core/scopeResolver.js';
 
 const Member = mongoose.model('Member');
 const Attendance = mongoose.model('Attendance');
@@ -15,6 +16,19 @@ export const getInactiveMembers = async (req, res) => {
     const skip = parseInt(req.query.skip) || 0;
     const limit = parseInt(req.query.limit) || 50;
 
+    // Build gender filter based on admin role/scope
+    const genderFilter = {};
+    if (req.admin && req.admin.scope) {
+      const allowedGenders = {
+        all: ["Male", "Female", "Transgender"],
+        male: ["Male"],
+        female_plus_transgender: ["Female", "Transgender"],
+      }[req.admin.scope] || [];
+      if (allowedGenders.length > 0) {
+        genderFilter.gender = { $in: allowedGenders };
+      }
+    }
+
     // Date N days ago
     const dateThreshold = new Date();
     dateThreshold.setDate(dateThreshold.getDate() - days);
@@ -25,6 +39,7 @@ export const getInactiveMembers = async (req, res) => {
     // 2. Have no lastAttendanceDate
     const members = await Member.find({
       status: 'active',
+      ...genderFilter,
       $or: [
         { lastAttendanceDate: { $lt: dateThreshold } },
         { lastAttendanceDate: null },
@@ -131,9 +146,27 @@ export const exportMembersCSV = async (req, res) => {
   try {
     const { status, skip = 0, limit = 5000 } = req.query;
 
+    // Build gender filter based on admin role/scope
+    const genderFilter = {};
+    if (req.admin && req.admin.scope) {
+      const allowedGenders = {
+        all: ["Male", "Female", "Transgender"],
+        male: ["Male"],
+        female_plus_transgender: ["Female", "Transgender"],
+      }[req.admin.scope] || [];
+      if (allowedGenders.length > 0) {
+        genderFilter.gender = { $in: allowedGenders };
+      }
+    }
+
     let filter = {};
     if (status) {
       filter.status = status;
+    }
+
+    // Apply gender scope filter if no status filter (or always apply it)
+    if (genderFilter.gender) {
+      filter.gender = genderFilter.gender;
     }
 
     const members = await Member.find(filter)

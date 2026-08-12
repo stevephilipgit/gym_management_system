@@ -30,6 +30,12 @@ const AdminSchema = new mongoose.Schema(
       default: "trainer",
     },
 
+    scope: {
+      type: String,
+      enum: ["all", "male", "female_plus_transgender"],
+      default: "all",
+    },
+
     passwordHash: {
       type: String,
       required: true,

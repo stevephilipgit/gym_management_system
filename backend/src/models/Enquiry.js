@@ -77,6 +77,11 @@ const enquirySchema = new mongoose.Schema(
       default: null,
       maxlength: 1000,
     },
+    gender: {
+      type: String,
+      enum: ["Male", "Female", "Transgender"],
+      default: "Male",
+    },
   },
   { timestamps: true }
 );

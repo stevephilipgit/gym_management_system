@@ -51,6 +51,7 @@ export default function AdminRegister() {
   const [submitError, setSubmitError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [registerSuccessMessage, setRegisterSuccessMessage] = useState("");
   const fetchedRef = useRef(false);
 
   const loadDynamicFields = async () => {
@@ -238,6 +239,10 @@ export default function AdminRegister() {
           };
         }
       }
+
+      // Display member code after successful registration
+      const memberCode = newMember.memberCode || "";
+      setRegisterSuccessMessage(`Member registered successfully! Member Code: ${memberCode}`);
 
       downloadMembershipInvoice({
         member: {
@@ -480,6 +485,12 @@ export default function AdminRegister() {
             {submitError && (
               <div className="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">
                 {submitError}
+              </div>
+            )}
+
+            {registerSuccessMessage && (
+              <div className="mt-4 rounded border border-green-300 bg-green-50 p-3 text-sm text-green-700">
+                {registerSuccessMessage}
               </div>
             )}
 

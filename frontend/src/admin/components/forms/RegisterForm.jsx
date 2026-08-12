@@ -19,6 +19,7 @@ export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel =
     photo: null,
     photoUrl: "",
   });
+  const [adminScope, setAdminScope] = useState("all");
 
   const SYSTEM_KEYS = [
     "gender",
@@ -54,9 +55,44 @@ export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel =
   }, []);
 
   useEffect(() => {
+    const loadDynamicFields = async () => {
+      try {
+        const res = await apiClient.get("/fields/member");
+        setDynamicFields(res.data?.data || res.data || []);
+      } catch (err) {
+        console.log("Failed to load dynamic fields");
+      }
+    };
+
+    loadDynamicFields();
+
+    // Refresh when user returns to this tab after toggling fields in ManageFields
+    const handleVisibility = () => {
+      if (!document.hidden) loadDynamicFields();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
+  useEffect(() => {
     if (defaultData?.customFields) {
       setCustomFields(defaultData.customFields);
     }
+  }, [defaultData]);
+
+  useEffect(() => {
+    const fetchAdminScope = async () => {
+      try {
+        const res = await apiClient.get("/admin/me");
+        const admin = res.data?.admin || res.data?.data || res.data || null;
+        if (admin && admin.scope) {
+          setAdminScope(admin.scope);
+        }
+      } catch (err) {
+        console.log("Failed to fetch admin scope:", err);
+      }
+    };
+    fetchAdminScope();
   }, [defaultData]);
 
   useEffect(() => {
@@ -160,8 +196,21 @@ export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel =
 
           <Field label="Gender">
             <select value={form.gender} onChange={(e) => updateField("gender", e.target.value)} className="field-control">
-              <option>Male</option>
-              <option>Female</option>
+              <option value="">Select</option>
+              {adminScope === "all"
+                ? [
+                    <option key="male" value="Male">Male</option>,
+                    <option key="female" value="Female">Female</option>,
+                    <option key="transgender" value="Transgender">Transgender</option>,
+                  ]
+                : adminScope === "male"
+                ? [
+                    <option key="male" value="Male">Male</option>,
+                  ]
+                : adminScope === "female_plus_transgender" && [
+                    <option key="female" value="Female">Female</option>,
+                    <option key="transgender" value="Transgender">Transgender</option>,
+                  ]}
             </select>
           </Field>
 

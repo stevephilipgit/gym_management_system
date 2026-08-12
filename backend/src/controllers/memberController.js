@@ -3,9 +3,11 @@ import memberRepository from "../repositories/memberRepository.js";
 import paymentRepository from "../repositories/paymentRepository.js";
 import { updateTodaySummary } from "../services/summaryService.js";
 import { auditActions } from "../utils/auditLog.js";
-import { asyncHandler, ValidationError, NotFoundError } from "../core/errorHandler.js";
+import { asyncHandler, ValidationError, NotFoundError, ForbiddenError } from "../core/errorHandler.js";
 import PaymentLog from "../models/PaymentLog.js";
 import FinanceLog from "../models/FinanceLog.js";
+import Counter from "../services/atomicCounter.js";
+import scopeResolver from "../core/scopeResolver.js";
 
 const MS_DAY = 1000 * 60 * 60 * 24;
 
@@ -49,6 +51,20 @@ export const memberController = {
     const customFields = data.customFields ? JSON.parse(data.customFields) : {};
     delete data.customFields;
 
+    // Verify requested gender against admin scope
+    if (data.gender) {
+      const allowedGenders = {
+        all: ["Male", "Female", "Transgender"],
+        male: ["Male"],
+        female_plus_transgender: ["Female", "Transgender"],
+      }[req.admin.scope] || [];
+      if (!allowedGenders.includes(data.gender)) {
+        throw new ForbiddenError(
+          `Access denied: cannot register ${data.gender} member with current admin scope`
+        );
+      }
+    }
+
     const paymentStatus = data.paymentStatus === "paid" ? "paid" : "not_paid";
     let paymentMode = null;
 
@@ -62,6 +78,18 @@ export const memberController = {
 
     // Generate next Gym ID
     const gymId = await getNextGymId();
+
+    // Generate atomic member code
+    const codePrefix = {
+      Male: "M",
+      Female: "F",
+      Transgender: "T",
+    }[data.gender] || "M";
+    const counter = await Counter.increment(`member_code_${codePrefix}`);
+    const memberCode = `${codePrefix}${counter
+      .toString()
+      .padStart(4, "0")
+      .slice(-4)}`;
 
     // Calculate validity dates
     let currentPaymentDate = null;
@@ -77,6 +105,7 @@ export const memberController = {
     // Create member
     const member = await memberRepository.create({
       gymId,
+      memberCode,
       ...data,
       aadhar: String(data.aadhar).replace(/\D/g, ""),
       phone: String(data.phone).replace(/\D/g, ""),
@@ -134,6 +163,18 @@ export const memberController = {
     const { page = 1, pageSize = 10, status, search } = req.query;
     const filters = {};
 
+    // Apply gender scope filter based on admin role/scope
+    if (req.admin && req.admin.scope) {
+      const allowedGenders = {
+        all: ["Male", "Female", "Transgender"],
+        male: ["Male"],
+        female_plus_transgender: ["Female", "Transgender"],
+      }[req.admin.scope] || [];
+      if (allowedGenders.length > 0) {
+        filters.gender = { $in: allowedGenders };
+      }
+    }
+
     if (status) filters.status = status;
     if (search) {
       // Will handle with repository search method
@@ -165,6 +206,11 @@ export const memberController = {
       throw new NotFoundError("Member not found");
     }
 
+    // Verify admin scope against member gender
+    if (!scopeResolver.checkMemberScope(req, member.gender)) {
+      throw new ForbiddenError("Access denied: insufficient scope for this member");
+    }
+
     // Calculate days left
     const daysLeft = calculateDaysLeft(member.validityEnd);
 
@@ -185,6 +231,11 @@ export const memberController = {
       throw new NotFoundError("Member not found");
     }
 
+    // Verify admin scope against member gender
+    if (!scopeResolver.checkMemberScope(req, member.gender)) {
+      throw new ForbiddenError("Access denied: insufficient scope for this member");
+    }
+
     const daysLeft = calculateDaysLeft(member.validityEnd);
 
     return res.json({
@@ -199,6 +250,18 @@ export const memberController = {
   // Update member
   updateMember: asyncHandler(async (req, res) => {
     const lookupGymId = req.params.gymId || req.params.id;
+
+    // Load member first and verify scope BEFORE mutation
+    const existingMember = await memberRepository.findByGymId(lookupGymId);
+    if (!existingMember) {
+      throw new NotFoundError("Member not found");
+    }
+
+    // Verify admin scope against existing member gender
+    if (!scopeResolver.checkMemberScope(req, existingMember.gender)) {
+      throw new ForbiddenError("Access denied: insufficient scope for this member");
+    }
+
     const data = req.body;
 
     // Handle photo upload
@@ -210,6 +273,9 @@ export const memberController = {
     if (data.customFields && typeof data.customFields === "string") {
       data.customFields = JSON.parse(data.customFields);
     }
+
+    // Do NOT trust incoming gender to authorize the operation.
+    // Scope is verified against the existing member gender above.
 
     const member = await memberRepository.updateByGymId(lookupGymId, data);
 
@@ -223,6 +289,18 @@ export const memberController = {
   // Delete member
   deleteMember: asyncHandler(async (req, res) => {
     const lookupGymId = req.params.gymId || req.params.id;
+
+    // Load member first and verify scope
+    const existingMember = await memberRepository.findByGymId(lookupGymId);
+    if (!existingMember) {
+      throw new NotFoundError("Member not found");
+    }
+
+    // Verify admin scope - only superadmin (scope=all) can delete
+    if (!scopeResolver.checkMemberScope(req, existingMember.gender)) {
+      throw new ForbiddenError("Access denied: only superadmin can delete members");
+    }
+
     const member = await memberRepository.deleteByGymId(lookupGymId);
 
     if (!member) {
@@ -244,10 +322,24 @@ export const memberController = {
       includeAllStatuses = "false",
     } = req.query;
 
+    // Build gender filter based on admin scope
+    const genderFilter = {};
+    if (req.admin && req.admin.scope) {
+      const allowedGenders = {
+        all: ["Male", "Female", "Transgender"],
+        male: ["Male"],
+        female_plus_transgender: ["Female", "Transgender"],
+      }[req.admin.scope] || [];
+      if (allowedGenders.length > 0) {
+        genderFilter.gender = { $in: allowedGenders };
+      }
+    }
+
     const members = await memberRepository.findExpiringMembers(Number(days), {
       includeExpired: includeExpired === "true",
       includeDraft: includeDraft === "true",
       includeAllStatuses: includeAllStatuses === "true",
+      ...genderFilter,
     });
 
     return res.json({
@@ -259,7 +351,20 @@ export const memberController = {
 
   // Get expired members
   getExpiredMembers: asyncHandler(async (req, res) => {
-    const members = await memberRepository.findExpiredMembers();
+    // Build gender filter based on admin scope
+    const genderFilter = {};
+    if (req.admin && req.admin.scope) {
+      const allowedGenders = {
+        all: ["Male", "Female", "Transgender"],
+        male: ["Male"],
+        female_plus_transgender: ["Female", "Transgender"],
+      }[req.admin.scope] || [];
+      if (allowedGenders.length > 0) {
+        genderFilter.gender = { $in: allowedGenders };
+      }
+    }
+
+    const members = await memberRepository.findExpiredMembers(genderFilter);
 
     return res.json({
       success: true,
@@ -344,6 +449,18 @@ export const memberController = {
   // Renew member
   renewMember: asyncHandler(async (req, res) => {
     const lookupGymId = req.params.gymId || req.params.id;
+
+    // Load member first and verify scope BEFORE mutation
+    const existingMember = await memberRepository.findByGymId(lookupGymId);
+    if (!existingMember) {
+      throw new NotFoundError("Member not found");
+    }
+
+    // Verify admin scope against member gender
+    if (!scopeResolver.checkMemberScope(req, existingMember.gender)) {
+      throw new ForbiddenError("Access denied: insufficient scope for this member renewal");
+    }
+
     const {
       plan,
       newPlan,
@@ -362,17 +479,8 @@ export const memberController = {
     const parsedExtraDays = Number(extraDays) || 0;
     const selectedPaymentMode = paymentMode || "cash";
 
-    const member = await memberRepository.findByGymId(lookupGymId);
-    if (!member) {
-      throw new NotFoundError("Member not found");
-    }
-
-    if (!selectedPlan) {
-      throw new ValidationError("Plan is required");
-    }
-
     // Calculate new validity
-    const baseDate = member.validityEnd ? new Date(member.validityEnd) : new Date();
+    const baseDate = existingMember.validityEnd ? new Date(existingMember.validityEnd) : new Date();
     const newValidityEnd = new Date(baseDate);
     newValidityEnd.setMonth(newValidityEnd.getMonth() + getPlanMonths(selectedPlan));
     newValidityEnd.setDate(newValidityEnd.getDate() - 1);
@@ -382,36 +490,36 @@ export const memberController = {
 
     // Update member
     const updatedMember = await memberRepository.updateByGymId(lookupGymId, {
-      oldPaymentDate: member.currentPaymentDate,
+      oldPaymentDate: existingMember.currentPaymentDate,
       currentPaymentDate: new Date(),
       validityEnd: newValidityEnd,
       paymentStatus: "paid",
       paymentMode: selectedPaymentMode,
       status: "active",
       gymPlan: selectedPlan,
-      trainingType: trainingType || member.trainingType,
-      dietId: dietId || member.dietId || null,
-      dietName: dietName || member.dietName || null,
+      trainingType: trainingType || existingMember.trainingType,
+      dietId: dietId || existingMember.dietId || null,
+      dietName: dietName || existingMember.dietName || null,
       dietIncludedInLastBilling: dietIncludedInLastBilling === "true" || Boolean(dietIncludedInLastBilling),
     });
 
     // Log payment and finance
     const financeLog = await FinanceLog.create({
-      gymId: member.gymId,
-      memberName: member.fullName,
+      gymId: updatedMember.gymId,
+      memberName: updatedMember.fullName,
       amount: selectedAmount,
       plan: selectedPlan,
-      trainingType: trainingType || member.trainingType,
+      trainingType: trainingType || existingMember.trainingType,
       type: "renew",
       date: new Date(),
     });
 
     await PaymentLog.create({
-      gymId: member.gymId,
-      name: member.fullName,
+      gymId: updatedMember.gymId,
+      name: updatedMember.fullName,
       amount: selectedAmount,
       plan: selectedPlan,
-      trainingType: trainingType || member.trainingType,
+      trainingType: trainingType || existingMember.trainingType,
       paidAt: new Date(),
       paymentMode: selectedPaymentMode,
       type: "renewal",
@@ -433,7 +541,20 @@ export const memberController = {
       throw new ValidationError("Search query must be at least 2 characters");
     }
 
-    const members = await memberRepository.search(q);
+    // Build gender filter based on admin scope
+    const genderFilter = {};
+    if (req.admin && req.admin.scope) {
+      const allowedGenders = {
+        all: ["Male", "Female", "Transgender"],
+        male: ["Male"],
+        female_plus_transgender: ["Female", "Transgender"],
+      }[req.admin.scope] || [];
+      if (allowedGenders.length > 0) {
+        genderFilter.gender = { $in: allowedGenders };
+      }
+    }
+
+    const members = await memberRepository.search(q, genderFilter);
 
     return res.json({
       success: true,

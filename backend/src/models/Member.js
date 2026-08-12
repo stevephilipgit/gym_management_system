@@ -14,7 +14,7 @@ const memberSchema = new mongoose.Schema(
 
     gender: {
       type: String,
-      enum: ["Male", "Female"],
+      enum: ["Male", "Female", "Transgender"],
       required: true,
     },
 
@@ -76,7 +76,10 @@ const memberSchema = new mongoose.Schema(
       default: {},
     },
 
-    // ✅ Feature 2: Diet Management
+    // ✅ Feature 4: Member Code - front-facing member identifier
+    memberCode: {
+      type: String,
+    },
     dietId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Diet",

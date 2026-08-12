@@ -55,10 +55,10 @@ export const memberRegisterSchema = Joi.object({
     }),
   
   gender: Joi.string()
-    .valid("Male", "Female")
+    .valid("Male", "Female", "Transgender")
     .required()
     .messages({
-      "any.only": "Gender must be Male or Female",
+      "any.only": "Gender must be Male, Female, or Transgender",
       "any.required": "Gender is required",
     }),
   
@@ -167,7 +167,7 @@ export const memberUpdateSchema = Joi.object({
     .optional(),
   
   gender: Joi.string()
-    .valid("Male", "Female")
+    .valid("Male", "Female", "Transgender")
     .optional(),
   
   trainingType: Joi.string()

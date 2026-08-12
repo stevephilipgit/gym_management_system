@@ -82,7 +82,7 @@ class MemberRepository {
   }
 
   // Find expiring members (validity ending within N days)
-  async findExpiringMembers(days = 7, options = {}) {
+async findExpiringMembers(days = 7, options = {}) {
     const now = new Date();
     const futureDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
     const includeExpired = Boolean(options.includeExpired);
@@ -97,16 +97,24 @@ class MemberRepository {
       query.status = includeDraft ? { $in: ["active", "expired", "draft"] } : { $in: ["active", "expired"] };
     }
 
+    if (options.genderFilter && options.genderFilter.gender) {
+      query.gender = options.genderFilter.gender;
+    }
+
     return Member.find(query).sort({ validityEnd: 1 });
   }
 
   // Find expired members
-  async findExpiredMembers() {
+  async findExpiredMembers(genderFilter = {}) {
     const now = new Date();
-    return Member.find({
+    const query = {
       validityEnd: { $lt: now },
       status: { $ne: "archived" },
-    });
+    };
+    if (genderFilter.gender) {
+      query.gender = genderFilter.gender;
+    }
+    return Member.find(query).populate("dietId");
   }
 
   // Find members by status
@@ -120,7 +128,7 @@ class MemberRepository {
   }
 
   // Search members (by name, phone, aadhar, gymId)
-  async search(searchTerm) {
+  async search(searchTerm, genderFilter = {}) {
     return Member.find({
       $or: [
         { fullName: { $regex: searchTerm, $options: "i" } },
@@ -128,6 +136,7 @@ class MemberRepository {
         { aadhar: { $regex: searchTerm, $options: "i" } },
         { gymId: Number(searchTerm) || null },
       ],
+      ...genderFilter,
     }).populate("dietId");
   }
 

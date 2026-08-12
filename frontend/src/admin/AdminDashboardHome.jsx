@@ -6,17 +6,44 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 
-const COLORS = ["#D4AF37", "#6ca8ff", "#3ddc84", "#ffb800"];
+/* ── Semantic visualization palette ──────────────────────────────
+   Primary business data uses the brand accent; categorical data uses
+   stable secondary tones so the same category keeps the same colour
+   across every chart (e.g. "Weight Gain" is always blue). */
+const TRAINING_TYPE_COLORS = {
+  "Weight Loss": "var(--accent)",
+  "Weight Gain": "#6ca8ff",
+  "Transformation": "#3ddc84",
+};
+const PALETTE = ["#6ca8ff", "var(--accent)", "#3ddc84", "#b78bff", "#ffb800", "#26c6da"];
+const categoryColor = (name = "", index = 0) =>
+  TRAINING_TYPE_COLORS[name] || PALETTE[index % PALETTE.length];
+
+const formatINR = (value) => `₹${Number(value || 0).toLocaleString("en-IN")}`;
+const formatCount = (value) => Number(value || 0).toLocaleString("en-IN");
+
+const compactCurrency = (value) => {
+  const n = Number(value || 0);
+  if (n >= 10000000) return `₹${(n / 10000000).toFixed(1).replace(/\.0$/, "")}Cr`;
+  if (n >= 100000) return `₹${(n / 100000).toFixed(1).replace(/\.0$/, "")}L`;
+  if (n >= 1000) return `₹${(n / 1000).toFixed(1).replace(/\.0$/, "")}K`;
+  return `₹${n}`;
+};
+
+const TOOLTIP_STYLE = {
+  background: "var(--surface-soft)",
+  border: "1px solid var(--border-strong)",
+  borderRadius: 8,
+  color: "var(--text-primary)",
+  fontSize: 12,
+  padding: "6px 10px",
+};
 
 export default function AdminDashboardHome() {
   const [todayData, setTodayData] = useState(null);
@@ -62,7 +89,7 @@ export default function AdminDashboardHome() {
         }
       });
       setCustomData(res.data?.data || res.data || null);
-    } catch (err) {
+    } catch {
       alert("No data found for this range");
       setCustomData(null);
     } finally {
@@ -162,6 +189,7 @@ export default function AdminDashboardHome() {
       clearInterval(pollIntervalRef.current);
       clearInterval(midnightCheckRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
   const applyPresetRange = async (preset) => {
@@ -220,65 +248,69 @@ export default function AdminDashboardHome() {
   const safeTrainingIncome = displayData?.trainingTypes || {};
   const safeMemberCounts = displayData?.memberCountsByTraining || {};
 
+  const planItems = Object.entries(safePlans).map(([name, value]) => ({ name, value: Number(value) || 0 }));
+  const trainingItems = Object.entries(view === "today" ? safeTrainingIncome : safeMemberCounts).map(
+    ([name, value]) => ({ name, value: Number(value) || 0 })
+  );
+
   return (
     <div className="saas-container dashboard-shell">
-      <header className="dashboard-hero">
-        <div className="dashboard-hero-meta">
-          <h1>Revenue dashboard</h1>
-          <p>View live daily performance or generate historical reports without leaving the admin workspace.</p>
-          <div className="dashboard-hero-tags">
-            <span>Auto refresh every 30 seconds</span>
-            <span>Business hours 4:00 AM to 11:00 PM</span>
+      <header className="dash-header">
+        <div className="dash-header-meta">
+          <h1 className="dash-title">Revenue Dashboard</h1>
+          <p className="dash-subtitle">Live daily performance</p>
+          <div className="dash-meta">
+            <span>Auto refresh: 30s</span>
+            <span aria-hidden="true">•</span>
+            <span>Business hours: 4:00 AM – 11:00 PM</span>
           </div>
         </div>
 
-        <div className="dashboard-tab-group">
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <select
-              aria-label="Date range"
-              className="saas-input"
-              value={view === "today" && !fromDate ? "today" : fromDate && toDate && view === "custom" ? "custom" : "today"}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val === "custom") {
-                  applyPresetRange("custom");
-                } else if (val === "today") {
-                  applyPresetRange("today");
-                } else if (val === "yesterday") {
-                  applyPresetRange("yesterday");
-                } else if (val === "7day") {
-                  applyPresetRange("7day");
-                } else if (val === "30day") {
-                  applyPresetRange("30day");
-                }
-              }}
-            >
-              <option value="today">Today</option>
-              <option value="yesterday">Yesterday</option>
-              <option value="7day">Last 7 days</option>
-              <option value="30day">Last 30 days</option>
-              <option value="custom">Custom range</option>
-            </select>
-          </div>
+        <div className="dash-header-controls">
+          <select
+            aria-label="Date range"
+            className="saas-input"
+            value={view === "today" && !fromDate ? "today" : fromDate && toDate && view === "custom" ? "custom" : "today"}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === "custom") {
+                applyPresetRange("custom");
+              } else if (val === "today") {
+                applyPresetRange("today");
+              } else if (val === "yesterday") {
+                applyPresetRange("yesterday");
+              } else if (val === "7day") {
+                applyPresetRange("7day");
+              } else if (val === "30day") {
+                applyPresetRange("30day");
+              }
+            }}
+          >
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="7day">Last 7 days</option>
+            <option value="30day">Last 30 days</option>
+            <option value="custom">Custom range</option>
+          </select>
         </div>
       </header>
 
       {view === "custom" && (
-        <div className="saas-filter-bar dashboard-filter-bar">
-          <div className="dashboard-filter-item">
-            <label>From</label>
-            <DatePicker selected={fromDate} onChange={setFromDate} dateFormat="yyyy-MM-dd" className="saas-input" />
+        <div className="saas-filter-bar dash-filter">
+          <div className="dash-filter-item">
+            <label htmlFor="dash-from">From</label>
+            <DatePicker id="dash-from" selected={fromDate} onChange={setFromDate} dateFormat="yyyy-MM-dd" className="saas-input" />
           </div>
 
-          <div className="dashboard-filter-item">
-            <label>To</label>
-            <DatePicker selected={toDate} onChange={setToDate} dateFormat="yyyy-MM-dd" className="saas-input" />
+          <div className="dash-filter-item">
+            <label htmlFor="dash-to">To</label>
+            <DatePicker id="dash-to" selected={toDate} onChange={setToDate} dateFormat="yyyy-MM-dd" className="saas-input" />
           </div>
 
-          <div className="dashboard-filter-actions">
+          <div className="dash-filter-actions">
             <button
               type="button"
-              className="btn-primary"
+              className="btn-primary min-h-0 px-4 py-2"
               onClick={async () => {
                 if (!fromDate || !toDate) {
                   alert("Please select both dates");
@@ -294,7 +326,7 @@ export default function AdminDashboardHome() {
               {customLoading ? "Loading..." : "Generate Report"}
             </button>
 
-            <button type="button" className="btn-secondary" onClick={exportAnalyticsPDF}>
+            <button type="button" className="btn-secondary min-h-0 px-4 py-2" onClick={exportAnalyticsPDF}>
               Export PDF
             </button>
           </div>
@@ -307,46 +339,68 @@ export default function AdminDashboardHome() {
         </div>
       ) : (
         <>
-          <section className="dashboard-grid dashboard-grid-metrics">
-            <MetricCard title={view === "today" ? "Today's Revenue" : "Total Revenue"} value={`Rs. ${displayData?.totalAmount || 0}`} accent="revenue" />
-            <MetricCard title="New Joining Revenue" value={`Rs. ${displayData?.newVsRenew?.new || 0}`} accent="warning" />
-            <MetricCard title="Renewal Revenue" value={`Rs. ${displayData?.newVsRenew?.renewal || 0}`} accent="info" />
-            <MetricCard title="Transactions" value={displayData?.logs?.length || 0} accent="success" />
+          <section className="dash-grid dash-grid-kpis" aria-label="Key metrics">
+            <DashboardMetricCard
+              title={view === "today" ? "Today's Revenue" : "Total Revenue"}
+              value={formatINR(displayData?.totalAmount || 0)}
+              emphasized
+            />
+            <DashboardMetricCard title="New Joining Revenue" value={formatINR(displayData?.newVsRenew?.new || 0)} />
+            <DashboardMetricCard title="Renewal Revenue" value={formatINR(displayData?.newVsRenew?.renewal || 0)} />
+            <DashboardMetricCard title="Transactions" value={formatCount(displayData?.logs?.length || 0)} />
           </section>
 
           {Object.keys(safePlans).length > 0 ? (
-            <section className="dashboard-grid dashboard-grid-charts">
-              <ChartPanel title={view === "today" ? "Today's Income by Plan" : "Income by Plan"}>
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={Object.entries(safePlans).map(([plan, amount]) => ({ plan, amount }))}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                    <XAxis dataKey="plan" stroke="var(--text-muted)" />
-                    <YAxis stroke="var(--text-muted)" />
-                    <Tooltip />
-                    <Bar dataKey="amount" fill="var(--accent)" radius={[8, 8, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartPanel>
+            <>
+              <section className="dash-grid dash-grid-2" aria-label="Revenue by plan and training type">
+                <ChartCard title={view === "today" ? "Today's Income by Plan" : "Income by Plan"}>
+                  {planItems.length > 1 ? (
+                    <MiniBarChart
+                      data={planItems}
+                      tickFormatter={(v) => compactCurrency(v)}
+                      valueLabel="income by plan"
+                      color="var(--accent)"
+                    />
+                  ) : (
+                    <DistributionBreakdown data={planItems} formatter={formatINR} />
+                  )}
+                </ChartCard>
 
-              <ChartPanel title={view === "today" ? "Income by Training Type" : "Members by Training Type"}>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={Object.entries(view === "today" ? safeTrainingIncome : safeMemberCounts).map(([name, value]) => ({ name, value }))}
-                      dataKey="value"
-                      outerRadius={110}
-                      label
-                    >
-                      {Object.entries(view === "today" ? safeTrainingIncome : safeMemberCounts).map((_, idx) => (
-                        <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </ChartPanel>
-            </section>
+                <ChartCard title={view === "today" ? "Income by Training Type" : "Members by Training Type"}>
+                  <DistributionBreakdown
+                    data={trainingItems}
+                    formatter={view === "today" ? formatINR : formatCount}
+                  />
+                </ChartCard>
+              </section>
+
+              <section className="dash-grid dash-grid-3" aria-label="Member analytics">
+                <ChartCard title="Age Distribution">
+                  <AnalyticsBlock loading={analyticsLoading} hasData={ageDistribution.length > 0}>
+                    <MiniBarChart
+                      data={ageDistribution}
+                      xKey="ageRange"
+                      yKey="count"
+                      tickFormatter={(v) => String(v)}
+                      valueLabel="member age distribution"
+                      color="#6ca8ff"
+                    />
+                  </AnalyticsBlock>
+                </ChartCard>
+
+                <ChartCard title="Source Contribution">
+                  <AnalyticsBlock loading={analyticsLoading} hasData={sourceContribution.length > 0}>
+                    <DistributionBreakdown data={sourceContribution} formatter={formatINR} />
+                  </AnalyticsBlock>
+                </ChartCard>
+
+                <ChartCard title="Plan Distribution">
+                  <AnalyticsBlock loading={analyticsLoading} hasData={planDistribution.length > 0}>
+                    <DistributionBreakdown data={planDistribution} formatter={formatINR} />
+                  </AnalyticsBlock>
+                </ChartCard>
+              </section>
+            </>
           ) : (
             <div className="empty-state">
               <p>
@@ -356,145 +410,114 @@ export default function AdminDashboardHome() {
               </p>
             </div>
           )}
-
-          <section className="dashboard-grid dashboard-grid-analytics">
-            <ChartPanel title="Age Distribution">
-              <AnalyticsBlock loading={analyticsLoading} hasData={ageDistribution.length > 0}>
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={ageDistribution}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                    <XAxis dataKey="ageRange" stroke="var(--text-muted)" />
-                    <YAxis stroke="var(--text-muted)" />
-                    <Tooltip />
-                    <Bar dataKey="count" fill="#6ca8ff" radius={[8, 8, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </AnalyticsBlock>
-            </ChartPanel>
-
-            <ChartPanel title="Source Contribution">
-              <AnalyticsBlock loading={analyticsLoading} hasData={sourceContribution.length > 0}>
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie data={sourceContribution} cx="50%" cy="50%" outerRadius={96} dataKey="value" label>
-                      {sourceContribution.map((_, index) => (
-                        <Cell key={index} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </AnalyticsBlock>
-            </ChartPanel>
-
-            <ChartPanel title="Plan Distribution">
-              <AnalyticsBlock loading={analyticsLoading} hasData={planDistribution.length > 0}>
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie data={planDistribution} cx="50%" cy="50%" outerRadius={96} dataKey="value" label>
-                      {planDistribution.map((_, index) => (
-                        <Cell key={index} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </AnalyticsBlock>
-            </ChartPanel>
-          </section>
         </>
       )}
     </div>
   );
 }
 
-function CompactBreakdown({ data = [], currency = true }) {
-  const total = data.reduce((s, item) => s + (item.value || 0), 0);
-  if (!data || data.length === 0) return <p className="muted-copy">No data available.</p>;
+/* ── Reusable dashboard components ──────────────────────────────── */
 
-  // If only one category, present a compact single-metric (no progress bar)
-  if (data.length === 1) {
-    const d = data[0];
+function DashboardMetricCard({ title, value, emphasized = false }) {
+  return (
+    <article className={`dash-kpi ${emphasized ? "dash-kpi-primary" : ""}`}>
+      <span className="dash-kpi-title">{title}</span>
+      <span className="dash-kpi-value">{value}</span>
+    </article>
+  );
+}
+
+function ChartCard({ title, children }) {
+  return (
+    <section className="dash-chart-card">
+      <h3 className="dash-chart-title">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function MiniBarChart({ data, xKey = "name", yKey = "value", color, tickFormatter, valueLabel }) {
+  return (
+    <div role="img" aria-label={`Bar chart: ${valueLabel}`}>
+      <ResponsiveContainer width="100%" height={180}>
+        <BarChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="26%">
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+          <XAxis
+            dataKey={xKey}
+            tick={{ fontSize: 11, fill: "var(--text-muted)" }}
+            tickLine={false}
+            axisLine={{ stroke: "var(--border-color)" }}
+            interval={0}
+          />
+          <YAxis
+            tick={{ fontSize: 11, fill: "var(--text-muted)" }}
+            tickLine={false}
+            axisLine={false}
+            width={44}
+            tickFormatter={tickFormatter}
+          />
+          <Tooltip
+            formatter={(v) => (typeof tickFormatter === "function" ? tickFormatter(v) : v)}
+            cursor={{ fill: "rgba(212,175,55,0.06)" }}
+            contentStyle={TOOLTIP_STYLE}
+          />
+          <Bar dataKey={yKey} fill={color} radius={[5, 5, 0, 0]} maxBarSize={40} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/* Data-aware distribution. Shows a compact single-metric summary when the
+   dataset has one category, otherwise a proportional segmented list. This
+   never renders a giant pie for a single data point. */
+function DistributionBreakdown({ data = [], formatter = formatINR }) {
+  const items = data.map((d) => ({
+    name: d.name || d.planName || d.ageRange || "Unknown",
+    value: Number(d.value || 0),
+  }));
+
+  if (items.length === 0) return <p className="muted-copy">No data available.</p>;
+
+  const total = items.reduce((sum, d) => sum + d.value, 0);
+
+  if (items.length === 1) {
+    const d = items[0];
+    const color = categoryColor(d.name, 0);
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-          <div style={{ fontSize: "1rem", fontWeight: 700 }}>{d.name || d.label || d.key}</div>
-          <div style={{ textAlign: "right" }}>
-            <div className="metric-value" style={{ margin: 0 }}>{currency ? `Rs. ${d.value || 0}` : d.value || 0}</div>
-            <div className="muted-copy">100%</div>
-          </div>
-        </div>
+      <div className="dash-dist dash-dist-single">
+        <span className="dash-dist-single-label">
+          <i className="dash-dist-dot" style={{ background: color }} aria-hidden="true" />
+          {d.name}
+        </span>
+        <span className="dash-single-value">{formatter(d.value)}</span>
+        <span className="dash-single-pct">100%</span>
       </div>
     );
   }
 
   return (
-    <div style={{ display: "grid", gap: 8 }}>
-      {data.map((d, idx) => {
+    <div className="dash-dist">
+      {items.map((d, idx) => {
         const pct = total > 0 ? Math.round((d.value / total) * 100) : 0;
+        const color = categoryColor(d.name, idx);
         return (
-          <div key={idx} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <div style={{ fontWeight: 700 }}>{d.name || d.label || d.key}</div>
-                <div className="muted-copy">{currency ? `Rs. ${d.value || 0}` : d.value || 0}</div>
-              </div>
-              <div style={{ height: 8, background: "var(--row-odd)", borderRadius: 999 }}>
-                <div style={{ height: 8, width: `${pct}%`, background: "var(--accent)", borderRadius: 999 }} />
-              </div>
+          <div key={d.name} className="dash-dist-row">
+            <div className="dash-dist-head">
+              <span className="dash-dist-name" title={d.name}>
+                <i className="dash-dist-dot" style={{ background: color }} aria-hidden="true" />
+                {d.name}
+              </span>
+              <span className="dash-dist-pct">{pct}%</span>
+              <span className="dash-dist-value">{formatter(d.value)}</span>
             </div>
-            <div style={{ minWidth: 48, textAlign: "right" }} className="muted-copy">{pct}%</div>
+            <div className="dash-dist-track" role="img" aria-label={`${d.name}: ${pct}%`}>
+              <div className="dash-dist-fill" style={{ width: `${pct}%`, background: color }} />
+            </div>
           </div>
         );
       })}
     </div>
-  );
-}
-
-const METRIC_ICONS = {
-  revenue: "₹",
-  warning: "↑",
-  info: "↻",
-  success: "#",
-};
-
-const METRIC_VALUE_COLOR = {
-  revenue: "text-[var(--accent)]",
-  warning: "text-[var(--warning)]",
-  info: "text-[var(--info)]",
-  success: "text-[var(--success)]",
-};
-
-function MetricCard({ title, value, accent = "default" }) {
-  const valueColorClass = METRIC_VALUE_COLOR[accent] ?? "";
-  const icon = METRIC_ICONS[accent] ?? "";
-
-  return (
-    <article className={`dashboard-metric-card accent-${accent}`}>
-      <div className="dashboard-metric-card-header">
-        <span className="eyebrow">Summary</span>
-        {icon && (
-          <span className="dashboard-metric-card-icon" aria-hidden="true">
-            {icon}
-          </span>
-        )}
-      </div>
-      <div>
-        <p className="metric-title">{title}</p>
-        <p className={`metric-value mt-3 ${valueColorClass}`}>{value}</p>
-      </div>
-    </article>
-  );
-}
-
-function ChartPanel({ title, children }) {
-  return (
-    <section className="dashboard-chart-panel">
-      <h3 className="dashboard-chart-title">{title}</h3>
-      <div className="dashboard-chart-body">{children}</div>
-    </section>
   );
 }
 

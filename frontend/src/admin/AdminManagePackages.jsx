@@ -2,16 +2,27 @@ import { useEffect, useState } from "react";
 import apiClient from "../utils/apiClient.js";
 import IconButton from "./components/ui/IconButton";
 
+const EMPTY_FORM = {
+  name: "",
+  months: "",
+  priceWeightLoss: "",
+  priceWeightGain: "",
+  priceTransformation: "",
+};
+
+const formatPrice = (value) => {
+  const num = Number(value);
+  if (value === "" || value === null || value === undefined || Number.isNaN(num)) return "—";
+  return `₹${num.toLocaleString("en-IN")}`;
+};
+
 export default function AdminManagePackages() {
   const [packages, setPackages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState(null);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState({
-    name: "",
-    months: "",
-    priceWeightLoss: "",
-    priceWeightGain: "",
-    priceTransformation: "",
-  });
+  const [form, setForm] = useState({ ...EMPTY_FORM });
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [packageToDelete, setPackageToDelete] = useState(null);
 
@@ -19,32 +30,36 @@ export default function AdminManagePackages() {
     loadPackages();
   }, []);
 
+  const showNotice = (msg, type = "success") => {
+    setNotice({ msg, type });
+    window.clearTimeout(showNotice._timer);
+    showNotice._timer = window.setTimeout(() => setNotice(null), 3500);
+  };
+
   const loadPackages = async () => {
+    setLoading(true);
     try {
       const res = await apiClient.get("/packages");
       setPackages(res.data?.data || res.data || []);
     } catch (err) {
       console.log("LOAD PACKAGE ERROR:", err);
+      showNotice("Failed to load packages.", "error");
+    } finally {
+      setLoading(false);
     }
   };
 
   const updateField = (name, value) => setForm((prev) => ({ ...prev, [name]: value }));
 
   const resetForm = () => {
-    setForm({
-      name: "",
-      months: "",
-      priceWeightLoss: "",
-      priceWeightGain: "",
-      priceTransformation: "",
-    });
+    setForm({ ...EMPTY_FORM });
     setEditingId(null);
   };
 
   const savePackage = async (e) => {
     e.preventDefault();
-    if (!form.name.trim()) return alert("Package name required");
-    if (!form.months) return alert("Duration (months) required");
+    if (!form.name.trim()) return showNotice("Package name is required.", "error");
+    if (!form.months || Number(form.months) <= 0) return showNotice("Duration (months) is required and must be greater than 0.", "error");
 
     const payload = {
       name: form.name.trim(),
@@ -54,20 +69,22 @@ export default function AdminManagePackages() {
       priceTransformation: Number(form.priceTransformation),
     };
 
+    setSaving(true);
     try {
       if (editingId) {
         await apiClient.put(`/packages/${editingId}`, payload);
-        alert("Package updated");
+        showNotice("Package updated successfully.");
       } else {
         await apiClient.post("/packages", payload);
-        alert("Package created");
+        showNotice("Package created successfully.");
       }
-
       resetForm();
       loadPackages();
     } catch (err) {
       console.log("SAVE PACKAGE ERROR:", err);
-      alert(err.response?.data?.message || "Failed");
+      showNotice(err.response?.data?.message || "Failed to save package.", "error");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -93,9 +110,11 @@ export default function AdminManagePackages() {
       await apiClient.delete(`/packages/${packageToDelete}`);
       setDeleteModalOpen(false);
       setPackageToDelete(null);
+      showNotice("Package deleted.");
       loadPackages();
     } catch (err) {
-      alert("Failed to delete package");
+      console.log("DELETE PACKAGE ERROR:", err);
+      showNotice("Failed to delete package.", "error");
     }
   };
 
@@ -107,83 +126,98 @@ export default function AdminManagePackages() {
 
   return (
     <div className="saas-container">
-      <div className="saas-header">
+      <div className="saas-page-header">
         <h1>Packages</h1>
         <p>Maintain plan duration and training-specific pricing from one screen.</p>
       </div>
 
-      <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        <form onSubmit={savePackage} style={{ flex: '1 1 300px', background: 'var(--surface-muted)', padding: '24px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-          <h2 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px', color: 'var(--text-primary)' }}>{editingId ? "Edit package" : "Add package"}</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <Field label="Package Name">
-              <input className="saas-input" value={form.name} onChange={(e) => updateField("name", e.target.value)} style={{ width: '100%' }} />
-            </Field>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <Field label="Duration (Months)">
-                <input type="text" inputMode="numeric" pattern="[0-9]*" className="saas-input" value={form.months} onChange={(e) => handleNumberInput("months", e.target.value)} style={{ width: '100%' }} />
-              </Field>
-              <Field label="Weight Loss">
-                <input type="text" inputMode="numeric" pattern="[0-9]*" className="saas-input" value={form.priceWeightLoss} onChange={(e) => handleNumberInput("priceWeightLoss", e.target.value)} style={{ width: '100%' }} />
-              </Field>
-              <Field label="Weight Gain">
-                <input type="text" inputMode="numeric" pattern="[0-9]*" className="saas-input" value={form.priceWeightGain} onChange={(e) => handleNumberInput("priceWeightGain", e.target.value)} style={{ width: '100%' }} />
-              </Field>
-              <Field label="Transformation">
-                <input type="text" inputMode="numeric" pattern="[0-9]*" className="saas-input" value={form.priceTransformation} onChange={(e) => handleNumberInput("priceTransformation", e.target.value)} style={{ width: '100%' }} />
-              </Field>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-              <button className="btn-primary" style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--accent)', color: '#000', fontWeight: 600, cursor: 'pointer' }}>{editingId ? "Update" : "Add"}</button>
-              {editingId && (
-                <button type="button" onClick={resetForm} className="btn-secondary" style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-              )}
-            </div>
-          </div>
-        </form>
-
-        <div className="saas-table-container" style={{ flex: '2 1 500px' }}>
-          <table className="saas-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Months</th>
-                <th>Weight Loss</th>
-                <th>Weight Gain</th>
-                <th>Transformation</th>
-                <th style={{ width: '80px', textAlign: 'center' }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {packages.map((pkg) => (
-                <tr key={pkg._id}>
-                  <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{pkg.name}</td>
-                  <td>{pkg.months}</td>
-                  <td>{pkg.priceWeightLoss}</td>
-                  <td>{pkg.priceWeightGain}</td>
-                  <td>{pkg.priceTransformation}</td>
-                  <td style={{ textAlign: 'center' }}>
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
-                      <IconButton type="edit" onClick={() => editPackage(pkg)} />
-                      <IconButton type="delete" onClick={() => confirmDelete(pkg._id)} />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-
-              {packages.length === 0 && (
-                <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
-                    No packages created yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {notice && (
+        <div className={`pkg-notice pkg-notice-${notice.type}`} role="status">
+          {notice.msg}
         </div>
+      )}
+
+      <form onSubmit={savePackage} className="pkg-form" aria-label="Add or edit package">
+        <div className="pkg-form-grid">
+          <div className="field-group pk-name-field">
+            <label className="field-label" htmlFor="pkg-name">Package Name</label>
+            <input id="pkg-name" className="saas-input" value={form.name} onChange={(e) => updateField("name", e.target.value)} placeholder="e.g. Weight Loss 3 Month" />
+          </div>
+
+          <Field label="Duration (Months)">
+            <input type="text" inputMode="numeric" pattern="[0-9]*" className="saas-input" value={form.months} onChange={(e) => handleNumberInput("months", e.target.value)} placeholder="6" />
+          </Field>
+
+          <Field label="Weight Loss (₹)">
+            <input type="text" inputMode="numeric" pattern="[0-9]*" className="saas-input" value={form.priceWeightLoss} onChange={(e) => handleNumberInput("priceWeightLoss", e.target.value)} placeholder="0" />
+          </Field>
+
+          <Field label="Weight Gain (₹)">
+            <input type="text" inputMode="numeric" pattern="[0-9]*" className="saas-input" value={form.priceWeightGain} onChange={(e) => handleNumberInput("priceWeightGain", e.target.value)} placeholder="0" />
+          </Field>
+
+          <Field label="Transformation (₹)">
+            <input type="text" inputMode="numeric" pattern="[0-9]*" className="saas-input" value={form.priceTransformation} onChange={(e) => handleNumberInput("priceTransformation", e.target.value)} placeholder="0" />
+          </Field>
+        </div>
+
+        <div className="pkg-form-actions">
+          {editingId && (
+            <button type="button" onClick={resetForm} className="btn-ghost min-h-0 px-4 py-2">Cancel</button>
+          )}
+          <button type="submit" className="btn-primary min-h-0 px-5 py-2" disabled={saving}>
+            {editingId ? "Update Package" : "Add Package"}
+          </button>
+        </div>
+      </form>
+
+      <div className="saas-table-container pk-table">
+        <table className="saas-table">
+          <thead>
+            <tr>
+              <th className="pk-col-idx" scope="col">#</th>
+              <th scope="col">Package Name</th>
+              <th className="pk-col-num" scope="col">Months</th>
+              <th className="pk-col-num" scope="col">Weight Loss</th>
+              <th className="pk-col-num" scope="col">Weight Gain</th>
+              <th className="pk-col-num" scope="col">Transformation</th>
+              <th className="pk-col-actions" scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan="7" className="pk-empty">Loading packages…</td>
+              </tr>
+            ) : packages.length === 0 ? (
+              <tr>
+                <td colSpan="7" className="pk-empty">No packages created yet. Add your first package above.</td>
+              </tr>
+            ) : (
+              packages.map((pkg, index) => (
+                <tr key={pkg._id}>
+                  <td className="pk-col-idx">{index + 1}</td>
+                  <td className="pk-name">{pkg.name}</td>
+                  <td className="pk-col-num">{pkg.months}</td>
+                  <td className="pk-col-num">{formatPrice(pkg.priceWeightLoss)}</td>
+                  <td className="pk-col-num">{formatPrice(pkg.priceWeightGain)}</td>
+                  <td className="pk-col-num">{formatPrice(pkg.priceTransformation)}</td>
+                  <td className="pk-col-actions">
+                    <IconButton type="edit" title="Edit package" aria-label={`Edit ${pkg.name}`} onClick={() => editPackage(pkg)} />
+                    <IconButton type="delete" title="Delete package" aria-label={`Delete ${pkg.name}`} onClick={() => confirmDelete(pkg._id)} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
+
+      {!loading && packages.length > 0 && (
+        <div className="pk-table-footer">
+          <span>Showing {packages.length} package{packages.length === 1 ? "" : "s"}</span>
+        </div>
+      )}
 
       {deleteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] p-4">

@@ -14,6 +14,7 @@ export const createAdminSchema = Joi.object({
   fullName: Joi.string().min(3).max(100).required(),
   email: Joi.string().email().required(),
   role: Joi.string().valid("superadmin", "trainer", "finance").optional(),
+  scope: Joi.string().valid("all", "male", "female_plus_transgender").optional(),
 });
 
 export const changePasswordSchema = Joi.object({

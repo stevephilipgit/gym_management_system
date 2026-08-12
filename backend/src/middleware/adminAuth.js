@@ -10,7 +10,7 @@ export default function adminAuth(req, res, next) {
     }
 
     const decoded = jwt.verify(token, config.jwt.accessSecret);
-    req.admin = decoded; // { id, username, role }
+    req.admin = { id: decoded.id, username: decoded.username, role: decoded.role, scope: decoded.scope };
 
     next();
   } catch (err) {

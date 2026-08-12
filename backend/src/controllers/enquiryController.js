@@ -183,6 +183,7 @@ export const getEnquiries = async (req, res) => {
       status,
       branch,
       reason,
+      gender,
       search,
       dateFrom,
       dateTo,
@@ -192,6 +193,25 @@ export const getEnquiries = async (req, res) => {
 
     if (status && status !== 'all') filter.status = status;
     if (branch && branch !== 'all') filter.preferred_branch = branch;
+
+    // Apply gender scope filter based on admin role/scope
+    if (req.admin && req.admin.scope) {
+      const allowedGenders = {
+        all: ["Male", "Female", "Transgender"],
+        male: ["Male"],
+        female_plus_transgender: ["Female", "Transgender"],
+      }[req.admin.scope] || [];
+
+      // If gender query param provided, use it (override scope filter)
+      if (gender) {
+        filter.gender = gender;
+      } else if (allowedGenders.length > 0) {
+        // Apply scope-based gender filter
+        filter.gender = { $in: allowedGenders };
+      }
+    }
+
+    if (reason && reason !== 'all') filter.reason = reason;
     if (reason && reason !== 'all') filter.reason = reason;
 
     if (search) {
@@ -242,6 +262,19 @@ export const getEnquiryById = async (req, res) => {
   try {
     const enquiry = await Enquiry.findById(req.params.id).lean();
     if (!enquiry) return res.status(404).json({ success: false, message: 'Enquiry not found.' });
+
+    // Verify admin scope against enquiry gender
+    if (req.admin && req.admin.scope) {
+      const allowedGenders = {
+        all: ["Male", "Female", "Transgender"],
+        male: ["Male"],
+        female_plus_transgender: ["Female", "Transgender"],
+      }[req.admin.scope] || [];
+      if (!allowedGenders.includes(enquiry.gender)) {
+        return res.status(403).json({ success: false, message: 'Access denied: insufficient scope for this enquiry' });
+      }
+    }
+
     return res.json({ success: true, enquiry });
   } catch (err) {
     logger.error('[Enquiry] getEnquiryById failed', { error: err.message });
@@ -260,24 +293,39 @@ export const updateEnquiryStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid status.' });
     }
 
+    // Verify admin scope against enquiry gender BEFORE update
+    const enquiry = await Enquiry.findById(req.params.id).lean();
+    if (!enquiry) return res.status(404).json({ success: false, message: 'Enquiry not found.' });
+
+    if (req.admin && req.admin.scope) {
+      const allowedGenders = {
+        all: ["Male", "Female", "Transgender"],
+        male: ["Male"],
+        female_plus_transgender: ["Female", "Transgender"],
+      }[req.admin.scope] || [];
+      if (!allowedGenders.includes(enquiry.gender)) {
+        return res.status(403).json({ success: false, message: 'Access denied: insufficient scope for this enquiry' });
+      }
+    }
+
     const updateData = { status };
     if (notes !== undefined) updateData.notes = String(notes).substring(0, 1000);
 
-    const enquiry = await Enquiry.findByIdAndUpdate(
+    const updatedEnquiry = await Enquiry.findByIdAndUpdate(
       req.params.id,
       updateData,
       { new: true }
     ).lean();
 
-    if (!enquiry) return res.status(404).json({ success: false, message: 'Enquiry not found.' });
+    if (!updatedEnquiry) return res.status(404).json({ success: false, message: 'Enquiry not found.' });
 
     logger.info('[Enquiry] Status updated', {
-      id: enquiry._id,
+      id: updatedEnquiry._id,
       status,
       adminId: req.admin?.id,
     });
 
-    return res.json({ success: true, enquiry });
+    return res.json({ success: true, enquiry: updatedEnquiry });
   } catch (err) {
     logger.error('[Enquiry] updateEnquiryStatus failed', { error: err.message });
     return res.status(500).json({ success: false, message: 'Failed to update status.' });
@@ -289,6 +337,11 @@ export const updateEnquiryStatus = async (req, res) => {
 // ============================================================
 export const deleteEnquiry = async (req, res) => {
   try {
+    // Verify admin scope - only superadmin (scope=all) can delete
+    if (req.admin && req.admin.scope !== "all") {
+      return res.status(403).json({ success: false, message: 'Access denied: only superadmin can delete enquiries' });
+    }
+
     const enquiry = await Enquiry.findByIdAndDelete(req.params.id).lean();
     if (!enquiry) return res.status(404).json({ success: false, message: 'Enquiry not found.' });
 
@@ -306,10 +359,27 @@ export const deleteEnquiry = async (req, res) => {
 // ============================================================
 export const exportEnquiriesCSV = async (req, res) => {
   try {
-    const { status, branch, dateFrom, dateTo } = req.query;
+    const { status, branch, dateFrom, dateTo, gender } = req.query;
     const filter = {};
     if (status && status !== 'all') filter.status = status;
     if (branch && branch !== 'all') filter.preferred_branch = branch;
+
+    // Apply gender scope filter based on admin role/scope
+    if (req.admin && req.admin.scope) {
+      const allowedGenders = {
+        all: ["Male", "Female", "Transgender"],
+        male: ["Male"],
+        female_plus_transgender: ["Female", "Transgender"],
+      }[req.admin.scope] || [];
+
+      // If gender query param provided, use it (override scope filter)
+      if (gender) {
+        filter.gender = gender;
+      } else if (allowedGenders.length > 0) {
+        filter.gender = { $in: allowedGenders };
+      }
+    }
+
     if (dateFrom || dateTo) {
       filter.createdAt = {};
       if (dateFrom) filter.createdAt.$gte = new Date(dateFrom);
