@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API_BASE_URL } from "../../utils/apiClient.js";
+import apiClient from "../../utils/apiClient.js";
 
 export const DietSelector = ({ trainingType, onDietSelect, initialDietId }) => {
   const [diets, setDiets] = useState([]);
@@ -20,15 +20,8 @@ export const DietSelector = ({ trainingType, onDietSelect, initialDietId }) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/diets`, {
-        credentials: "include",
-      });
-      
-      if (!res.ok) {
-        throw new Error(`Failed to fetch diets: ${res.status}`);
-      }
-      
-      const payload = await res.json();
+      const res = await apiClient.get("/diets");
+      const payload = res.data;
       const data = Array.isArray(payload) ? payload : payload?.data;
       if (!Array.isArray(data)) {
         throw new Error("Invalid diet data format");
@@ -37,20 +30,16 @@ export const DietSelector = ({ trainingType, onDietSelect, initialDietId }) => {
       setDiets(data);
 
       if (trainingType) {
-        const mapRes = await fetch(`${API_BASE_URL}/diets/mapping/${trainingType}`, {
-          credentials: "include",
-        });
-        
-        if (!mapRes.ok) {
-          console.warn(`Failed to fetch diet mapping: ${mapRes.status}`);
+        try {
+          const mapRes = await apiClient.get(`/diets/mapping/${trainingType}`);
+          const mapData = mapRes.data;
+          if (mapData.diet) {
+            setDefaultDietId(mapData.diet._id);
+            setSelectedDietId((current) => current || initialDietId || mapData.diet._id);
+          }
+        } catch (mapError) {
+          console.warn(`Failed to fetch diet mapping: ${mapError?.response?.status}`);
           setDefaultDietId(null);
-          return;
-        }
-        
-        const mapData = await mapRes.json();
-        if (mapData.diet) {
-          setDefaultDietId(mapData.diet._id);
-          setSelectedDietId((current) => current || initialDietId || mapData.diet._id);
         }
       } else {
         setDefaultDietId(null);

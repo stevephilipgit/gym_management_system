@@ -26,6 +26,7 @@ const INITIAL_FORM = {
   preferred_branch: '',
   reason: '',
   message: '',
+  gender: '',
   website: '', // honeypot
 };
 
@@ -55,6 +56,7 @@ function validate(form) {
 
   if (!form.preferred_branch) errors.preferred_branch = 'Please select a branch.';
   if (!form.reason) errors.reason = 'Please select a reason.';
+  if (!form.gender) errors.gender = 'Please select your gender.';
 
   const msg = sanitize(form.message);
   if (msg && msg.length < 5) errors.message = 'Message must be at least 5 characters.';
@@ -166,6 +168,7 @@ export default function EnquiryModal({ isOpen, onClose, initialReason = '', init
         preferred_branch: form.preferred_branch,
         reason: form.reason,
         message: sanitize(form.message),
+        gender: form.gender,
         source_page: 'home',
         website: form.website, // honeypot
       };
@@ -331,6 +334,29 @@ export default function EnquiryModal({ isOpen, onClose, initialReason = '', init
                   </select>
                   {errors.preferred_branch && touched.preferred_branch && (
                     <span className="enq-error-msg" role="alert">{errors.preferred_branch}</span>
+                  )}
+                </div>
+
+                {/* Gender */}
+                <div className="enq-field">
+                  <label htmlFor="enq-gender" className="enq-label">
+                    Gender <span className="enq-required">*</span>
+                  </label>
+                  <select
+                    id="enq-gender"
+                    className={`enq-input enq-select ${errors.gender && touched.gender ? 'enq-input-error' : ''}`}
+                    value={form.gender}
+                    onChange={(e) => handleChange('gender', e.target.value)}
+                    onBlur={() => handleBlur('gender')}
+                    disabled={submitting}
+                  >
+                    <option value="">Select gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Transgender">Transgender</option>
+                  </select>
+                  {errors.gender && touched.gender && (
+                    <span className="enq-error-msg" role="alert">{errors.gender}</span>
                   )}
                 </div>
 

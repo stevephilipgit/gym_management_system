@@ -91,11 +91,33 @@ export default function AdminRegister() {
   const loadCurrentAdmin = async () => {
     try {
       const res = await apiClient.get("/admin/me");
-      setCurrentAdmin(res.data?.admin || res.data?.data || res.data || null);
+      const admin = res.data?.admin || res.data?.data || res.data || null;
+      setCurrentAdmin(admin);
+      // Default the gender field to the first gender allowed by this admin's
+      // scope. Superadmin defaults to Male (legacy behavior preserved).
+      const allowed = admin?.scope
+        ? {
+            all: ["Male", "Female", "Transgender"],
+            male: ["Male"],
+            female_plus_transgender: ["Female", "Transgender"],
+          }[admin.scope] || ["Male", "Female", "Transgender"]
+        : ["Male", "Female", "Transgender"];
+      if (allowed.length === 1) {
+        setForm((prev) => ({ ...prev, gender: allowed[0] }));
+      }
     } catch (err) {
       console.log("Failed loading admin", err);
     }
   };
+
+  // Genders the current admin may register (mirrors backend scopeResolver).
+  const allowedGenders = currentAdmin?.scope
+    ? {
+        all: ["Male", "Female", "Transgender"],
+        male: ["Male"],
+        female_plus_transgender: ["Female", "Transgender"],
+      }[currentAdmin.scope] || ["Male", "Female", "Transgender"]
+    : ["Male", "Female", "Transgender"];
 
   useEffect(() => {
     if (!form.gymPlan || !form.trainingType) return;
@@ -269,7 +291,7 @@ export default function AdminRegister() {
         fatherName: "",
         dob: "",
         bloodGroup: "",
-        gender: "Male",
+        gender: allowedGenders[0] || "Male",
         medicalIssues: "",
         address: "",
         aadhar: "",
@@ -332,6 +354,16 @@ export default function AdminRegister() {
                 ))}
               </select>
               {fieldErrors.bloodGroup && <p className="text-xs text-red-600 mt-1">{fieldErrors.bloodGroup}</p>}
+            </Field>
+            <Field label="Gender">
+              <select name="gender" value={form.gender} onChange={handleChange} className="saas-input" style={{ width: '100%' }}>
+                {allowedGenders.map((g) => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+              </select>
+              {allowedGenders.length === 1 && (
+                <p className="text-xs text-[var(--text-secondary)] mt-1">Your scope only allows {allowedGenders[0]} members.</p>
+              )}
             </Field>
             <Field label="Occupation">
               <input name="occupation" value={form.occupation} onChange={handleChange} className="saas-input" style={{ width: '100%' }} />

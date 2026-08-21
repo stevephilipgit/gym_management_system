@@ -22,6 +22,7 @@ const AdminDietManager = lazy(() =>
   import("./admin/AdminDietManager").then((module) => ({ default: module.AdminDietManager }))
 );
 const AiAssistant = lazy(() => import("./admin/features/ai-assistant/AiAssistant"));
+const AdminManageAdmins = lazy(() => import("./admin/AdminManageAdmins"));
 
 /* ATTENDANCE + REPORTS */
 const AttendanceFrontDesk = lazy(() => import("./admin/AttendanceFrontDesk"));
@@ -55,7 +56,14 @@ function App() {
                 </AuthGuard>
               }
             >
-              <Route index element={<AdminDashboardHome />} />
+              <Route
+                index
+                element={
+                  <RoleGuard roles={["superadmin"]}>
+                    <AdminDashboardHome />
+                  </RoleGuard>
+                }
+              />
               <Route path="members" element={<AdminMembers />} />
               <Route path="register" element={<AdminRegister />} />
               <Route path="update" element={<AdminUpdate />} />
@@ -67,6 +75,7 @@ function App() {
               <Route path="attendance-front-desk" element={<AttendanceFrontDesk />} />
               <Route path="inactivity-reports" element={<InactiveReportsPage />} />
               <Route path="settings" element={<RoleGuard roles={["superadmin"]}><SettingsPage /></RoleGuard>} />
+              <Route path="admins" element={<RoleGuard roles={["superadmin"]}><AdminManageAdmins /></RoleGuard>} />
               <Route path="enquiries" element={<AdminEnquiries />} />
             </Route>
 

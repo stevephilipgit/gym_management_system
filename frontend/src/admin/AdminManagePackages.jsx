@@ -8,6 +8,7 @@ const EMPTY_FORM = {
   priceWeightLoss: "",
   priceWeightGain: "",
   priceTransformation: "",
+  gender: "All",
 };
 
 const formatPrice = (value) => {
@@ -25,10 +26,12 @@ export default function AdminManagePackages() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [packageToDelete, setPackageToDelete] = useState(null);
+  const [genderFilter, setGenderFilter] = useState("All");
 
   useEffect(() => {
     loadPackages();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [genderFilter]);
 
   const showNotice = (msg, type = "success") => {
     setNotice({ msg, type });
@@ -39,7 +42,8 @@ export default function AdminManagePackages() {
   const loadPackages = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get("/packages");
+      const params = genderFilter && genderFilter !== "All" ? { gender: genderFilter } : {};
+      const res = await apiClient.get("/packages", { params });
       setPackages(res.data?.data || res.data || []);
     } catch (err) {
       console.log("LOAD PACKAGE ERROR:", err);
@@ -67,6 +71,7 @@ export default function AdminManagePackages() {
       priceWeightLoss: Number(form.priceWeightLoss),
       priceWeightGain: Number(form.priceWeightGain),
       priceTransformation: Number(form.priceTransformation),
+      gender: form.gender,
     };
 
     setSaving(true);
@@ -96,6 +101,7 @@ export default function AdminManagePackages() {
       priceWeightLoss: pkg.priceWeightLoss,
       priceWeightGain: pkg.priceWeightGain,
       priceTransformation: pkg.priceTransformation,
+      gender: pkg.gender || "All",
     });
   };
 
@@ -159,6 +165,15 @@ export default function AdminManagePackages() {
           <Field label="Transformation (₹)">
             <input type="text" inputMode="numeric" pattern="[0-9]*" className="saas-input" value={form.priceTransformation} onChange={(e) => handleNumberInput("priceTransformation", e.target.value)} placeholder="0" />
           </Field>
+
+          <Field label="Gender">
+            <select className="saas-input" value={form.gender} onChange={(e) => updateField("gender", e.target.value)}>
+              <option value="All">All Members</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Transgender">Transgender</option>
+            </select>
+          </Field>
         </div>
 
         <div className="pkg-form-actions">
@@ -171,6 +186,21 @@ export default function AdminManagePackages() {
         </div>
       </form>
 
+      <div className="saas-filter-bar" style={{ marginBottom: '16px' }}>
+        <label className="field-label" style={{ margin: 0 }}>Filter by Gender</label>
+        <select
+          className="saas-input"
+          style={{ width: '220px' }}
+          value={genderFilter}
+          onChange={(e) => setGenderFilter(e.target.value)}
+        >
+          <option value="All">All Members</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Transgender">Transgender</option>
+        </select>
+      </div>
+
       <div className="saas-table-container pk-table">
         <table className="saas-table">
           <thead>
@@ -181,17 +211,18 @@ export default function AdminManagePackages() {
               <th className="pk-col-num" scope="col">Weight Loss</th>
               <th className="pk-col-num" scope="col">Weight Gain</th>
               <th className="pk-col-num" scope="col">Transformation</th>
+              <th scope="col">Gender</th>
               <th className="pk-col-actions" scope="col">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="7" className="pk-empty">Loading packages…</td>
+                <td colSpan="8" className="pk-empty">Loading packages…</td>
               </tr>
             ) : packages.length === 0 ? (
               <tr>
-                <td colSpan="7" className="pk-empty">No packages created yet. Add your first package above.</td>
+                <td colSpan="8" className="pk-empty">No packages created yet. Add your first package above.</td>
               </tr>
             ) : (
               packages.map((pkg, index) => (
@@ -202,6 +233,7 @@ export default function AdminManagePackages() {
                   <td className="pk-col-num">{formatPrice(pkg.priceWeightLoss)}</td>
                   <td className="pk-col-num">{formatPrice(pkg.priceWeightGain)}</td>
                   <td className="pk-col-num">{formatPrice(pkg.priceTransformation)}</td>
+                  <td>{pkg.gender || "All"}</td>
                   <td className="pk-col-actions">
                     <IconButton type="edit" title="Edit package" aria-label={`Edit ${pkg.name}`} onClick={() => editPackage(pkg)} />
                     <IconButton type="delete" title="Delete package" aria-label={`Delete ${pkg.name}`} onClick={() => confirmDelete(pkg._id)} />

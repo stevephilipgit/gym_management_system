@@ -4,7 +4,6 @@ import { FiMenu, FiBell } from "react-icons/fi";
 const ROLE_LABELS = {
   superadmin: "Super Admin",
   trainer: "Trainer",
-  finance: "Finance",
 };
 
 const SCOPE_LABELS = {

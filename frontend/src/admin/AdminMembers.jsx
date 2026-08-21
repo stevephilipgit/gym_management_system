@@ -13,6 +13,7 @@ export default function AdminMembers() {
   const [members, setMembers] = useState([]);
   const [packages, setPackages] = useState([]);
   const [filterStatus, setFilterStatus] = useState("all");
+  const [filterGender, setFilterGender] = useState("all");
   const [showDeletePopup, setShowDeletePopup] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [showRenewPopup, setShowRenewPopup] = useState(false);
@@ -354,6 +355,8 @@ export default function AdminMembers() {
       extraDays: renewData.extraDays,
       paymentMode: renewData.paymentMode,
       price: renewData.price,
+      // Optimistic concurrency: version this renewal is based on.
+      version: selectedMember.version,
     };
 
     if (renewData.includeDiet && renewData.dietId) {
@@ -391,7 +394,10 @@ export default function AdminMembers() {
       alert("Membership renewed successfully");
     } catch (err) {
       console.error("Renewal failed:", err);
-      const errorMsg = err.response?.data?.message || err.message || "Renewal failed. Please try again.";
+      const errorMsg =
+        err.response?.status === 409
+          ? "This member was modified by another user. Please reload and try again."
+          : err.response?.data?.message || err.message || "Renewal failed. Please try again.";
       setRenewSubmitError(errorMsg);
     } finally {
       setRenewSubmitting(false);
@@ -426,15 +432,20 @@ export default function AdminMembers() {
       alert("Member details updated successfully");
     } catch (err) {
       console.error("Update failed:", err);
-      setEditSubmitError(err.response?.data?.message || err.message || "Update failed. Please try again.");
+      const errorMsg =
+        err.response?.status === 409
+          ? "This member was modified by another user. Please reload and try again."
+          : err.response?.data?.message || err.message || "Update failed. Please try again.";
+      setEditSubmitError(errorMsg);
     } finally {
       setEditSubmitting(false);
     }
   };
 
   const filteredMembers = members.filter((member) => {
-    if (filterStatus === "paid") return member.paymentStatus === "paid";
-    if (filterStatus === "not_paid") return member.paymentStatus === "not_paid";
+    if (filterStatus === "paid" && member.paymentStatus !== "paid") return false;
+    if (filterStatus === "not_paid" && member.paymentStatus !== "not_paid") return false;
+    if (filterGender !== "all" && member.gender !== filterGender) return false;
     return true;
   });
 
@@ -466,6 +477,14 @@ export default function AdminMembers() {
           <option value="paid">Paid</option>
           <option value="not_paid">Not Paid</option>
         </select>
+        {currentAdmin?.scope === "all" && (
+          <select className="saas-input" style={{ flex: '1 1 200px' }} value={filterGender} onChange={(e) => setFilterGender(e.target.value)}>
+            <option value="all">All Genders</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Transgender">Transgender</option>
+          </select>
+        )}
         <button onClick={() => setSortAsc((prev) => !prev)} className="saas-input" style={{ cursor: "pointer", background: "var(--surface-muted)", border: "1px solid var(--border-color)", color: "var(--text-primary)" }}>
           Sort Days Left {sortAsc ? "↑ Ascending" : "↓ Descending"}
         </button>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { API_BASE_URL } from '../utils/apiClient';
+import apiClient from '../utils/apiClient';
 import { downloadCSV } from './utils/attendanceHelpers';
 
 export default function InactiveReportsPage() {
@@ -16,12 +16,11 @@ export default function InactiveReportsPage() {
   const fetchInactiveMembers = async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/reports/inactive?days=${selectedDays}&skip=${skip}&limit=${LIMIT}`,
-        { credentials: 'include' }
+      const res = await apiClient.get(
+        `/reports/inactive?days=${selectedDays}&skip=${skip}&limit=${LIMIT}`
       );
 
-      const data = await res.json();
+      const data = res.data;
 
       if (data.members) {
         setMembers(data.members);
@@ -53,21 +52,15 @@ export default function InactiveReportsPage() {
 
   const exportAsCSV = async () => {
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/reports/export/inactive?days=${selectedDays}&skip=0&limit=5000`,
-        { credentials: 'include' }
+      const res = await apiClient.get(
+        `/reports/export/inactive?days=${selectedDays}&skip=0&limit=5000`,
+        { responseType: 'text' }
       );
 
-      if (!res.ok) {
-        showMsg('Export failed', 'error');
-        return;
-      }
-
-      const text = await res.text();
-      downloadCSV(text, `inactive-${selectedDays}days-${new Date().toISOString().split('T')[0]}.csv`);
+      downloadCSV(res.data, `inactive-${selectedDays}days-${new Date().toISOString().split('T')[0]}.csv`);
       showMsg('✓ CSV Downloaded', 'success');
     } catch (err) {
-      showMsg('Download failed', 'error');
+      showMsg('Export failed', 'error');
       console.error(err);
     }
   };

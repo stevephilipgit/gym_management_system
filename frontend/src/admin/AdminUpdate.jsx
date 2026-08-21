@@ -56,7 +56,11 @@ export default function AdminUpdate() {
       setMemberData(null);
       setGymId("");
     } catch (err) {
-      alert("Update failed");
+      if (err.response?.status === 409) {
+        alert(err.response?.data?.message || "This member was modified by another user. Please reload and try again.");
+      } else {
+        alert("Update failed");
+      }
       console.log("Update Error:", err);
     }
   };

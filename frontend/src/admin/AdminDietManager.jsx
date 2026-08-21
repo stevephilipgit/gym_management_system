@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import apiClient from "../utils/apiClient.js";
 import IconButton from "./components/ui/IconButton";
+import { canAccess, useAdmin } from "./authContext.js";
 
 export const AdminDietManager = () => {
   const [diets, setDiets] = useState([]);
-  const [formData, setFormData] = useState({ name: "", description: "" });
+  const [formData, setFormData] = useState({ name: "", description: "", gender: "All" });
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [dietToDelete, setDietToDelete] = useState(null);
+  const admin = useAdmin();
+  const isSuperadmin = canAccess(admin?.role, ["superadmin"]);
 
   useEffect(() => {
     fetchDiets();
@@ -33,13 +36,15 @@ export const AdminDietManager = () => {
     setLoading(true);
 
     try {
+      // Trainers: gender is locked to their scope — never send it.
+      const payload = isSuperadmin ? { ...formData } : { name: formData.name, description: formData.description };
       if (editingId) {
-        await apiClient.put(`/diets/${editingId}`, formData);
+        await apiClient.put(`/diets/${editingId}`, payload);
       } else {
-        await apiClient.post("/diets", formData);
+        await apiClient.post("/diets", payload);
       }
 
-      setFormData({ name: "", description: "" });
+      setFormData({ name: "", description: "", gender: "All" });
       setEditingId(null);
       await fetchDiets();
     } catch (submitError) {
@@ -69,7 +74,7 @@ export const AdminDietManager = () => {
   };
 
   const handleEdit = (diet) => {
-    setFormData({ name: diet.name, description: diet.description });
+    setFormData({ name: diet.name, description: diet.description, gender: diet.gender || "All" });
     setEditingId(diet._id);
   };
 
@@ -107,6 +112,26 @@ export const AdminDietManager = () => {
                 style={{ width: '100%', height: 'auto', padding: '12px', resize: 'vertical' }}
               />
             </Field>
+
+            <Field label="Gender Scope">
+              {isSuperadmin ? (
+                <select
+                  value={formData.gender}
+                  onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                  className="saas-input"
+                  style={{ width: '100%' }}
+                >
+                  <option value="All">All Members</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Transgender">Transgender</option>
+                </select>
+              ) : (
+                <p className="text-xs text-[var(--text-secondary)]" style={{ padding: '8px 0' }}>
+                  Gender is locked to <strong>{formData.gender || "your scope"}</strong> (your trainer scope).
+                </p>
+              )}
+            </Field>
           </div>
 
           <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
@@ -135,6 +160,7 @@ export const AdminDietManager = () => {
               <tr>
                 <th>Name</th>
                 <th>Description</th>
+                <th>Gender</th>
                 <th style={{ width: '80px', textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
@@ -143,10 +169,11 @@ export const AdminDietManager = () => {
                 <tr key={diet._id}>
                   <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{diet.name}</td>
                   <td style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5 }}>{diet.description?.substring(0, 80) || "-"}</td>
+                  <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{diet.gender || "All"}</td>
                   <td style={{ textAlign: 'center' }}>
                     <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
                       <IconButton type="edit" onClick={() => handleEdit(diet)} />
-                      <IconButton type="delete" onClick={() => confirmDelete(diet._id)} />
+                      {isSuperadmin && <IconButton type="delete" onClick={() => confirmDelete(diet._id)} />}
                     </div>
                   </td>
                 </tr>
@@ -154,7 +181,7 @@ export const AdminDietManager = () => {
 
               {diets.length === 0 && (
                 <tr>
-                  <td colSpan="3" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                  <td colSpan="4" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
                     No diets created yet.
                   </td>
                 </tr>

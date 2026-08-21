@@ -156,7 +156,8 @@ export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel =
       alert(error);
       return;
     }
-    onSubmit({ ...form, customFields });
+    // Include the version for optimistic concurrency protection.
+    onSubmit({ ...form, customFields, version: defaultData.version });
   };
 
   return (

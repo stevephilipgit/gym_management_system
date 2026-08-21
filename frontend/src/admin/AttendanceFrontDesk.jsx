@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { API_BASE_URL } from '../utils/apiClient.js';
+import apiClient from '../utils/apiClient.js';
 
 /**
  * Format time to HH:MM AM/PM
@@ -72,10 +72,8 @@ export default function AttendanceFrontDesk() {
     setLoading(true);
     try {
       const today = new Date().toISOString().split('T')[0];
-      const url = `${API_BASE_URL}/attendance/logs?startDate=${today}&endDate=${today}`;
-      
-      const res = await fetch(url, { credentials: 'include' });
-      const data = await res.json();
+      const res = await apiClient.get(`/attendance/logs?startDate=${today}&endDate=${today}`);
+      const data = res.data;
 
       if (data.records) {
         setRecords(data.records);

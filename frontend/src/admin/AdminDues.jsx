@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import apiClient from "../utils/apiClient.js";
 import { getDaysRemaining, getDaysIndicatorClass } from "../utils/memberStatus.js";
 
@@ -9,19 +9,30 @@ export default function AdminDues() {
   const [sortAsc, setSortAsc] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const recordsPerPage = 10;
-  const fetchedRef = useRef(false);
+  const [admin, setAdmin] = useState(null);
+  const [genderFilter, setGenderFilter] = useState("All");
+
+  const isSuperadmin = admin?.scope === "all";
 
   useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
+    apiClient.get("/admin/me").then((res) => {
+      const current = res.data?.admin || res.data?.data || res.data || null;
+      setAdmin(current);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const params = {
+      days: 3650,
+      includeExpired: true,
+      includeDraft: true,
+    };
+    if (isSuperadmin && genderFilter !== "All") {
+      params.gender = genderFilter;
+    }
+
     apiClient
-      .get("/members/due/list", {
-        params: {
-          days: 3650,
-          includeExpired: true,
-          includeDraft: true,
-        },
-      })
+      .get("/members/due/list", { params })
       .then((res) => {
         const rawList = res.data?.data || res.data || [];
         const normalized = rawList.map((due) => ({
@@ -32,7 +43,7 @@ export default function AdminDues() {
         setFiltered(normalized);
       })
       .catch((err) => console.log("DUES ERROR:", err));
-  }, []);
+  }, [genderFilter, isSuperadmin]);
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "-";
@@ -75,6 +86,20 @@ export default function AdminDues() {
           value={searchText}
           onChange={(e) => handleSearch(e.target.value)}
         />
+        {isSuperadmin && (
+          <select
+            className="saas-input"
+            style={{ width: '200px' }}
+            value={genderFilter}
+            onChange={(e) => setGenderFilter(e.target.value)}
+            aria-label="Filter by gender"
+          >
+            <option value="All">All Genders</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Transgender">Transgender</option>
+          </select>
+        )}
       </div>
 
       <div className="saas-table-container">
