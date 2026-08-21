@@ -5,12 +5,14 @@ export const createDietSchema = Joi.object({
   name: Joi.string().min(3).max(100).required(),
   description: Joi.string().max(1000).optional(),
   isActive: Joi.boolean().optional(),
+  gender: Joi.string().valid("All", "Male", "Female", "Transgender").optional(),
 });
 
 export const updateDietSchema = Joi.object({
   name: Joi.string().min(3).max(100).optional(),
   description: Joi.string().max(1000).optional(),
   isActive: Joi.boolean().optional(),
+  gender: Joi.string().valid("All", "Male", "Female", "Transgender").optional(),
 });
 
 export const validateCreateDiet = (data) => createDietSchema.validate(data, { abortEarly: false });

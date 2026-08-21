@@ -17,7 +17,6 @@ const MONGO_URI =
   process.env.MONGO_URI || process.env.DATABASE_URL || process.env.MONGO_URL;
 const SEED_SUPERADMIN_PASSWORD = process.env.SEED_SUPERADMIN_PASSWORD;
 const SEED_TRAINER_PASSWORD = process.env.SEED_TRAINER_PASSWORD;
-const SEED_FINANCE_PASSWORD = process.env.SEED_FINANCE_PASSWORD;
 
 if (!MONGO_URI) {
   console.error(
@@ -26,9 +25,9 @@ if (!MONGO_URI) {
   process.exit(1);
 }
 
-if (!SEED_SUPERADMIN_PASSWORD || !SEED_TRAINER_PASSWORD || !SEED_FINANCE_PASSWORD) {
+if (!SEED_SUPERADMIN_PASSWORD || !SEED_TRAINER_PASSWORD) {
   console.error(
-    "ERROR: SEED_SUPERADMIN_PASSWORD, SEED_TRAINER_PASSWORD and SEED_FINANCE_PASSWORD must be defined in environment variables."
+    "ERROR: SEED_SUPERADMIN_PASSWORD and SEED_TRAINER_PASSWORD must be defined in environment variables."
   );
   process.exit(1);
 }
@@ -90,20 +89,20 @@ async function seedDatabase() {
         password: SEED_SUPERADMIN_PASSWORD,
       },
       {
-        fullName: "Test Trainer",
-        username: "testtrainer",
-        email: "trainer@gymproject.com",
+        fullName: "Male Trainer",
+        username: "maletrainer",
+        email: "maletrainer@gymproject.com",
         role: "trainer",
-        scope: "all",
+        scope: "male",
         password: SEED_TRAINER_PASSWORD,
       },
       {
-        fullName: "Test Finance",
-        username: "testfinance",
-        email: "finance@gymproject.com",
-        role: "finance",
-        scope: "all",
-        password: SEED_FINANCE_PASSWORD,
+        fullName: "Female Trainer",
+        username: "femaletrainer",
+        email: "femaletrainer@gymproject.com",
+        role: "trainer",
+        scope: "female_plus_transgender",
+        password: SEED_TRAINER_PASSWORD,
       },
     ];
 
@@ -127,7 +126,7 @@ async function seedDatabase() {
       await admin.save();
       console.log(`  ✓ Admin created (username: ${user.username}, email: ${user.email}, role: ${user.role})`);
     }
-    console.log("  ℹ️  Three admin accounts created for testing (superadmin / trainer / finance).");
+    console.log("  ℹ️  Three admin accounts created for testing (superadmin / male trainer / female trainer).");
 
     // ========================================================================
     // 3. SEED PACKAGE COLLECTION

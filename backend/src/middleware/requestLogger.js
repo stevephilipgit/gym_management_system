@@ -4,12 +4,18 @@ import logger from "../core/logger.js";
 const auditLogSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "Admin", default: null },
+    adminUsername: { type: String, default: null },
+    requestId: { type: String, default: null },
     ipAddress: { type: String, required: true },
     method: { type: String, required: true },
     path: { type: String, required: true },
     statusCode: { type: Number },
     userAgent: { type: String },
     action: { type: String },
+    resourceType: { type: String, default: null },
+    resourceId: { type: String, default: null },
+    changes: { type: mongoose.Schema.Types.Mixed, default: null },
+    details: { type: mongoose.Schema.Types.Mixed, default: null },
     timestamp: { type: Date, default: Date.now, index: true },
   },
   { collection: "auditlogs", timestamps: false }

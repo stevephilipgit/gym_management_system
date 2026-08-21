@@ -2,19 +2,25 @@
 import express from "express";
 import multer from "multer";
 import path from "path";
+import { fileURLToPath } from "url";
 import uploadController from "../controllers/uploadController.js";
 import adminAuth from "../middleware/adminAuth.js";
 import { adminLimiter } from "../middleware/rateLimiter.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const router = express.Router();
 router.use(adminLimiter);
 
 /* ============================================================
    MULTER STORAGE CONFIG
+   Absolute path matching express.static serving in server.js
+   (backend/src/uploads). Prevents cwd-relative path mismatch.
 ============================================================ */
+const UPLOAD_DIR = path.join(__dirname, "..", "uploads");
 const storage = multer.diskStorage({
   destination(req, file, cb) {
-    cb(null, "uploads/");
+    cb(null, UPLOAD_DIR);
   },
   filename(req, file, cb) {
     const safeName = file.originalname.replace(/\s+/g, "_").toLowerCase();

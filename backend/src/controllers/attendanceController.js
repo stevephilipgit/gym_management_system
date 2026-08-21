@@ -137,6 +137,17 @@ export const searchPunch = async (req, res) => {
       });
     }
 
+    // Gender-scope enforcement (server-side). The trainer's scope is derived
+    // from the authenticated session only. Out-of-scope members are treated as
+    // "not found" so we do not leak whether another gender's member exists.
+    if (!scopeResolver.checkMemberScope(req, member.gender)) {
+      attendanceLogger.warn(`Member Out of Scope | MemberID=${member.gymId} | Gender=${member.gender}`, requestMeta);
+      return res.status(404).json({
+        success: false,
+        message: 'Member not found',
+      });
+    }
+
     attendanceLogger.info(`Member Found | MemberID=${member.gymId} | Name=${member.fullName}`, requestMeta);
 
     if (member.status !== 'active') {
@@ -417,6 +428,25 @@ export const handleLatePunchManual = async (req, res) => {
       });
     }
 
+    // Gender-scope enforcement: load the member and verify the trainer is
+    // authorized to punch this member.
+    let member = null;
+    if (memberId && action !== 'cancel') {
+      member = await Member.findById(memberId).select("gender gymId fullName validityEnd status");
+      if (!member) {
+        return res.status(404).json({
+          success: false,
+          message: 'Member not found',
+        });
+      }
+      if (!scopeResolver.checkMemberScope(req, member.gender)) {
+        return res.status(404).json({
+          success: false,
+          message: 'Member not found',
+        });
+      }
+    }
+
     if (action === 'cancel') {
       return res.json({
         success: true,
@@ -427,7 +457,6 @@ export const handleLatePunchManual = async (req, res) => {
     if (action === 'mark_entry') {
       // Mark as check-in only (first punch of day, no checkout)
       const { attendance } = await attendanceService.markAttendance(memberId);
-      const member = await Member.findById(memberId).lean();
       const daysLeft = attendanceService.calculateDaysLeft(member.validityEnd);
       await syncAttendanceIfConnected(attendance, member);
 
@@ -465,7 +494,6 @@ export const handleLatePunchManual = async (req, res) => {
 
       await attendance.save();
 
-      const member = await Member.findById(memberId).lean();
       const daysLeft = attendanceService.calculateDaysLeft(member.validityEnd);
       await syncAttendanceIfConnected(attendance, member);
 
@@ -541,7 +569,16 @@ export const getAttendanceHistory = async (req, res) => {
 // GET /api/attendance/stats/today
 export const getTodayStats = async (req, res) => {
   try {
-    const stats = await attendanceService.getTodayStats();
+    // Gender-scoped: trainers only see counts for their allowed genders.
+    // Superadmin (scope=all) sees everything.
+    const allowed = scopeResolver.getScopeAllowedGenders(req);
+    let stats;
+    if (allowed.length === 0 || allowed.length >= 3) {
+      stats = await attendanceService.getTodayStats();
+    } else {
+      const memberIds = await scopeResolver.getScopedMemberIds(req, Member);
+      stats = await attendanceService.getTodayStats(memberIds || []);
+    }
     res.json({
       success: true,
       stats,
@@ -580,14 +617,9 @@ export const searchAttendanceLogs = async (req, res) => {
     }
 
     const memberFilter = {};
-    const adminScope = req.admin?.scope;
-    const allowedGenders = {
-      all: ["Male", "Female", "Transgender"],
-      male: ["Male"],
-      female_plus_transgender: ["Female", "Transgender"],
-    }[adminScope];
+    const allowedGenders = scopeResolver.getScopeAllowedGenders(req);
 
-    if (!allowedGenders) {
+    if (allowedGenders.length === 0) {
       return res.status(403).json({
         success: false,
         message: 'Access denied: invalid admin scope',

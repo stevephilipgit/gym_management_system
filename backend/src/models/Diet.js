@@ -12,6 +12,16 @@ const dietSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    // Gender scope: "All" diets are visible to every trainer scope.
+    // "Male" diets are visible to male-scope trainers (and superadmin).
+    // "Female"/"Transgender" diets are visible to female_plus_transgender
+    // scope (and superadmin). Scope is enforced server-side in dietController.
+    gender: {
+      type: String,
+      enum: ["All", "Male", "Female", "Transgender"],
+      default: "All",
+      index: true,
+    },
     isActive: {
       type: Boolean,
       default: true,

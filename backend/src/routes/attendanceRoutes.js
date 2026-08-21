@@ -1,4 +1,5 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import * as attendanceController from '../controllers/attendanceController.js';
 import * as attendanceValidation from '../middleware/attendanceValidation.js';
 import adminAuth from '../middleware/adminAuth.js';
@@ -9,9 +10,20 @@ const router = express.Router();
  * Attendance Routes
  */
 
+// Dedicated limiter for member search/punch — gymId/phone enumeration surface.
+// 60 lookups / minute / IP is generous for a gym counter while capping abuse.
+const searchPunchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  message: { success: false, message: 'Too many lookups. Slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // POST /api/attendance/search-punch - Combined search + attendance (admin only)
 router.post(
   '/search-punch',
+  searchPunchLimiter,
   adminAuth,
   attendanceController.searchPunch
 );

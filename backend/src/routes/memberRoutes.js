@@ -2,6 +2,8 @@
 
 import express from "express";
 import multer from "multer";
+import path from "path";
+import { fileURLToPath } from "url";
 import rateLimit from "express-rate-limit";
 import memberController from "../controllers/memberController.js";
 import adminAuth from "../middleware/adminAuth.js";
@@ -10,6 +12,8 @@ import { validateSchema } from "../middleware/schemaValidator.js";
 import { memberRegisterSchema, memberUpdateSchema, memberRenewSchema } from "../schemas/memberSchema.js";
 import { adminLimiter, sensitiveLimiter } from "../middleware/rateLimiter.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const router = express.Router();
 
 /* ============================================================
@@ -26,14 +30,16 @@ router.get("/public-validity/:gymId", validityLimiter, memberController.checkPub
 
 // Apply admin limiter to ALL remaining routes
 router.use(adminLimiter);
+const UPLOAD_DIR = path.join(__dirname, "..", "uploads");
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/"),
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) =>
     cb(null, Date.now() + "-" + file.originalname.replace(/\s+/g, "_")),
 });
 
 const upload = multer({
   storage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB — same as /api/upload
   fileFilter: (req, file, cb) => {
     if (!file.mimetype.match(/jpg|jpeg|png/i)) {
       return cb(new Error("Only JPG, JPEG, PNG allowed"));

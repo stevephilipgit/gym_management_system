@@ -59,14 +59,31 @@ class MemberRepository {
     }).populate("dietId");
   }
 
-  // Update by Gym ID
-  async updateByGymId(gymId, updateData) {
+  // Update by Gym ID with optimistic concurrency.
+  // expectedVersion: the version the caller loaded. The write only succeeds if
+  // the stored version still matches, and increments version atomically.
+  // Returns null when the member is missing OR the version has changed —
+  // the controller distinguishes 404 vs 409.
+  async updateByGymId(gymId, updateData, expectedVersion) {
     const parsedGymId = this.normalizeGymId(gymId);
     if (!parsedGymId) return null;
-    return Member.findOneAndUpdate({ gymId: parsedGymId }, updateData, {
-      new: true,
-      runValidators: true,
-    }).populate("dietId");
+
+    const filter = { gymId: parsedGymId };
+    if (typeof expectedVersion === "number" && Number.isInteger(expectedVersion)) {
+      if (expectedVersion === 0) {
+        // Legacy members created before the version field have no `version`
+        // (effective 0). Their first update sets version to 1 via $inc.
+        filter.$or = [{ version: 0 }, { version: { $exists: false } }];
+      } else {
+        filter.version = expectedVersion;
+      }
+    }
+
+    return Member.findOneAndUpdate(
+      filter,
+      { ...updateData, $inc: { version: 1 } },
+      { new: true, runValidators: true }
+    ).populate("dietId");
   }
 
   // Delete member

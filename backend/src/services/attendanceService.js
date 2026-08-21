@@ -188,23 +188,28 @@ class AttendanceService {
 
   /**
    * Get today's stats (simple counts)
+   * When memberIds is provided, only attendance belonging to those members is
+   * counted (gender-scoped query). memberIds = null counts everything (superadmin).
    */
-  async getTodayStats() {
+  async getTodayStats(memberIds = null) {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const totalPunches = await Attendance.countDocuments({
-        date: today,
-      });
+      const baseFilter = { date: today };
+      const scopeFilter = Array.isArray(memberIds)
+        ? { ...baseFilter, memberId: { $in: memberIds } }
+        : baseFilter;
+
+      const totalPunches = await Attendance.countDocuments(scopeFilter);
 
       const activePunches = await Attendance.countDocuments({
-        date: today,
+        ...scopeFilter,
         state: 'inside',
       });
 
       const completedPunches = await Attendance.countDocuments({
-        date: today,
+        ...scopeFilter,
         state: 'completed',
       });
 

@@ -7,6 +7,7 @@ export const createPackageSchema = Joi.object({
   priceWeightLoss: Joi.number().min(0).required(),
   priceWeightGain: Joi.number().min(0).required(),
   priceTransformation: Joi.number().min(0).required(),
+  gender: Joi.string().valid("All", "Male", "Female", "Transgender").optional(),
 });
 
 export const updatePackageSchema = Joi.object({
@@ -15,6 +16,7 @@ export const updatePackageSchema = Joi.object({
   priceWeightLoss: Joi.number().min(0).optional(),
   priceWeightGain: Joi.number().min(0).optional(),
   priceTransformation: Joi.number().min(0).optional(),
+  gender: Joi.string().valid("All", "Male", "Female", "Transgender").optional(),
 });
 
 export const validateCreatePackage = (data) => createPackageSchema.validate(data, { abortEarly: false });

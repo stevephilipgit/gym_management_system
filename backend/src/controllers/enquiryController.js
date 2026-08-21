@@ -5,6 +5,7 @@
  */
 import Enquiry from '../models/Enquiry.js';
 import logger from '../core/logger.js';
+import scopeResolver from '../core/scopeResolver.js';
 import { sendEnquiryNotification } from '../services/emailService.js';
 import systemSettingsService from '../services/systemSettingsService.js';
 import * as googleSheetsService from '../services/googleSheetsService.js';
@@ -31,6 +32,7 @@ export const submitEnquiry = async (req, res) => {
       reason,
       message = '',
       source_page = 'home',
+      gender,
       // honeypot field — bots fill this
       website,
     } = req.body;
@@ -83,6 +85,10 @@ export const submitEnquiry = async (req, res) => {
       errors.push('Message must be under 500 characters.');
     }
 
+    // Optional gender field — used for trainer-scope filtering.
+    const validGenders = ['Male', 'Female', 'Transgender'];
+    const cleanGender = validGenders.includes(sanitize(gender)) ? sanitize(gender) : 'Male';
+
     if (errors.length > 0) {
       return res.status(400).json({ success: false, message: errors[0], errors });
     }
@@ -95,6 +101,7 @@ export const submitEnquiry = async (req, res) => {
       preferred_branch: cleanBranch,
       reason: cleanReason,
       message: cleanMessage,
+      gender: cleanGender,
       source_page: sanitize(source_page).substring(0, 100),
       ip_address: (req.ip || '').substring(0, 45),
       user_agent: (req.get('user-agent') || '').substring(0, 500),
@@ -194,24 +201,18 @@ export const getEnquiries = async (req, res) => {
     if (status && status !== 'all') filter.status = status;
     if (branch && branch !== 'all') filter.preferred_branch = branch;
 
-    // Apply gender scope filter based on admin role/scope
-    if (req.admin && req.admin.scope) {
-      const allowedGenders = {
-        all: ["Male", "Female", "Transgender"],
-        male: ["Male"],
-        female_plus_transgender: ["Female", "Transgender"],
-      }[req.admin.scope] || [];
-
-      // If gender query param provided, use it (override scope filter)
-      if (gender) {
+    // Gender-scope enforcement: the scope derived from the authenticated
+    // session is the authority. A client-supplied gender filter may ONLY
+    // narrow an already-authorized (superadmin) scope — it can never widen it.
+    const allowedGenders = scopeResolver.getScopeAllowedGenders(req);
+    if (allowedGenders.length > 0) {
+      if (gender && allowedGenders.includes(gender)) {
         filter.gender = gender;
-      } else if (allowedGenders.length > 0) {
-        // Apply scope-based gender filter
+      } else {
         filter.gender = { $in: allowedGenders };
       }
     }
 
-    if (reason && reason !== 'all') filter.reason = reason;
     if (reason && reason !== 'all') filter.reason = reason;
 
     if (search) {
@@ -263,16 +264,10 @@ export const getEnquiryById = async (req, res) => {
     const enquiry = await Enquiry.findById(req.params.id).lean();
     if (!enquiry) return res.status(404).json({ success: false, message: 'Enquiry not found.' });
 
-    // Verify admin scope against enquiry gender
-    if (req.admin && req.admin.scope) {
-      const allowedGenders = {
-        all: ["Male", "Female", "Transgender"],
-        male: ["Male"],
-        female_plus_transgender: ["Female", "Transgender"],
-      }[req.admin.scope] || [];
-      if (!allowedGenders.includes(enquiry.gender)) {
-        return res.status(403).json({ success: false, message: 'Access denied: insufficient scope for this enquiry' });
-      }
+    // Verify admin scope against enquiry gender (centralized rule)
+    const allowedGenders = scopeResolver.getScopeAllowedGenders(req);
+    if (allowedGenders.length > 0 && !allowedGenders.includes(enquiry.gender)) {
+      return res.status(403).json({ success: false, message: 'Access denied: insufficient scope for this enquiry' });
     }
 
     return res.json({ success: true, enquiry });
@@ -293,19 +288,13 @@ export const updateEnquiryStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid status.' });
     }
 
-    // Verify admin scope against enquiry gender BEFORE update
+    // Verify admin scope against enquiry gender BEFORE update (centralized rule)
     const enquiry = await Enquiry.findById(req.params.id).lean();
     if (!enquiry) return res.status(404).json({ success: false, message: 'Enquiry not found.' });
 
-    if (req.admin && req.admin.scope) {
-      const allowedGenders = {
-        all: ["Male", "Female", "Transgender"],
-        male: ["Male"],
-        female_plus_transgender: ["Female", "Transgender"],
-      }[req.admin.scope] || [];
-      if (!allowedGenders.includes(enquiry.gender)) {
-        return res.status(403).json({ success: false, message: 'Access denied: insufficient scope for this enquiry' });
-      }
+    const allowedGenders = scopeResolver.getScopeAllowedGenders(req);
+    if (allowedGenders.length > 0 && !allowedGenders.includes(enquiry.gender)) {
+      return res.status(403).json({ success: false, message: 'Access denied: insufficient scope for this enquiry' });
     }
 
     const updateData = { status };
@@ -364,18 +353,12 @@ export const exportEnquiriesCSV = async (req, res) => {
     if (status && status !== 'all') filter.status = status;
     if (branch && branch !== 'all') filter.preferred_branch = branch;
 
-    // Apply gender scope filter based on admin role/scope
-    if (req.admin && req.admin.scope) {
-      const allowedGenders = {
-        all: ["Male", "Female", "Transgender"],
-        male: ["Male"],
-        female_plus_transgender: ["Female", "Transgender"],
-      }[req.admin.scope] || [];
-
-      // If gender query param provided, use it (override scope filter)
-      if (gender) {
+    // Gender-scope enforcement (same rule as getEnquiries).
+    const allowedGenders = scopeResolver.getScopeAllowedGenders(req);
+    if (allowedGenders.length > 0) {
+      if (gender && allowedGenders.includes(gender)) {
         filter.gender = gender;
-      } else if (allowedGenders.length > 0) {
+      } else {
         filter.gender = { $in: allowedGenders };
       }
     }

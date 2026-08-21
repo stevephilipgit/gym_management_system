@@ -147,6 +147,14 @@ export const memberRegisterSchema = Joi.object({
 }).unknown(true);
 
 export const memberUpdateSchema = Joi.object({
+  // Optimistic concurrency: the version the client loaded is mandatory.
+  version: Joi.number().integer().min(0).required().messages({
+    "number.base": "version is required",
+    "number.integer": "version must be an integer",
+    "number.min": "version cannot be negative",
+    "any.required": "version is required",
+  }),
+
   fullName: Joi.string()
     .trim()
     .min(3)
@@ -234,6 +242,14 @@ export const memberStatusSchema = Joi.object({
 });
 
 export const memberRenewSchema = Joi.object({
+  // Optimistic concurrency: the version the client loaded is mandatory.
+  version: Joi.number().integer().min(0).required().messages({
+    "number.base": "version is required",
+    "number.integer": "version must be an integer",
+    "number.min": "version cannot be negative",
+    "any.required": "version is required",
+  }),
+
   plan: Joi.string()
     .trim()
     .max(50)

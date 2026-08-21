@@ -96,6 +96,15 @@ const memberSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+
+    // Optimistic concurrency: incremented on every update/renew. Clients must
+    // send the version they loaded; a mismatch means another admin edited the
+    // member and the write is rejected with 409 (never silently overwrite).
+    version: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   { timestamps: true }
 );
@@ -105,6 +114,14 @@ memberSchema.pre("save", function (next) {
     this.fullName = generateFormattedName(this.fullName, this.fatherName);
   }
   next();
+});
+
+// Legacy documents created before the version field hydrate without it;
+// normalize to 0 so the API always returns a concrete version for concurrency.
+memberSchema.post("init", function () {
+  if (typeof this.version !== "number") {
+    this.version = 0;
+  }
 });
 
 // ✅ ANALYTICS OPTIMIZATION INDEXES

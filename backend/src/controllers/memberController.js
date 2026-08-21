@@ -3,7 +3,7 @@ import memberRepository from "../repositories/memberRepository.js";
 import paymentRepository from "../repositories/paymentRepository.js";
 import { updateTodaySummary } from "../services/summaryService.js";
 import { auditActions } from "../utils/auditLog.js";
-import { asyncHandler, ValidationError, NotFoundError, ForbiddenError } from "../core/errorHandler.js";
+import { asyncHandler, ValidationError, NotFoundError, ForbiddenError, ConflictError } from "../core/errorHandler.js";
 import PaymentLog from "../models/PaymentLog.js";
 import FinanceLog from "../models/FinanceLog.js";
 import Counter from "../services/atomicCounter.js";
@@ -51,14 +51,10 @@ export const memberController = {
     const customFields = data.customFields ? JSON.parse(data.customFields) : {};
     delete data.customFields;
 
-    // Verify requested gender against admin scope
+    // Verify requested gender against admin scope (centralized rule)
     if (data.gender) {
-      const allowedGenders = {
-        all: ["Male", "Female", "Transgender"],
-        male: ["Male"],
-        female_plus_transgender: ["Female", "Transgender"],
-      }[req.admin.scope] || [];
-      if (!allowedGenders.includes(data.gender)) {
+      const allowedGenders = scopeResolver.getScopeAllowedGenders(req);
+      if (allowedGenders.length > 0 && !allowedGenders.includes(data.gender)) {
         throw new ForbiddenError(
           `Access denied: cannot register ${data.gender} member with current admin scope`
         );
@@ -160,25 +156,27 @@ export const memberController = {
 
   // Get all members
   getAllMembers: asyncHandler(async (req, res) => {
-    const { page = 1, pageSize = 10, status, search } = req.query;
+    const { page = 1, pageSize = 10, status, search, gender } = req.query;
     const filters = {};
 
-    // Apply gender scope filter based on admin role/scope
-    if (req.admin && req.admin.scope) {
-      const allowedGenders = {
-        all: ["Male", "Female", "Transgender"],
-        male: ["Male"],
-        female_plus_transgender: ["Female", "Transgender"],
-      }[req.admin.scope] || [];
-      if (allowedGenders.length > 0) {
-        filters.gender = { $in: allowedGenders };
-      }
+    // Gender-scope enforcement (centralized via scopeResolver).
+    const genderFilter = scopeResolver.buildGenderFilter(req);
+    if (genderFilter.gender) {
+      filters.gender = genderFilter.gender;
+    }
+
+    // Superadmin-only narrowing filter: a valid ?gender= query narrows the
+    // "all" scope. It can never widen a trainer's scope (trainers fall into
+    // the else branch above and the param is ignored).
+    if (gender && req.admin?.scope === "all" && ["Male", "Female", "Transgender"].includes(gender)) {
+      filters.gender = gender;
     }
 
     if (status) filters.status = status;
     if (search) {
-      // Will handle with repository search method
-      const members = await memberRepository.search(search);
+      // The search path MUST keep the same gender scope as the list path —
+      // otherwise a trainer could list all genders by adding ?search=.
+      const members = await memberRepository.search(search, filters);
       return res.json({
         success: true,
         data: members,
@@ -264,6 +262,13 @@ export const memberController = {
 
     const data = req.body;
 
+    // Optimistic concurrency: require the version the trainer loaded.
+    const expectedVersion = Number(data.version);
+    delete data.version; // never write version via the update payload
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+      throw new ValidationError("version is required for update. Please reload the member and try again.");
+    }
+
     // Handle photo upload
     if (req.file) {
       data.photoUrl = `/uploads/${req.file.filename}`;
@@ -277,9 +282,16 @@ export const memberController = {
     // Do NOT trust incoming gender to authorize the operation.
     // Scope is verified against the existing member gender above.
 
-    const member = await memberRepository.updateByGymId(lookupGymId, data);
+    const member = await memberRepository.updateByGymId(lookupGymId, data, expectedVersion);
 
     if (!member) {
+      // Distinguish "member deleted" (404) from "another admin edited it" (409)
+      const stillExists = await memberRepository.findByGymId(lookupGymId);
+      if (stillExists) {
+        throw new ConflictError(
+          "This member was modified by another user. Please reload the member and try again."
+        );
+      }
       throw new NotFoundError("Member not found");
     }
 
@@ -320,19 +332,15 @@ export const memberController = {
       includeExpired = "true",
       includeDraft = "true",
       includeAllStatuses = "false",
+      gender,
     } = req.query;
 
-    // Build gender filter based on admin scope
-    const genderFilter = {};
-    if (req.admin && req.admin.scope) {
-      const allowedGenders = {
-        all: ["Male", "Female", "Transgender"],
-        male: ["Male"],
-        female_plus_transgender: ["Female", "Transgender"],
-      }[req.admin.scope] || [];
-      if (allowedGenders.length > 0) {
-        genderFilter.gender = { $in: allowedGenders };
-      }
+    // Gender-scope enforcement (centralized via scopeResolver)
+    const genderFilter = scopeResolver.buildGenderFilter(req);
+
+    // Superadmin-only narrowing filter (?gender= on the Due page).
+    if (gender && req.admin?.scope === "all" && ["Male", "Female", "Transgender"].includes(gender)) {
+      genderFilter.gender = gender;
     }
 
     const members = await memberRepository.findExpiringMembers(Number(days), {
@@ -351,18 +359,8 @@ export const memberController = {
 
   // Get expired members
   getExpiredMembers: asyncHandler(async (req, res) => {
-    // Build gender filter based on admin scope
-    const genderFilter = {};
-    if (req.admin && req.admin.scope) {
-      const allowedGenders = {
-        all: ["Male", "Female", "Transgender"],
-        male: ["Male"],
-        female_plus_transgender: ["Female", "Transgender"],
-      }[req.admin.scope] || [];
-      if (allowedGenders.length > 0) {
-        genderFilter.gender = { $in: allowedGenders };
-      }
-    }
+    // Gender-scope enforcement (centralized via scopeResolver)
+    const genderFilter = scopeResolver.buildGenderFilter(req);
 
     const members = await memberRepository.findExpiredMembers(genderFilter);
 
@@ -479,6 +477,13 @@ export const memberController = {
     const parsedExtraDays = Number(extraDays) || 0;
     const selectedPaymentMode = paymentMode || "cash";
 
+    // Optimistic concurrency: renewal must be based on the version the
+    // trainer loaded, otherwise a concurrent renewal is silently lost.
+    const expectedVersion = Number(req.body.version);
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+      throw new ValidationError("version is required for renewal. Please reload the member and try again.");
+    }
+
     // Calculate new validity
     const baseDate = existingMember.validityEnd ? new Date(existingMember.validityEnd) : new Date();
     const newValidityEnd = new Date(baseDate);
@@ -501,7 +506,18 @@ export const memberController = {
       dietId: dietId || existingMember.dietId || null,
       dietName: dietName || existingMember.dietName || null,
       dietIncludedInLastBilling: dietIncludedInLastBilling === "true" || Boolean(dietIncludedInLastBilling),
-    });
+    }, expectedVersion);
+
+    if (!updatedMember) {
+      // Distinguish "member deleted" (404) from "another admin edited it" (409)
+      const stillExists = await memberRepository.findByGymId(lookupGymId);
+      if (stillExists) {
+        throw new ConflictError(
+          "This member was modified by another user. Please reload the member and try again."
+        );
+      }
+      throw new NotFoundError("Member not found");
+    }
 
     // Log payment and finance
     const financeLog = await FinanceLog.create({
@@ -541,18 +557,8 @@ export const memberController = {
       throw new ValidationError("Search query must be at least 2 characters");
     }
 
-    // Build gender filter based on admin scope
-    const genderFilter = {};
-    if (req.admin && req.admin.scope) {
-      const allowedGenders = {
-        all: ["Male", "Female", "Transgender"],
-        male: ["Male"],
-        female_plus_transgender: ["Female", "Transgender"],
-      }[req.admin.scope] || [];
-      if (allowedGenders.length > 0) {
-        genderFilter.gender = { $in: allowedGenders };
-      }
-    }
+    // Gender-scope enforcement (centralized via scopeResolver)
+    const genderFilter = scopeResolver.buildGenderFilter(req);
 
     const members = await memberRepository.search(q, genderFilter);
 

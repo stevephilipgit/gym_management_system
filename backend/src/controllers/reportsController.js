@@ -16,18 +16,8 @@ export const getInactiveMembers = async (req, res) => {
     const skip = parseInt(req.query.skip) || 0;
     const limit = parseInt(req.query.limit) || 50;
 
-    // Build gender filter based on admin role/scope
-    const genderFilter = {};
-    if (req.admin && req.admin.scope) {
-      const allowedGenders = {
-        all: ["Male", "Female", "Transgender"],
-        male: ["Male"],
-        female_plus_transgender: ["Female", "Transgender"],
-      }[req.admin.scope] || [];
-      if (allowedGenders.length > 0) {
-        genderFilter.gender = { $in: allowedGenders };
-      }
-    }
+    // Gender-scope enforcement (centralized via scopeResolver).
+    const genderFilter = scopeResolver.buildGenderFilter(req);
 
     // Date N days ago
     const dateThreshold = new Date();
@@ -55,6 +45,7 @@ export const getInactiveMembers = async (req, res) => {
 
     const total = await Member.countDocuments({
       status: 'active',
+      ...genderFilter,
       $or: [
         { lastAttendanceDate: { $lt: dateThreshold } },
         { lastAttendanceDate: null },
@@ -117,6 +108,17 @@ export const exportAttendanceCSV = async (req, res) => {
       }
     }
 
+    // Gender-scope enforcement: trainers may only export attendance belonging
+    // to their allowed genders. Superadmin (all) is unrestricted.
+    const allowedGenders = scopeResolver.getScopeAllowedGenders(req);
+    if (allowedGenders.length > 0 && allowedGenders.length < 3) {
+      const memberIds = await scopeResolver.getScopedMemberIds(req, Member);
+      if (!memberIds || memberIds.length === 0) {
+        return res.send(generateAttendanceCSV([]));
+      }
+      filter.memberId = { $in: memberIds };
+    }
+
     const records = await Attendance.find(filter)
       .populate('memberId', 'fullName phone gymId')
       .sort({ date: -1, checkInTime: -1 })
@@ -146,25 +148,15 @@ export const exportMembersCSV = async (req, res) => {
   try {
     const { status, skip = 0, limit = 5000 } = req.query;
 
-    // Build gender filter based on admin role/scope
-    const genderFilter = {};
-    if (req.admin && req.admin.scope) {
-      const allowedGenders = {
-        all: ["Male", "Female", "Transgender"],
-        male: ["Male"],
-        female_plus_transgender: ["Female", "Transgender"],
-      }[req.admin.scope] || [];
-      if (allowedGenders.length > 0) {
-        genderFilter.gender = { $in: allowedGenders };
-      }
-    }
+    // Gender-scope enforcement (centralized via scopeResolver).
+    const genderFilter = scopeResolver.buildGenderFilter(req);
 
     let filter = {};
     if (status) {
       filter.status = status;
     }
 
-    // Apply gender scope filter if no status filter (or always apply it)
+    // Apply gender scope filter (no-op for superadmin/all)
     if (genderFilter.gender) {
       filter.gender = genderFilter.gender;
     }
@@ -215,8 +207,12 @@ export const exportInactiveReport = async (req, res) => {
     dateThreshold.setDate(dateThreshold.getDate() - days);
     dateThreshold.setHours(0, 0, 0, 0);
 
+    // Gender-scope enforcement (same rule as getInactiveMembers).
+    const genderFilter = scopeResolver.buildGenderFilter(req);
+
     const members = await Member.find({
       status: 'active',
+      ...genderFilter,
       $or: [
         { lastAttendanceDate: { $lt: dateThreshold } },
         { lastAttendanceDate: null },
