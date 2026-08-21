@@ -3,8 +3,10 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import Admin from "../models/Admin.js";
+import AdminSession from "../models/AdminSession.js";
 import config from "../config/index.js";
 import { auditActions } from "../utils/auditLog.js";
+import { ACCESS_COOKIE, REFRESH_COOKIE, sessionCookieName } from "../utils/sessionCookies.js";
 import captchaService from "../services/captchaService.js";
 import { sendEmail } from "../services/emailService.js";
 import { asyncHandler, ValidationError, AuthError, ConflictError } from "../core/errorHandler.js";
@@ -38,31 +40,50 @@ const parseDurationToMs = (duration) => {
 
 const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// Build access + refresh JWTs for an admin.
-const issueTokens = (admin) => {
+// Session-scoped cookie names live in utils/sessionCookies.js (see import).
+
+// Revoke every active session for an admin (password change, disable, delete).
+const revokeAllSessions = async (adminId) => {
+  await AdminSession.updateMany(
+    { adminId, revokedAt: null },
+    { $set: { revokedAt: new Date() } }
+  );
+};
+
+// Build access + refresh JWTs for an admin session.
+// Access token carries: id, username, role, scope, email, sid (session id),
+// tv (tokenVersion) and a unique jti. The refresh token carries sid + tv so
+// rotation stays bound to the same session.
+const issueTokens = (admin, sessionId) => {
   const accessToken = jwt.sign(
-    { id: admin._id, username: admin.username, role: admin.role, scope: admin.scope, email: admin.email },
+    { id: admin._id, username: admin.username, role: admin.role, scope: admin.scope, email: admin.email, sid: sessionId, tv: admin.tokenVersion, jti: crypto.randomUUID() },
     config.jwt.accessSecret,
     { expiresIn: config.jwt.accessExpires }
   );
   const refreshToken = jwt.sign(
-    { id: admin._id, username: admin.username },
+    { id: admin._id, username: admin.username, sid: sessionId, tv: admin.tokenVersion, jti: crypto.randomUUID() },
     config.jwt.refreshSecret,
     { expiresIn: config.jwt.refreshExpires }
   );
   return { accessToken, refreshToken };
 };
 
-// Set both auth cookies (access + rotating refresh) on the response.
-const setAuthCookies = (res, { accessToken, refreshToken }) => {
-  res.cookie("gym_admin_token", accessToken, {
+// Set the per-session auth cookies (access + rotating refresh) on the response.
+// The cookie name embeds the session id so multiple sessions in one browser
+// never overwrite each other. Legacy single-cookie names are cleared on login
+// to avoid stale shared cookies.
+const setAuthCookies = (res, { accessToken, refreshToken }, sessionId) => {
+  res.clearCookie(ACCESS_COOKIE, { path: "/" });
+  res.clearCookie(REFRESH_COOKIE, { path: "/api/admin" });
+
+  res.cookie(sessionCookieName(sessionId, ACCESS_COOKIE), accessToken, {
     httpOnly: true,
     secure: config.app.isProduction,
     sameSite: "strict",
     path: "/",
     maxAge: parseDurationToMs(config.jwt.accessExpires),
   });
-  res.cookie("gym_admin_refresh", refreshToken, {
+  res.cookie(sessionCookieName(sessionId, REFRESH_COOKIE), refreshToken, {
     httpOnly: true,
     secure: config.app.isProduction,
     sameSite: "strict",
@@ -71,9 +92,32 @@ const setAuthCookies = (res, { accessToken, refreshToken }) => {
   });
 };
 
-const clearAuthCookies = (res) => {
-  res.clearCookie("gym_admin_token", { path: "/" });
-  res.clearCookie("gym_admin_refresh", { path: "/api/admin" });
+// Clear the per-session cookie pair (and any legacy single cookies).
+const clearAuthCookies = (res, sessionId) => {
+  if (sessionId) {
+    res.clearCookie(sessionCookieName(sessionId, ACCESS_COOKIE), { path: "/" });
+    res.clearCookie(sessionCookieName(sessionId, REFRESH_COOKIE), { path: "/api/admin" });
+  }
+  res.clearCookie(ACCESS_COOKIE, { path: "/" });
+  res.clearCookie(REFRESH_COOKIE, { path: "/api/admin" });
+};
+
+// The session id a request identifies with: the X-Session-Id header wins
+// (per-tab); fall back to decoding the legacy shared cookie for older clients.
+const resolveRequestSessionId = (req) => {
+  const headerSid = String(req.get("x-session-id") || "").trim();
+  if (headerSid) return headerSid;
+
+  const token = req.cookies[ACCESS_COOKIE];
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, config.jwt.accessSecret, { ignoreExpiration: true });
+      if (decoded?.sid) return decoded.sid;
+    } catch {
+      // ignore — falls through to null (caller treats as unauthenticated)
+    }
+  }
+  return null;
 };
 
 export const authController = {
@@ -108,7 +152,8 @@ export const authController = {
       ],
     });
 
-    if (!admin) {
+    // Generic failure covers: nonexistent user, disabled user, wrong password.
+    if (!admin || admin.status !== "active") {
       throw new AuthError("Invalid credentials");
     }
 
@@ -118,11 +163,27 @@ export const authController = {
       throw new AuthError("Invalid credentials");
     }
 
-    // Generate access + refresh JWTs
-    const { accessToken, refreshToken } = issueTokens(admin);
+    // Create an independent per-device session. Logging out on one device
+    // revokes only this session; other devices remain unaffected.
+    const sessionId = crypto.randomUUID();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + parseDurationToMs(config.jwt.refreshExpires));
+    await AdminSession.create({
+      sessionId,
+      adminId: admin._id,
+      expiresAt,
+      deviceName: String(req.get("user-agent") || "").substring(0, 200),
+      ip: String(req.ip || "").substring(0, 45),
+    });
 
-    // Set cookies (access + rotating refresh)
-    setAuthCookies(res, { accessToken, refreshToken });
+    // Generate access + refresh JWTs bound to the session
+    const { accessToken, refreshToken } = issueTokens(admin, sessionId);
+
+    // Set per-session cookies (access + rotating refresh)
+    setAuthCookies(res, { accessToken, refreshToken }, sessionId);
+
+    admin.lastLogin = new Date();
+    await admin.save().catch(() => {});
 
     // Audit log
     req.admin = { id: admin._id, username: admin.username };
@@ -132,6 +193,7 @@ export const authController = {
       success: true,
       message: "Login successful",
       token: accessToken,
+      sessionId,
       admin: {
         id: admin._id,
         username: admin.username,
@@ -144,8 +206,14 @@ export const authController = {
   }),
 
   // Refresh the admin session by rotating the access + refresh tokens.
+  // The X-Session-Id header identifies which cookie pair to use (per-tab).
   refreshToken: asyncHandler(async (req, res) => {
-    const refreshToken = req.cookies.gym_admin_refresh;
+    const requestedSid = resolveRequestSessionId(req);
+
+    // Read the session-scoped refresh cookie, falling back to the legacy one.
+    let refreshToken = requestedSid
+      ? req.cookies[sessionCookieName(requestedSid, REFRESH_COOKIE)] || req.cookies[REFRESH_COOKIE]
+      : req.cookies[REFRESH_COOKIE];
 
     if (!refreshToken) {
       throw new AuthError("Session expired. Please login again.");
@@ -155,25 +223,61 @@ export const authController = {
     try {
       decoded = jwt.verify(refreshToken, config.jwt.refreshSecret);
     } catch (err) {
-      clearAuthCookies(res);
+      clearAuthCookies(res, requestedSid);
       throw new AuthError("Session expired. Please login again.");
     }
 
-    const admin = await Admin.findById(decoded.id);
+    if (!decoded?.id || !decoded?.sid) {
+      clearAuthCookies(res, requestedSid);
+      throw new AuthError("Session expired. Please login again.");
+    }
 
-    if (!admin) {
-      clearAuthCookies(res);
+    // The session identified in the header/legacy cookie must match the token.
+    if (requestedSid && decoded.sid !== requestedSid) {
+      clearAuthCookies(res, requestedSid);
+      throw new AuthError("Session expired. Please login again.");
+    }
+
+    const sessionId = decoded.sid;
+
+    const admin = await Admin.findById(decoded.id).select("-passwordHash");
+
+    if (!admin || admin.status !== "active") {
+      clearAuthCookies(res, sessionId);
+      throw new AuthError("Session expired. Please login again.");
+    }
+
+    // tokenVersion changed (password change / disable / role change) → invalid
+    if (admin.tokenVersion !== decoded.tv) {
+      clearAuthCookies(res, sessionId);
+      throw new AuthError("Session expired. Please login again.");
+    }
+
+    // Session must still exist, be un-revoked and un-expired
+    const session = await AdminSession.findOne({
+      sessionId,
+      adminId: admin._id,
+      revokedAt: null,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!session) {
+      clearAuthCookies(res, sessionId);
       throw new AuthError("Session expired. Please login again.");
     }
 
     // Rotate tokens so a stolen refresh token can only be used once.
-    const { accessToken, refreshToken: newRefreshToken } = issueTokens(admin);
-    setAuthCookies(res, { accessToken, refreshToken: newRefreshToken });
+    const { accessToken, refreshToken: newRefreshToken } = issueTokens(admin, session.sessionId);
+    setAuthCookies(res, { accessToken, refreshToken: newRefreshToken }, session.sessionId);
+
+    session.lastSeenAt = new Date();
+    await session.save().catch(() => {});
 
     return res.json({
       success: true,
       message: "Session refreshed",
       token: accessToken,
+      sessionId: session.sessionId,
       admin: {
         id: admin._id,
         username: admin.username,
@@ -185,16 +289,50 @@ export const authController = {
     });
   }),
 
-  // Logout admin
+  // Logout admin: revoke the CURRENT session only. Other devices' sessions
+  // are unaffected. Works even with an expired access token (best effort).
   logout: asyncHandler(async (req, res) => {
-    const adminId = req.admin?.id;
-    // Audit log only when authenticated context exists
-    if (adminId) {
-      await auditActions.adminLogout(req, adminId);
+    // X-Session-Id (per-tab) is authoritative; fall back to decoding the
+    // legacy shared cookie so pre-upgrade tabs can still log out.
+    let sessionId = resolveRequestSessionId(req);
+
+    // If the header/legacy token gave us no sid, try the session-scoped cookie.
+    if (!sessionId) {
+      const token = req.cookies[ACCESS_COOKIE];
+      if (token) {
+        try {
+          const decoded = jwt.verify(token, config.jwt.accessSecret, { ignoreExpiration: true });
+          if (decoded?.sid) sessionId = decoded.sid;
+          if (decoded?.id) req.admin = { id: decoded.id, username: decoded.username };
+        } catch {
+          // ignore malformed tokens — cookies are still cleared below
+        }
+      }
     }
 
-    clearAuthCookies(res);
+    if (sessionId) {
+      await AdminSession.updateOne({ sessionId }, { $set: { revokedAt: new Date() } }).catch(() => {});
+    }
+
+    const adminId = req.admin?.id;
+    if (adminId) {
+      await auditActions.adminLogout(req, adminId).catch(() => {});
+    }
+
+    clearAuthCookies(res, sessionId);
     return res.json({ success: true, message: "Logged out successfully" });
+  }),
+
+  // Logout all sessions for the current admin (e.g., a lost device).
+  logoutAllSessions: asyncHandler(async (req, res) => {
+    const adminId = req.admin?.id;
+    const sessionId = req.sessionId || resolveRequestSessionId(req);
+    if (adminId) {
+      await revokeAllSessions(adminId);
+      await auditActions.adminLogout(req, adminId).catch(() => {});
+    }
+    clearAuthCookies(res, sessionId);
+    return res.json({ success: true, message: "All sessions logged out" });
   }),
 
   // Get current admin
@@ -210,12 +348,13 @@ export const authController = {
       success: true,
       data: admin,
       admin,
+      sessionId: req.sessionId,
     });
   }),
 
   // Create new admin (superadmin only)
   createAdmin: asyncHandler(async (req, res) => {
-    const { username, password, fullName, email, role = "trainer", scope = "all" } = req.body;
+    const { username, password, fullName, email, role, scope } = req.body;
 
     // Validate input
     if (!username || !password || !fullName || !email) {
@@ -223,8 +362,17 @@ export const authController = {
     }
 
     // Validate role
-    if (!["superadmin", "trainer", "finance"].includes(role)) {
-      throw new ValidationError("Invalid role. Must be superadmin, trainer, or finance");
+    if (!["superadmin", "trainer"].includes(role)) {
+      throw new ValidationError("Invalid role. Must be superadmin or trainer");
+    }
+
+    // Validate scope — REQUIRED so trainers cannot be created with full access
+    // by accident. "all" is only meaningful for superadmin.
+    if (!["all", "male", "female_plus_transgender"].includes(scope)) {
+      throw new ValidationError("Scope is required. Must be all, male, or female_plus_transgender");
+    }
+    if (role === "trainer" && scope === "all") {
+      throw new ValidationError("Trainers must have a gender scope (male or female_plus_transgender)");
     }
 
     // Validate password strength
@@ -277,13 +425,16 @@ export const authController = {
   // Update admin
   updateAdmin: asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { fullName, email, role, scope } = req.body;
+    const { fullName, email, role, scope, status } = req.body;
 
     const admin = await Admin.findById(id);
 
     if (!admin) {
       throw new ValidationError("Admin not found");
     }
+
+    // Track lifecycle-affecting changes so we can invalidate all sessions.
+    let lifecycleChanged = false;
 
     // Update fields
     if (fullName) admin.fullName = fullName;
@@ -295,11 +446,23 @@ export const authController = {
       }
       admin.email = email;
     }
-    if (role && ["superadmin", "trainer", "finance"].includes(role)) {
+    if (role && ["superadmin", "trainer"].includes(role) && role !== admin.role) {
       admin.role = role;
+      lifecycleChanged = true;
     }
-    if (scope && ["all", "male", "female_plus_transgender"].includes(scope)) {
+    if (scope && ["all", "male", "female_plus_transgender"].includes(scope) && scope !== admin.scope) {
       admin.scope = scope;
+      lifecycleChanged = true;
+    }
+    if (status && ["active", "disabled"].includes(status) && status !== admin.status) {
+      admin.status = status;
+      lifecycleChanged = true;
+    }
+
+    if (lifecycleChanged) {
+      // Invalidate every outstanding token so new role/scope/status take effect
+      admin.tokenVersion = (admin.tokenVersion || 0) + 1;
+      await revokeAllSessions(admin._id);
     }
 
     await admin.save();
@@ -314,6 +477,7 @@ export const authController = {
         email: admin.email,
         role: admin.role,
         scope: admin.scope,
+        status: admin.status,
       },
     });
   }),
@@ -327,6 +491,9 @@ export const authController = {
     if (!admin) {
       throw new ValidationError("Admin not found");
     }
+
+    // Terminate every session held by the deleted admin
+    await AdminSession.deleteMany({ adminId: admin._id });
 
     return res.json({
       success: true,
@@ -375,7 +542,12 @@ export const authController = {
 
     // Hash and save new password
     admin.passwordHash = await bcrypt.hash(newPassword, 10);
+    admin.tokenVersion = (admin.tokenVersion || 0) + 1;
     await admin.save();
+
+    // Password change revokes every existing session (all devices).
+    await revokeAllSessions(admin._id);
+    clearAuthCookies(res);
 
     return res.json({
       success: true,
@@ -395,7 +567,11 @@ export const authController = {
     }
 
     admin.passwordHash = await bcrypt.hash(tempPassword, 10);
+    admin.tokenVersion = (admin.tokenVersion || 0) + 1;
     await admin.save();
+
+    // Terminate all active sessions so the new password is enforced everywhere.
+    await revokeAllSessions(admin._id);
 
     return res.json({
       success: true,
@@ -480,9 +656,14 @@ export const authController = {
 
     // Hash and save new password
     admin.passwordHash = await bcrypt.hash(newPassword, 10);
+    admin.tokenVersion = (admin.tokenVersion || 0) + 1;
     admin.resetOtp = null;
     admin.otpExpiry = null;
     await admin.save();
+
+    // Revoke every session — the OTP reset applies to all devices.
+    await revokeAllSessions(admin._id);
+    clearAuthCookies(res);
 
     return res.json({
       success: true,

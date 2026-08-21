@@ -36,8 +36,13 @@ router.post("/refresh", sensitiveLimiter, authController.refreshToken);
 // GET /api/admin/me
 router.get("/me", sensitiveLimiter, adminAuth, authController.getCurrentAdmin);
 
-// POST /api/admin/logout
-router.post("/logout", adminAuth, authController.logout);
+// POST /api/admin/logout - revoke the CURRENT session and clear cookies.
+// Intentionally NOT behind adminAuth so logout works even with an expired
+// or revoked access token. Revokes only this device's session.
+router.post("/logout", authController.logout);
+
+// POST /api/admin/logout-all - revoke every session for the current admin.
+router.post("/logout-all", adminAuth, authController.logoutAllSessions);
 
 // POST /api/admin/create (Superadmin only)
 router.post("/create", adminAuth, requireRole("superadmin"), validateSchema(createAdminSchema), authController.createAdmin);

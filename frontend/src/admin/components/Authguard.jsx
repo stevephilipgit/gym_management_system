@@ -15,9 +15,18 @@ export default function AuthGuard({ children }) {
     apiClient.get("/admin/me")
       .then((res) => {
         const me = res.data?.admin || res.data?.data || res.data || null;
+        // Session-scoped identity: keep the per-tab session id so the server
+        // resolves THIS tab's cookie pair, never another tab's.
+        if (!sessionStorage.getItem("gym_session_id") && res.data?.sessionId) {
+          sessionStorage.setItem("gym_session_id", res.data.sessionId);
+        }
         setAuth(me || true);
       })
-      .catch(() => setAuth(false));
+      .catch(() => {
+        // Session revoked/expired — clear this tab's session marker.
+        sessionStorage.removeItem("gym_session_id");
+        setAuth(false);
+      });
   }, []);
 
   if (auth === null) return <p>Checking...</p>;

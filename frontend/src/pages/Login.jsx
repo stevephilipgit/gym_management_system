@@ -55,12 +55,18 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await apiClient.post("/admin/login", {
+      const res = await apiClient.post("/admin/login", {
         username,
         password,
         captchaId,
         captchaAnswer,
       });
+
+      // Store the per-tab session id (opaque, NOT the JWT). The server matches
+      // it against the httpOnly cookie pair for THIS tab's session.
+      if (res.data?.sessionId) {
+        sessionStorage.setItem("gym_session_id", res.data.sessionId);
+      }
 
       navigate("/admin");
     } catch (err) {

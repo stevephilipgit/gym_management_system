@@ -13,8 +13,8 @@ export const createAdminSchema = Joi.object({
   password: Joi.string().min(8).pattern(/[A-Z]/).pattern(/[a-z]/).pattern(/[0-9]/).required(),
   fullName: Joi.string().min(3).max(100).required(),
   email: Joi.string().email().required(),
-  role: Joi.string().valid("superadmin", "trainer", "finance").optional(),
-  scope: Joi.string().valid("all", "male", "female_plus_transgender").optional(),
+  role: Joi.string().valid("superadmin", "trainer").required(),
+  scope: Joi.string().valid("all", "male", "female_plus_transgender").required(),
 });
 
 export const changePasswordSchema = Joi.object({

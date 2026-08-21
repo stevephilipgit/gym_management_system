@@ -27,7 +27,7 @@ const NAV_GROUPS = [
   {
     label: "Overview",
     items: [
-      { label: "Dashboard", icon: <FiHome />, path: "/admin" },
+      { label: "Dashboard", icon: <FiHome />, path: "/admin", roles: ["superadmin"] },
     ],
   },
   {
@@ -58,6 +58,7 @@ const NAV_GROUPS = [
     label: "System",
     items: [
       { label: "Enquiries", icon: <FiInbox />,    path: "/admin/enquiries" },
+      { label: "Admin Accounts", icon: <FiUsers />, path: "/admin/admins", roles: ["superadmin"] },
       { label: "Settings",  icon: <FiSettings />, path: "/admin/settings", roles: ["superadmin"] },
     ],
   },
@@ -145,7 +146,8 @@ export default function AdminSidebar({ closeSidebar, collapsed, setCollapsed, ad
       <div className="admin-sidebar-footer">
         <button
           onClick={() =>
-            apiClient.post("/admin/logout", {}).then(() => {
+            apiClient.post("/admin/logout", {}).finally(() => {
+              sessionStorage.removeItem("gym_session_id");
               window.location.href = "/login";
             })
           }

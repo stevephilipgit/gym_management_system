@@ -29,7 +29,7 @@ import "./models/Enquiry.js";
 // ============= MIDDLEWARE IMPORTS =============
 import { helmetMiddleware, additionalHeaders } from "./middleware/securityHeaders.js";
 import { noSqlSanitizer, hppProtection } from "./middleware/sanitizer.js";
-import { auditLogger } from "./middleware/requestLogger.js";
+import { auditLogger, AuditLog } from "./middleware/requestLogger.js";
 
 // ROUTES
 import adminRoutes from "./routes/adminRoutes.js";
@@ -67,6 +67,12 @@ const app = express();
 // Resolve __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Trust proxy hops so req.ip / rate limiting work correctly behind nginx or a
+// cloud load balancer. Off (0) by default; set TRUST_PROXY=1 in production.
+if (String(process.env.TRUST_PROXY || "0") === "1") {
+  app.set("trust proxy", 1);
+}
 
 /* ============================================================
    REQUEST ID MIDDLEWARE - For traceability
@@ -107,6 +113,7 @@ app.use(
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
+    allowedHeaders: ["Content-Type", "X-Session-Id"],
   })
 );
 
@@ -119,6 +126,10 @@ app.use(cookieParser());
 app.use(noSqlSanitizer);
 app.use(hppProtection);
 app.use(auditLogger);
+
+// Semantic audit events (auditActions.*) persist to the auditlogs collection.
+// Without this, utils/auditLog.js only wrote to Winston file logs.
+app.locals.auditLogModel = AuditLog;
 
 /* ============================================================
    STATIC (Uploads)

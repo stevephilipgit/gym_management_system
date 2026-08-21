@@ -25,11 +25,14 @@ let isRefreshing = false;
 let refreshQueue = [];
 
 const refreshSession = async () => {
-  const response = await axios.post(`${apiBaseUrl}/admin/refresh`, {}, { withCredentials: true });
+  const sid = sessionStorage.getItem("gym_session_id");
+  const headers = sid ? { "X-Session-Id": sid } : {};
+  const response = await axios.post(`${apiBaseUrl}/admin/refresh`, {}, { withCredentials: true, headers });
   return response.data;
 };
 
 const redirectToLogin = () => {
+  sessionStorage.removeItem("gym_session_id");
   if (window.location.pathname !== "/login") {
     window.location.href = "/login";
   }
@@ -49,8 +52,17 @@ const rejectRefreshQueue = () => {
   queue.forEach(({ reject }) => reject(new Error("Session expired")));
 };
 
+// Attach the per-tab session identifier so the server can pick the correct
+// httpOnly cookie pair. This is NOT a JWT — it is an opaque session id held
+// only in sessionStorage (per-tab, cleared on close).
 apiClient.interceptors.request.use(
-  (config) => config,
+  (config) => {
+    const sid = sessionStorage.getItem("gym_session_id");
+    if (sid) {
+      config.headers["X-Session-Id"] = sid;
+    }
+    return config;
+  },
   (error) => Promise.reject(error)
 );
 

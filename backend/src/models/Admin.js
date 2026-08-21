@@ -26,7 +26,7 @@ const AdminSchema = new mongoose.Schema(
 
     role: {
       type: String,
-      enum: ["superadmin", "trainer", "finance"],
+      enum: ["superadmin", "trainer"],
       default: "trainer",
     },
 
@@ -34,6 +34,21 @@ const AdminSchema = new mongoose.Schema(
       type: String,
       enum: ["all", "male", "female_plus_transgender"],
       default: "all",
+    },
+
+    // account lifecycle: 'active' admins may authenticate; 'disabled' admins
+    // are rejected by adminAuth and all their sessions are revoked
+    status: {
+      type: String,
+      enum: ["active", "disabled"],
+      default: "active",
+    },
+
+    // bumped to invalidate every outstanding JWT for this admin
+    // (password change, admin disable, role/scope change)
+    tokenVersion: {
+      type: Number,
+      default: 0,
     },
 
     passwordHash: {
