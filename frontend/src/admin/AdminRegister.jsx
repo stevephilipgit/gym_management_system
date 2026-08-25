@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { DietSelector } from "./components/DietSelector";
 import apiClient from "../utils/apiClient.js";
+import { allowedGendersForScope, defaultGenderForScope } from "../utils/scopeGenders.js";
 import { downloadMembershipInvoice } from "./utils/invoicePdf.js";
 
 export default function AdminRegister() {
@@ -95,29 +96,14 @@ export default function AdminRegister() {
       setCurrentAdmin(admin);
       // Default the gender field to the first gender allowed by this admin's
       // scope. Superadmin defaults to Male (legacy behavior preserved).
-      const allowed = admin?.scope
-        ? {
-            all: ["Male", "Female", "Transgender"],
-            male: ["Male"],
-            female_plus_transgender: ["Female", "Transgender"],
-          }[admin.scope] || ["Male", "Female", "Transgender"]
-        : ["Male", "Female", "Transgender"];
-      if (allowed.length === 1) {
-        setForm((prev) => ({ ...prev, gender: allowed[0] }));
-      }
+      setForm((prev) => ({ ...prev, gender: defaultGenderForScope(admin?.scope, prev.gender) }));
     } catch (err) {
       console.log("Failed loading admin", err);
     }
   };
 
   // Genders the current admin may register (mirrors backend scopeResolver).
-  const allowedGenders = currentAdmin?.scope
-    ? {
-        all: ["Male", "Female", "Transgender"],
-        male: ["Male"],
-        female_plus_transgender: ["Female", "Transgender"],
-      }[currentAdmin.scope] || ["Male", "Female", "Transgender"]
-    : ["Male", "Female", "Transgender"];
+  const allowedGenders = allowedGendersForScope(currentAdmin?.scope);
 
   useEffect(() => {
     if (!form.gymPlan || !form.trainingType) return;
@@ -217,13 +203,18 @@ export default function AdminRegister() {
         return;
       }
 
+      // Defensive: never submit a gender outside the admin's scope, even if
+      // the async /admin/me profile resolved after the user started typing.
+      const allowed = allowedGendersForScope(currentAdmin?.scope);
+      const finalGender = allowed.includes(form.gender) ? form.gender : allowed[0];
+
       const planLabel = selectedPackage.months === 1 ? "1 Month" : `${selectedPackage.months} Months`;
 
       fd.append("fullName", form.fullName.trim());
       fd.append("fatherName", form.fatherName.trim());
       fd.append("dob", form.dob);
       fd.append("bloodGroup", form.bloodGroup);
-      fd.append("gender", form.gender);
+      fd.append("gender", finalGender);
       fd.append("medicalIssues", form.medicalIssues.trim());
       fd.append("customFields", JSON.stringify(customFields));
       fd.append("address", form.address.trim());

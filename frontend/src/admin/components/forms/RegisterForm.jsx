@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import apiClient, { API_BASE_URL } from "../../../utils/apiClient.js";
+import { allowedGendersForScope } from "../../../utils/scopeGenders.js";
 
 export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel = "Submit" }) {
   const [dynamicFields, setDynamicFields] = useState([]);
@@ -198,20 +199,9 @@ export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel =
           <Field label="Gender">
             <select value={form.gender} onChange={(e) => updateField("gender", e.target.value)} className="field-control">
               <option value="">Select</option>
-              {adminScope === "all"
-                ? [
-                    <option key="male" value="Male">Male</option>,
-                    <option key="female" value="Female">Female</option>,
-                    <option key="transgender" value="Transgender">Transgender</option>,
-                  ]
-                : adminScope === "male"
-                ? [
-                    <option key="male" value="Male">Male</option>,
-                  ]
-                : adminScope === "female_plus_transgender" && [
-                    <option key="female" value="Female">Female</option>,
-                    <option key="transgender" value="Transgender">Transgender</option>,
-                  ]}
+              {allowedGendersForScope(adminScope).map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
             </select>
           </Field>
 
