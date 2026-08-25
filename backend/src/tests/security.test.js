@@ -11,7 +11,7 @@ import {
   changePasswordSchema,
 } from '../schemas/authSchema.js';
 import { memberUpdateSchema, memberRenewSchema } from '../schemas/memberSchema.js';
-import { sessionCookieName } from '../utils/sessionCookies.js';
+import { sessionCookieName, accessCookieForSession, refreshCookieForSession } from '../utils/sessionCookies.js';
 
 const mockReq = (admin = null) => ({ admin });
 const mockRes = () => {
@@ -289,6 +289,28 @@ describe('per-session cookie naming (multi-tab isolation)', () => {
     expect(tokenCookieName).to.equal('gym_admin_token_tab-a-session');
     // Tab B resolves its own pair — never Tab A's.
     expect(tokenCookieName).to.not.equal('gym_admin_token_tab-b-session');
+  });
+
+  it('STRICT: missing X-Session-Id resolves to null (no legacy fallback)', () => {
+    expect(accessCookieForSession(null)).to.equal(null);
+    expect(accessCookieForSession('')).to.equal(null);
+    expect(refreshCookieForSession(undefined)).to.equal(null);
+  });
+
+  it('STRICT: header sid resolves ONLY the session-scoped cookie name', () => {
+    expect(accessCookieForSession('sid-9')).to.equal('gym_admin_token_sid-9');
+    expect(refreshCookieForSession('sid-9')).to.equal('gym_admin_refresh_sid-9');
+    // Never the bare legacy cookie name.
+    expect(accessCookieForSession('sid-9')).to.not.equal('gym_admin_token');
+    expect(refreshCookieForSession('sid-9')).to.not.equal('gym_admin_refresh');
+  });
+
+  it('STRICT: one tab can never resolve another tab\'s cookie name', () => {
+    const tabA = accessCookieForSession('sid-A');
+    const tabB = accessCookieForSession('sid-B');
+    expect(tabA).to.not.equal(tabB);
+    expect(tabA).to.equal('gym_admin_token_sid-A');
+    expect(tabB).to.equal('gym_admin_token_sid-B');
   });
 });
 
