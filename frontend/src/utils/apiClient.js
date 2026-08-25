@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getSessionId, clearSessionIdentity } from "./sessionIdentity.js";
 
 const apiBaseUrl = import.meta.env.VITE_API_URL || "/api";
 export const API_BASE_URL = apiBaseUrl;
@@ -25,14 +26,14 @@ let isRefreshing = false;
 let refreshQueue = [];
 
 const refreshSession = async () => {
-  const sid = sessionStorage.getItem("gym_session_id");
+  const sid = getSessionId();
   const headers = sid ? { "X-Session-Id": sid } : {};
   const response = await axios.post(`${apiBaseUrl}/admin/refresh`, {}, { withCredentials: true, headers });
   return response.data;
 };
 
 const redirectToLogin = () => {
-  sessionStorage.removeItem("gym_session_id");
+  clearSessionIdentity();
   if (window.location.pathname !== "/login") {
     window.location.href = "/login";
   }
@@ -57,7 +58,7 @@ const rejectRefreshQueue = () => {
 // only in sessionStorage (per-tab, cleared on close).
 apiClient.interceptors.request.use(
   (config) => {
-    const sid = sessionStorage.getItem("gym_session_id");
+    const sid = getSessionId();
     if (sid) {
       config.headers["X-Session-Id"] = sid;
     }

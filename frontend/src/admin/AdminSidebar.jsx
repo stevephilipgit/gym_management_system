@@ -17,6 +17,7 @@ import {
   FiUsers,
 } from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
+import { clearSessionIdentity } from "../utils/sessionIdentity.js";
 import { canAccess } from "./authContext.js";
 
 // Navigation is the single role-aware menu definition.
@@ -147,7 +148,7 @@ export default function AdminSidebar({ closeSidebar, collapsed, setCollapsed, ad
         <button
           onClick={() =>
             apiClient.post("/admin/logout", {}).finally(() => {
-              sessionStorage.removeItem("gym_session_id");
+              clearSessionIdentity();
               window.location.href = "/login";
             })
           }

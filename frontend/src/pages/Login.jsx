@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FiEye, FiEyeOff, FiLock, FiRefreshCw, FiShield, FiUser } from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
+import { saveSessionIdentity } from "../utils/sessionIdentity.js";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -62,10 +63,12 @@ export default function Login() {
         captchaAnswer,
       });
 
-      // Store the per-tab session id (opaque, NOT the JWT). The server matches
-      // it against the httpOnly cookie pair for THIS tab's session.
+      // Bind this tab to the session identity (opaque sid + admin id — NOT the
+      // JWT). The server matches the sid against the httpOnly cookie pair for
+      // THIS tab's session; the admin id lets AuthGuard detect a tab that was
+      // taken over by another session in the same browser.
       if (res.data?.sessionId) {
-        sessionStorage.setItem("gym_session_id", res.data.sessionId);
+        saveSessionIdentity(res.data.sessionId, res.data?.admin?.id);
       }
 
       navigate("/admin");
