@@ -52,7 +52,7 @@ export const createDiet = async (req, res) => {
     await diet.save();
 
     logger.info(`Diet created: ${diet.name} (${finalGender})`);
-    return res.status(201).json({ success: true, diet });
+    return res.status(201).json({ success: true, data: diet });
   } catch (error) {
     logger.error("Error creating diet", { error });
     if (error.code === 11000) {
@@ -70,7 +70,7 @@ export const getAllDiets = async (req, res) => {
       gender: { $in: allowedDietGenders(req) },
     }).sort({ name: 1 });
 
-    return res.json({ success: true, diets });
+    return res.json({ success: true, data: diets });
   } catch (error) {
     logger.error("Error fetching diets", { error });
     return res.status(500).json({ success: false, message: "Failed to fetch diets" });
@@ -87,7 +87,7 @@ export const getDietById = async (req, res) => {
     if (!allowedDietGenders(req).includes(diet.gender)) {
       return res.status(404).json({ success: false, message: "Diet not found" });
     }
-    return res.json({ success: true, diet });
+    return res.json({ success: true, data: diet });
   } catch (error) {
     logger.error("Error fetching diet", { error });
     return res.status(500).json({ success: false, message: "Failed to fetch diet" });
@@ -132,7 +132,7 @@ export const updateDiet = async (req, res) => {
 
     const updated = await Diet.findByIdAndUpdate(req.params.id, updates, { new: true });
     logger.info(`Diet updated: ${updated.name}`);
-    return res.json({ success: true, diet: updated });
+    return res.json({ success: true, data: updated });
   } catch (error) {
     logger.error("Error updating diet", { error });
     if (error.code === 11000) {

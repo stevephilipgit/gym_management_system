@@ -3,7 +3,6 @@ import apiClient from "../../utils/apiClient.js";
 
 export const DietSelector = ({ trainingType, onDietSelect, initialDietId }) => {
   const [diets, setDiets] = useState([]);
-  const [defaultDietId, setDefaultDietId] = useState(null);
   const [selectedDietId, setSelectedDietId] = useState(initialDietId);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -26,24 +25,8 @@ export const DietSelector = ({ trainingType, onDietSelect, initialDietId }) => {
       if (!Array.isArray(data)) {
         throw new Error("Invalid diet data format");
       }
-      
-      setDiets(data);
 
-      if (trainingType) {
-        try {
-          const mapRes = await apiClient.get(`/diets/mapping/${trainingType}`);
-          const mapData = mapRes.data;
-          if (mapData.diet) {
-            setDefaultDietId(mapData.diet._id);
-            setSelectedDietId((current) => current || initialDietId || mapData.diet._id);
-          }
-        } catch (mapError) {
-          console.warn(`Failed to fetch diet mapping: ${mapError?.response?.status}`);
-          setDefaultDietId(null);
-        }
-      } else {
-        setDefaultDietId(null);
-      }
+      setDiets(data);
     } catch (error) {
       console.error("Failed to fetch diets:", error);
       setError("Unable to load diet plans. Please try again.");
@@ -93,7 +76,6 @@ export const DietSelector = ({ trainingType, onDietSelect, initialDietId }) => {
           {diets.map((diet) => (
             <option key={diet._id} value={diet._id}>
               {diet.name}
-              {defaultDietId === diet._id ? " (Default)" : ""}
             </option>
           ))}
         </select>
