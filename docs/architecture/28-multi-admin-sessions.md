@@ -95,9 +95,10 @@ server cross-checks the two.
   still requires the HttpOnly JWT, so XSS impact is no worse than any
   cookie-based app. The sid is cleared on tab close and on logout.
 
-## Fallback behavior
+## Fallback behavior (removed)
 
-If the frontend cannot supply `X-Session-Id` (old cached bundle, non-browser
-client), the server falls back to the legacy `gym_admin_token` cookie. That
-path behaves as before (shared per browser) and is deprecated; re-login
-migrates the tab to the per-session scheme.
+The legacy fallback (`gym_admin_token` shared cookie) was removed in the
+`fix/session-legacy-migration` branch. The `X-Session-Id` header is now
+**mandatory**. Requests without it are rejected with 401. This is safe because
+the current frontend (apiClient) always sends the header. Legacy clients must
+re-login to obtain a per-session cookie pair.

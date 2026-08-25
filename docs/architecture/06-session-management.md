@@ -9,29 +9,33 @@ every request.
 
 ```
 Browser (Device A)            Browser (Device B)
-  cookie gym_admin_token ───► adminAuth: jwt.verify
-  cookie gym_admin_refresh ──► Admin.findById          (exists + active?)
-                              → tokenVersion match?    (password change?)
-                              → AdminSession.findOne   (revoked? expired?)
-                              → req.admin {role, scope}  (fresh from DB)
+  cookie gym_admin_token_<sidA> ─► adminAuth: X-Session-Id required
+  cookie gym_admin_refresh_<sidA>─► jwt.verify + decoded.sid === header
+                                   → Admin.findById          (exists + active?)
+                                   → tokenVersion match?    (password change?)
+                                   → AdminSession.findOne   (revoked? expired?)
+                                   → req.admin {role, scope}  (fresh from DB)
 ```
 
 ## What is stored where
 
 | Data | Location |
 |------|----------|
-| Access JWT (`id, username, role, scope, email, sid, tv, jti`) | httpOnly cookie `gym_admin_token`, path `/` |
-| Refresh JWT (`id, username, sid, tv, jti`) | httpOnly cookie `gym_admin_refresh`, path `/api/admin` |
+| Access JWT (`id, username, role, scope, email, sid, tv, jti`) | httpOnly cookie `gym_admin_token_<sid>`, path `/` |
+| Refresh JWT (`id, username, sid, tv, jti`) | httpOnly cookie `gym_admin_refresh_<sid>`, path `/api/admin` |
+| Per-tab session pointer (opaque sid, NOT the JWT) | `sessionStorage.gym_session_id` |
 | Session record (`sessionId, adminId, expiresAt, revokedAt, deviceName, ip`) | `AdminSession` collection |
 | Admin lifecycle (`role, scope, status, tokenVersion`) | `admins` collection |
 | Audit trail | `auditlogs` collection + Winston files |
 
-## Cookie details (authController.js:57-72)
+## Cookie details (authController.js:75-103)
 
-- `gym_admin_token`: httpOnly, Secure in production, SameSite=strict, path `/`,
-  15m.
-- `gym_admin_refresh`: httpOnly, Secure in production, SameSite=strict, path
-  `/api/admin`, 7d.
+- `gym_admin_token_<sid>`: httpOnly, Secure in production, SameSite=strict,
+  path `/`, 15m. Name embeds the session id (`utils/sessionCookies.js`).
+- `gym_admin_refresh_<sid>`: httpOnly, Secure in production, SameSite=strict,
+  path `/api/admin`, 7d.
+- **No shared legacy cookie** — the `X-Session-Id` header is mandatory and
+  selects the cookie pair. There is no bare-cookie fallback.
 
 ## Refresh / rotation
 

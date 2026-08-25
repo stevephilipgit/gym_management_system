@@ -89,8 +89,12 @@ be created/verified (login becomes impossible), which is the effective failsafe.
 
 | Cookie | Contents | httpOnly | Secure | SameSite | Path | MaxAge |
 |--------|----------|----------|--------|----------|------|--------|
-| `gym_admin_token` | access JWT | yes | production only | strict | `/` | 15m |
-| `gym_admin_refresh` | refresh JWT | yes | production only | strict | `/api/admin` | 7d |
+| `gym_admin_token_<sid>` | access JWT | yes | production only | strict | `/` | 15m |
+| `gym_admin_refresh_<sid>` | refresh JWT | yes | production only | strict | `/api/admin` | 7d |
+
+Cookie names are **session-scoped** (`utils/sessionCookies.js`): each login gets its
+own pair. The `X-Session-Id` header selects the pair; there is no shared legacy
+cookie.
 
 - `sameSite=strict` is the primary CSRF defense (no csurf middleware exists —
   README/DEPLOYMENT_GUIDE claim is false).
@@ -101,7 +105,8 @@ be created/verified (login becomes impossible), which is the effective failsafe.
 
 `adminRoutes.js:34` `POST /api/admin/refresh` →
 `authController.refreshToken`:
-- Reads `gym_admin_refresh` cookie, verifies with refresh secret.
+- Reads the session-scoped refresh cookie selected by `X-Session-Id`, verifies
+  with the refresh secret.
 - Loads the admin from DB by `decoded.id`.
 - Rotates: issues new access + refresh pair (refresh token is single-use).
 - Frontend `apiClient.js` intercepts 401s, does a **single-flight** refresh
