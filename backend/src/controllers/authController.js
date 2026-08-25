@@ -6,7 +6,7 @@ import Admin from "../models/Admin.js";
 import AdminSession from "../models/AdminSession.js";
 import config from "../config/index.js";
 import { auditActions } from "../utils/auditLog.js";
-import { ACCESS_COOKIE, REFRESH_COOKIE, sessionCookieName } from "../utils/sessionCookies.js";
+import { ACCESS_COOKIE, REFRESH_COOKIE, sessionCookieName, refreshCookieForSession } from "../utils/sessionCookies.js";
 import captchaService from "../services/captchaService.js";
 import { sendEmail } from "../services/emailService.js";
 import { asyncHandler, ValidationError, AuthError, ConflictError } from "../core/errorHandler.js";
@@ -69,13 +69,9 @@ const issueTokens = (admin, sessionId) => {
 };
 
 // Set the per-session auth cookies (access + rotating refresh) on the response.
-// The cookie name embeds the session id so multiple sessions in one browser
-// never overwrite each other. Legacy single-cookie names are cleared on login
-// to avoid stale shared cookies.
+// Cookie names embed the session id so multiple sessions in one browser never
+// overwrite each other. No legacy shared cookies are set or cleared.
 const setAuthCookies = (res, { accessToken, refreshToken }, sessionId) => {
-  res.clearCookie(ACCESS_COOKIE, { path: "/" });
-  res.clearCookie(REFRESH_COOKIE, { path: "/api/admin" });
-
   res.cookie(sessionCookieName(sessionId, ACCESS_COOKIE), accessToken, {
     httpOnly: true,
     secure: config.app.isProduction,
@@ -92,32 +88,19 @@ const setAuthCookies = (res, { accessToken, refreshToken }, sessionId) => {
   });
 };
 
-// Clear the per-session cookie pair (and any legacy single cookies).
+// Clear the per-session cookie pair for the given session.
 const clearAuthCookies = (res, sessionId) => {
   if (sessionId) {
     res.clearCookie(sessionCookieName(sessionId, ACCESS_COOKIE), { path: "/" });
     res.clearCookie(sessionCookieName(sessionId, REFRESH_COOKIE), { path: "/api/admin" });
   }
-  res.clearCookie(ACCESS_COOKIE, { path: "/" });
-  res.clearCookie(REFRESH_COOKIE, { path: "/api/admin" });
 };
 
-// The session id a request identifies with: the X-Session-Id header wins
-// (per-tab); fall back to decoding the legacy shared cookie for older clients.
+// The session id a request identifies with. The X-Session-Id header is the
+// ONLY source — there is no legacy shared-cookie fallback.
 const resolveRequestSessionId = (req) => {
   const headerSid = String(req.get("x-session-id") || "").trim();
-  if (headerSid) return headerSid;
-
-  const token = req.cookies[ACCESS_COOKIE];
-  if (token) {
-    try {
-      const decoded = jwt.verify(token, config.jwt.accessSecret, { ignoreExpiration: true });
-      if (decoded?.sid) return decoded.sid;
-    } catch {
-      // ignore — falls through to null (caller treats as unauthenticated)
-    }
-  }
-  return null;
+  return headerSid || null;
 };
 
 export const authController = {
@@ -206,14 +189,16 @@ export const authController = {
   }),
 
   // Refresh the admin session by rotating the access + refresh tokens.
-  // The X-Session-Id header identifies which cookie pair to use (per-tab).
+  // The X-Session-Id header is REQUIRED and identifies the cookie pair.
   refreshToken: asyncHandler(async (req, res) => {
     const requestedSid = resolveRequestSessionId(req);
 
-    // Read the session-scoped refresh cookie, falling back to the legacy one.
-    let refreshToken = requestedSid
-      ? req.cookies[sessionCookieName(requestedSid, REFRESH_COOKIE)] || req.cookies[REFRESH_COOKIE]
-      : req.cookies[REFRESH_COOKIE];
+    if (!requestedSid) {
+      throw new AuthError("Session expired. Please login again.");
+    }
+
+    // Read the session-scoped refresh cookie only.
+    const refreshToken = req.cookies[refreshCookieForSession(requestedSid)];
 
     if (!refreshToken) {
       throw new AuthError("Session expired. Please login again.");
@@ -290,32 +275,21 @@ export const authController = {
   }),
 
   // Logout admin: revoke the CURRENT session only. Other devices' sessions
-  // are unaffected. Works even with an expired access token (best effort).
+  // are unaffected. The X-Session-Id header is the session identifier.
+  // Works even with an expired access token (the header sid is a capability).
   logout: asyncHandler(async (req, res) => {
-    // X-Session-Id (per-tab) is authoritative; fall back to decoding the
-    // legacy shared cookie so pre-upgrade tabs can still log out.
-    let sessionId = resolveRequestSessionId(req);
-
-    // If the header/legacy token gave us no sid, try the session-scoped cookie.
-    if (!sessionId) {
-      const token = req.cookies[ACCESS_COOKIE];
-      if (token) {
-        try {
-          const decoded = jwt.verify(token, config.jwt.accessSecret, { ignoreExpiration: true });
-          if (decoded?.sid) sessionId = decoded.sid;
-          if (decoded?.id) req.admin = { id: decoded.id, username: decoded.username };
-        } catch {
-          // ignore malformed tokens — cookies are still cleared below
-        }
-      }
-    }
+    const sessionId = resolveRequestSessionId(req);
+    let adminId = null;
 
     if (sessionId) {
+      // Resolve the admin for audit before revoking the session.
+      const session = await AdminSession.findOne({ sessionId }).catch(() => null);
+      if (session) adminId = session.adminId;
       await AdminSession.updateOne({ sessionId }, { $set: { revokedAt: new Date() } }).catch(() => {});
     }
 
-    const adminId = req.admin?.id;
     if (adminId) {
+      req.admin = { id: adminId };
       await auditActions.adminLogout(req, adminId).catch(() => {});
     }
 
