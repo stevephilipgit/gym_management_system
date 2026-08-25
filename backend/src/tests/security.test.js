@@ -5,6 +5,8 @@
 import { expect } from 'chai';
 import requireRole from '../middleware/requireRole.js';
 import scopeResolver from '../core/scopeResolver.js';
+import Diet from '../models/Diet.js';
+import dietController from '../controllers/dietController.js';
 import {
   loginSchema,
   createAdminSchema,
@@ -349,5 +351,93 @@ describe('member update/renew schemas — optimistic concurrency version', () =>
       version: 0,
     });
     expect(error).to.not.exist;
+  });
+});
+
+describe('diet API response contract (standardised { success, data })', () => {
+  const mockRes = () => {
+    const res = { statusCode: 200, body: null };
+    res.status = (code) => { res.statusCode = code; return res; };
+    res.json = (body) => { res.body = body; return res; };
+    return res;
+  };
+
+  it('getAllDiets returns { success, data: [...] } (never bare `diets`)', async () => {
+    const originalFind = Diet.find;
+    const rows = [{ _id: 'd1', name: 'Diet A', gender: 'All', isActive: true }];
+    Diet.find = () => ({ sort: () => Promise.resolve(rows) });
+    try {
+      const req = { admin: { scope: 'male' } };
+      const res = mockRes();
+      await dietController.getAllDiets(req, res);
+      expect(res.body.success).to.be.true;
+      expect(Array.isArray(res.body.data)).to.be.true;
+      expect(res.body.data.length).to.equal(1);
+      expect(res.body.diets).to.be.undefined;
+    } finally {
+      Diet.find = originalFind;
+    }
+  });
+
+  it('getDietById returns { success, data: diet }', async () => {
+    const originalFindById = Diet.findById;
+    Diet.findById = () => ({ _id: 'd1', name: 'Diet A', gender: 'Male' });
+    try {
+      const req = { admin: { scope: 'male' }, params: { id: 'd1' } };
+      const res = mockRes();
+      await dietController.getDietById(req, res);
+      expect(res.body.success).to.be.true;
+      expect(res.body.data.name).to.equal('Diet A');
+      expect(res.body.diet).to.be.undefined;
+    } finally {
+      Diet.findById = originalFindById;
+    }
+  });
+
+  it('getDietById hides out-of-scope diets with 404', async () => {
+    const originalFindById = Diet.findById;
+    Diet.findById = () => ({ _id: 'd1', name: 'Female Diet', gender: 'Female' });
+    try {
+      const req = { admin: { scope: 'male' }, params: { id: 'd1' } };
+      const res = mockRes();
+      await dietController.getDietById(req, res);
+      expect(res.statusCode).to.equal(404);
+    } finally {
+      Diet.findById = originalFindById;
+    }
+  });
+});
+
+describe('audit log persistence contract', () => {
+  it('auditLog includes method/path/statusCode so the Mongo write passes schema validation', async () => {
+    let createdDoc = null;
+    const req = {
+      id: 'req-1',
+      method: 'POST',
+      originalUrl: '/api/members',
+      path: '/api/members',
+      ip: '127.0.0.1',
+      get: () => 'test-agent',
+      admin: { id: 'a1', username: 'u1' },
+      res: { statusCode: 201 },
+      app: {
+        locals: {
+          auditLogModel: {
+            create: async (doc) => { createdDoc = doc; return doc; },
+          },
+        },
+      },
+    };
+
+    const { auditLog } = await import('../utils/auditLog.js');
+    await auditLog(req, { action: 'MEMBER_CREATE', status: 'SUCCESS', resourceType: 'Member', resourceId: 'm1' });
+
+    expect(createdDoc).to.not.be.null;
+    expect(createdDoc.method).to.equal('POST');
+    expect(createdDoc.path).to.equal('/api/members');
+    expect(createdDoc.statusCode).to.equal(201);
+    expect(createdDoc.action).to.equal('MEMBER_CREATE');
+    expect(createdDoc.adminId).to.equal('a1');
+    expect(createdDoc.ipAddress).to.equal('127.0.0.1');
   });
 });
