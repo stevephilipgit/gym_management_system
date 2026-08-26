@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import apiClient, { API_BASE_URL } from "../../../utils/apiClient.js";
 import { allowedGendersForScope } from "../../../utils/scopeGenders.js";
+import { useAdmin } from "../../authContext.js";
 
 export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel = "Submit" }) {
+  const admin = useAdmin();
   const [dynamicFields, setDynamicFields] = useState([]);
   const [customFields, setCustomFields] = useState({});
   const [form, setForm] = useState({
@@ -20,8 +22,6 @@ export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel =
     photo: null,
     photoUrl: "",
   });
-  const [adminScope, setAdminScope] = useState("all");
-
   const SYSTEM_KEYS = [
     "gender",
     "phone",
@@ -79,21 +79,6 @@ export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel =
     if (defaultData?.customFields) {
       setCustomFields(defaultData.customFields);
     }
-  }, [defaultData]);
-
-  useEffect(() => {
-    const fetchAdminScope = async () => {
-      try {
-        const res = await apiClient.get("/admin/me");
-        const admin = res.data?.admin || res.data?.data || res.data || null;
-        if (admin && admin.scope) {
-          setAdminScope(admin.scope);
-        }
-      } catch (err) {
-        console.log("Failed to fetch admin scope:", err);
-      }
-    };
-    fetchAdminScope();
   }, [defaultData]);
 
   useEffect(() => {
@@ -199,7 +184,7 @@ export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel =
           <Field label="Gender">
             <select value={form.gender} onChange={(e) => updateField("gender", e.target.value)} className="field-control">
               <option value="">Select</option>
-              {allowedGendersForScope(adminScope).map((g) => (
+              {allowedGendersForScope(admin?.scope).map((g) => (
                 <option key={g} value={g}>{g}</option>
               ))}
             </select>

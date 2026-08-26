@@ -3,8 +3,10 @@ import { DietSelector } from "./components/DietSelector";
 import apiClient from "../utils/apiClient.js";
 import { allowedGendersForScope, defaultGenderForScope } from "../utils/scopeGenders.js";
 import { downloadMembershipInvoice } from "./utils/invoicePdf.js";
+import { useAdmin } from "./authContext.js";
 
 export default function AdminRegister() {
+  const admin = useAdmin();
   const [form, setForm] = useState({
     fullName: "",
     fatherName: "",
@@ -48,7 +50,6 @@ export default function AdminRegister() {
   const [selectedDietId, setSelectedDietId] = useState(null);
   const [selectedDietName, setSelectedDietName] = useState(null);
   const [selectedDietDescription, setSelectedDietDescription] = useState("");
-  const [currentAdmin, setCurrentAdmin] = useState(null);
   const [submitError, setSubmitError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -79,7 +80,6 @@ export default function AdminRegister() {
     fetchedRef.current = true;
     loadPackages();
     loadDynamicFields();
-    loadCurrentAdmin();
 
     // Refresh dynamic fields when user returns to this tab (e.g. after toggling in ManageFields)
     const handleVisibilityChange = () => {
@@ -89,21 +89,14 @@ export default function AdminRegister() {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
-  const loadCurrentAdmin = async () => {
-    try {
-      const res = await apiClient.get("/admin/me");
-      const admin = res.data?.admin || res.data?.data || res.data || null;
-      setCurrentAdmin(admin);
-      // Default the gender field to the first gender allowed by this admin's
-      // scope. Superadmin defaults to Male (legacy behavior preserved).
-      setForm((prev) => ({ ...prev, gender: defaultGenderForScope(admin?.scope, prev.gender) }));
-    } catch (err) {
-      console.log("Failed loading admin", err);
-    }
-  };
+  // Default the gender field to the first gender allowed by this admin's
+  // scope (admin comes from AdminContext, already resolved by AuthGuard).
+  useEffect(() => {
+    setForm((prev) => ({ ...prev, gender: defaultGenderForScope(admin?.scope, prev.gender) }));
+  }, [admin]);
 
   // Genders the current admin may register (mirrors backend scopeResolver).
-  const allowedGenders = allowedGendersForScope(currentAdmin?.scope);
+  const allowedGenders = allowedGendersForScope(admin?.scope);
 
   useEffect(() => {
     if (!form.gymPlan || !form.trainingType) return;
@@ -205,7 +198,7 @@ export default function AdminRegister() {
 
       // Defensive: never submit a gender outside the admin's scope, even if
       // the async /admin/me profile resolved after the user started typing.
-      const allowed = allowedGendersForScope(currentAdmin?.scope);
+      const allowed = allowedGendersForScope(admin?.scope);
       const finalGender = allowed.includes(form.gender) ? form.gender : allowed[0];
 
       const planLabel = selectedPackage.months === 1 ? "1 Month" : `${selectedPackage.months} Months`;
@@ -267,7 +260,7 @@ export default function AdminRegister() {
           paymentMode,
         },
         mode: "registration",
-        issuer: currentAdmin?.fullName || currentAdmin?.username || "Giri Gym Admin",
+        issuer: admin?.fullName || admin?.username || "Giri Gym Admin",
         planLabel,
         trainingType: newMember.trainingType || trainingTypeMap[form.trainingType],
         price: form.selectedPrice,
