@@ -366,7 +366,6 @@ export default function AdminRegister() {
   return (
     <div className="saas-container">
       <div className="saas-header">
-        <h1>Register new member</h1>
         <p>Create a complete member profile, choose a package, and confirm billing.</p>
       </div>
 
