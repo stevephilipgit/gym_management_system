@@ -632,4 +632,19 @@ describe('member identity: duplicate gymId + scope-aware lookup + atomic counter
     const unique = new Set(results);
     expect(unique.size).to.equal(3);
   });
+
+  it('H. ensureMin never collides on an existing counter (duplicate-key regression)', async () => {
+    const key = 'gym_id_TEST_EM';
+    await Counter.deleteMany({ key });
+    await Counter.ensureMin(key, 1004);
+    // Pre-fix this threw E11000 "Duplicate field: key" because a range filter
+    // + upsert attempted to insert a second doc for the same key.
+    await Counter.ensureMin(key, 1004);
+    let doc = await Counter.findOne({ key });
+    expect(doc.seq).to.equal(1004);
+    await Counter.ensureMin(key, 1005); // floor raised
+    doc = await Counter.findOne({ key });
+    expect(doc.seq).to.equal(1005);
+    await Counter.deleteMany({ key });
+  });
 });
