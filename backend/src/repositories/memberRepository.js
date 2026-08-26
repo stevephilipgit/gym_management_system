@@ -146,8 +146,11 @@ class MemberRepository {
       query.status = includeDraft ? { $in: ["active", "expired", "draft"] } : { $in: ["active", "expired"] };
     }
 
-    if (options.genderFilter && options.genderFilter.gender) {
-      query.gender = options.genderFilter.gender;
+    // Gender scope: prefer the explicit `genderFilter` key; fall back to a
+    // top-level `gender` fragment (defensive for any future caller that spreads).
+    const genderConstraint = options.genderFilter?.gender || options.gender;
+    if (genderConstraint) {
+      query.gender = genderConstraint;
     }
 
     return Member.find(query).sort({ validityEnd: 1 });

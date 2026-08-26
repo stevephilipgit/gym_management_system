@@ -458,17 +458,23 @@ describe('member filtering + pagination + trainer scope (integration)', function
   });
 
   it('7. pagination page1/page2 with pageSize 10 returns correct records + metadata', async () => {
-    for (let i = 0; i < 12; i++) await makeMember('Male', `P${i}`);
-    const page1 = await allMembers('male', { page: '1', pageSize: '10' });
-    const page2 = await allMembers('male', { page: '2', pageSize: '10' });
-    expect(page1.data.length).to.equal(10);
-    expect(page2.data.length).to.be.greaterThan(0);
-    expect(page1.pagination.page).to.equal(1);
-    expect(page1.pagination.pageSize).to.equal(10);
-    expect(page1.pagination.pages).to.equal(2);
-    // No overlap between pages
-    const ids1 = new Set(page1.data.map((m) => String(m._id)));
-    page2.data.forEach((m) => expect(ids1.has(String(m._id))).to.be.false);
+    const created = [];
+    for (let i = 0; i < 12; i++) created.push(await makeMember('Male', `P${i}`));
+    try {
+      const page1 = await allMembers('male', { page: '1', pageSize: '10' });
+      const page2 = await allMembers('male', { page: '2', pageSize: '10' });
+      expect(page1.data.length).to.equal(10);
+      expect(page2.data.length).to.be.greaterThan(0);
+      expect(page1.pagination.page).to.equal(1);
+      expect(page1.pagination.pageSize).to.equal(10);
+      expect(page1.pagination.pages).to.equal(2);
+      // No overlap between pages
+      const ids1 = new Set(page1.data.map((m) => String(m._id)));
+      page2.data.forEach((m) => expect(ids1.has(String(m._id))).to.be.false);
+    } finally {
+      // Remove the 12 pagination fixtures so later scope-count tests stay clean.
+      await Member.deleteMany({ _id: { $in: created.map((m) => m._id) } });
+    }
   });
 
   it('8. pageSize=100000 is safely clamped to the maximum', async () => {
@@ -496,6 +502,38 @@ describe('member filtering + pagination + trainer scope (integration)', function
     // Scope-aware lookup never leaks existence — resolves to NotFound (404).
     expect(nextErr).to.not.be.null;
     expect(nextErr.statusCode).to.equal(404);
+  });
+
+  it('11. male trainer due list excludes female/transgender members', async () => {
+    const req = { admin: { scope: 'male', role: 'trainer' }, query: { days: '3650', includeExpired: 'true', includeDraft: 'true' } };
+    const res = mockRes();
+    let nextErr = null;
+    const next = (err) => { nextErr = err; };
+    await memberController.getExpiringMembers(req, res, next);
+    if (nextErr) throw nextErr;
+    expect(res.body.data.length).to.equal(3);
+    res.body.data.forEach((m) => expect(m.gender).to.equal('Male'));
+  });
+
+  it('12. female trainer due list = female + transgender only', async () => {
+    const req = { admin: { scope: 'female_plus_transgender', role: 'trainer' }, query: { days: '3650', includeExpired: 'true', includeDraft: 'true' } };
+    const res = mockRes();
+    let nextErr = null;
+    const next = (err) => { nextErr = err; };
+    await memberController.getExpiringMembers(req, res, next);
+    if (nextErr) throw nextErr;
+    expect(res.body.data.length).to.equal(3);
+    res.body.data.forEach((m) => expect(['Female', 'Transgender']).to.include(m.gender));
+  });
+
+  it('13. superadmin due list returns all genders', async () => {
+    const req = { admin: { scope: 'all', role: 'superadmin' }, query: { days: '3650', includeExpired: 'true', includeDraft: 'true' } };
+    const res = mockRes();
+    let nextErr = null;
+    const next = (err) => { nextErr = err; };
+    await memberController.getExpiringMembers(req, res, next);
+    if (nextErr) throw nextErr;
+    expect(res.body.data.length).to.equal(6);
   });
 });
 

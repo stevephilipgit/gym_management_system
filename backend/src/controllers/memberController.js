@@ -409,7 +409,9 @@ export const memberController = {
       includeExpired: includeExpired === "true",
       includeDraft: includeDraft === "true",
       includeAllStatuses: includeAllStatuses === "true",
-      ...genderFilter,
+      // Pass the scope filter as an explicit key so findExpiringMembers applies
+      // it (previously spread as `...genderFilter` which the repository never read).
+      genderFilter,
     });
 
     return res.json({
