@@ -156,7 +156,7 @@ export const memberController = {
 
   // Get all members
   getAllMembers: asyncHandler(async (req, res) => {
-    const { page = 1, pageSize = 10, status, search, gender } = req.query;
+    const { page = 1, pageSize = 10, status, search, gender, paymentStatus } = req.query;
     const filters = {};
 
     // Gender-scope enforcement (centralized via scopeResolver).
@@ -173,6 +173,9 @@ export const memberController = {
     }
 
     if (status) filters.status = status;
+    if (paymentStatus && ["paid", "not_paid"].includes(paymentStatus)) {
+      filters.paymentStatus = paymentStatus;
+    }
     if (search) {
       // The search path MUST keep the same gender scope as the list path —
       // otherwise a trainer could list all genders by adding ?search=.

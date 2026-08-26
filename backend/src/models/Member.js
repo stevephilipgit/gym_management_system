@@ -136,4 +136,9 @@ memberSchema.index({ gymPlan: 1, createdAt: 1 });
 memberSchema.index({ phone: 1 }, { unique: true });
 memberSchema.index({ phone: 1, validityEnd: 1 });
 
+// Primary member-list query: gender-scoped, sorted by most recent.
+// Without this compound index, MongoDB sorts by createdAt then filters by
+// gender in memory (or vice versa) — slow at scale.
+memberSchema.index({ gender: 1, createdAt: -1 });
+
 export default mongoose.model("Member", memberSchema);

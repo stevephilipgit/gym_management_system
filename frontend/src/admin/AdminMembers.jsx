@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DietSelector } from "./components/DietSelector";
 import apiClient from "../utils/apiClient.js";
 import { downloadMembershipInvoice } from "./utils/invoicePdf.js";
@@ -6,14 +6,21 @@ import { getDaysRemaining, getDaysIndicatorClass } from "../utils/memberStatus.j
 import IconButton from "./components/ui/IconButton";
 import RegisterForm from "./components/forms/RegisterForm";
 import ToggleSwitch from "./components/ui/ToggleSwitch";
+import { useAdmin } from "./authContext.js";
 
 const MS_DAY = 1000 * 60 * 60 * 24;
 
 export default function AdminMembers() {
+  const admin = useAdmin();
   const [members, setMembers] = useState([]);
   const [packages, setPackages] = useState([]);
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterGender, setFilterGender] = useState("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [showDeletePopup, setShowDeletePopup] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [showRenewPopup, setShowRenewPopup] = useState(false);
@@ -26,7 +33,6 @@ export default function AdminMembers() {
   const [renewMode, setRenewMode] = useState(false);
   const [sortAsc, setSortAsc] = useState(true);
   const [renewSubmitting, setRenewSubmitting] = useState(false);
-  const [currentAdmin, setCurrentAdmin] = useState(null);
   const [renewError, setRenewError] = useState(null);
   const [renewLoadingGymId, setRenewLoadingGymId] = useState(null);
   const [renewSubmitError, setRenewSubmitError] = useState(null);
@@ -45,24 +51,41 @@ export default function AdminMembers() {
     dietName: null,
     dietDescription: "",
   });
-  const fetchedRef = useRef(false);
+  const lastFetchKeyRef = useRef("");
 
-  useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    loadMembers();
-    loadPackages();
-    loadCurrentAdmin();
-  }, []);
-
-  const loadMembers = async () => {
+  // Server-driven fetch: filters + pagination are resolved by the backend.
+  const loadMembers = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
-      const res = await apiClient.get("/members");
-      setMembers(res.data?.data || res.data || []);
+      const params = { page, pageSize };
+      if (filterGender !== "all") params.gender = filterGender;
+      if (filterStatus !== "all") params.paymentStatus = filterStatus;
+      const res = await apiClient.get("/members", { params });
+      setMembers(res.data?.data || []);
+      setTotal(res.data?.pagination?.total ?? 0);
     } catch (err) {
       console.log("Error loading members:", err);
+      setLoadError("Failed to load members. Please try again.");
+      setMembers([]);
+      setTotal(0);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [page, pageSize, filterGender, filterStatus]);
+
+  useEffect(() => {
+    loadPackages();
+  }, []);
+
+  // Fetch members whenever page/filter changes. lastFetchKeyRef dedupes the
+  // React StrictMode double-mount so we never fire duplicate requests.
+  useEffect(() => {
+    const key = `${page}|${pageSize}|${filterGender}|${filterStatus}`;
+    if (lastFetchKeyRef.current === key) return;
+    lastFetchKeyRef.current = key;
+    loadMembers();
+  }, [page, pageSize, filterGender, filterStatus, loadMembers]);
 
   const loadPackages = async () => {
     try {
@@ -73,14 +96,24 @@ export default function AdminMembers() {
     }
   };
 
-  const loadCurrentAdmin = async () => {
-    try {
-      const res = await apiClient.get("/admin/me");
-      setCurrentAdmin(res.data?.admin || res.data?.data || res.data || null);
-    } catch (err) {
-      console.log("Error loading current admin:", err);
-    }
+  const changeGender = (value) => {
+    setFilterGender(value);
+    setPage(1);
   };
+
+  const changeStatus = (value) => {
+    setFilterStatus(value);
+    setPage(1);
+  };
+
+  const changePageSize = (value) => {
+    setPageSize(Number(value));
+    setPage(1);
+  };
+
+  const goToPage = (target) => setPage(target);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const closeEditModal = () => {
     setShowEditPopup(false);
@@ -305,7 +338,7 @@ export default function AdminMembers() {
     downloadMembershipInvoice({
       member: selectedMember,
       mode: "bill",
-      issuer: currentAdmin?.fullName || currentAdmin?.username || "Giri Gym Admin",
+      issuer: admin?.fullName || admin?.username || "Giri Gym Admin",
       planLabel: selectedMember.gymPlan,
       trainingType: renewData.trainingType || selectedMember.trainingType,
       price: renewData.price,
@@ -373,7 +406,7 @@ export default function AdminMembers() {
       downloadMembershipInvoice({
         member: renewedMember,
         mode: "renew",
-        issuer: currentAdmin?.fullName || currentAdmin?.username || "Giri Gym Admin",
+        issuer: admin?.fullName || admin?.username || "Giri Gym Admin",
         planLabel: body.newPlan,
         trainingType: renewData.trainingType,
         price: renewData.price,
@@ -442,14 +475,7 @@ export default function AdminMembers() {
     }
   };
 
-  const filteredMembers = members.filter((member) => {
-    if (filterStatus === "paid" && member.paymentStatus !== "paid") return false;
-    if (filterStatus === "not_paid" && member.paymentStatus !== "not_paid") return false;
-    if (filterGender !== "all" && member.gender !== filterGender) return false;
-    return true;
-  });
-
-  const sortedMembers = [...filteredMembers]
+  const displayedMembers = [...members]
     .map((member) => ({
       ...member,
       daysLeft: getDaysRemaining(member.validTill || member.validityEnd),
@@ -472,13 +498,13 @@ export default function AdminMembers() {
       )}
 
       <div className="saas-filter-bar">
-        <select className="saas-input" style={{ flex: '1 1 200px' }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+        <select className="saas-input" style={{ flex: '1 1 200px' }} value={filterStatus} onChange={(e) => changeStatus(e.target.value)}>
           <option value="all">All Members</option>
           <option value="paid">Paid</option>
           <option value="not_paid">Not Paid</option>
         </select>
-        {currentAdmin?.scope === "all" && (
-          <select className="saas-input" style={{ flex: '1 1 200px' }} value={filterGender} onChange={(e) => setFilterGender(e.target.value)}>
+        {admin?.scope === "all" && (
+          <select className="saas-input" style={{ flex: '1 1 200px' }} value={filterGender} onChange={(e) => changeGender(e.target.value)}>
             <option value="all">All Genders</option>
             <option value="Male">Male</option>
             <option value="Female">Female</option>
@@ -505,7 +531,19 @@ export default function AdminMembers() {
             </tr>
           </thead>
           <tbody>
-            {sortedMembers.map((member) => (
+            {loading ? (
+              <tr>
+                <td colSpan="8" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                  Loading members…
+                </td>
+              </tr>
+            ) : loadError ? (
+              <tr>
+                <td colSpan="8" style={{ textAlign: 'center', padding: '48px', color: '#c33' }}>
+                  {loadError}
+                </td>
+              </tr>
+            ) : displayedMembers.map((member) => (
               <tr key={member.gymId}>
                 <td>{member.gymId}</td>
                 <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{member.name || member.fullName}</td>
@@ -547,7 +585,7 @@ export default function AdminMembers() {
               </tr>
             ))}
 
-            {sortedMembers.length === 0 && (
+            {!loading && !loadError && displayedMembers.length === 0 && (
               <tr>
                 <td colSpan="8" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
                   No members found.
@@ -557,6 +595,47 @@ export default function AdminMembers() {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination + result summary (server-driven) */}
+      {!loading && !loadError && total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+          <span className="text-sm text-[var(--text-secondary)]">
+            Page {page} of {totalPages} · {total} member{total === 1 ? "" : "s"}
+          </span>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-[var(--text-secondary)]" htmlFor="members-page-size">Per page</label>
+            <select
+              id="members-page-size"
+              className="saas-input"
+              style={{ width: '90px' }}
+              value={pageSize}
+              onChange={(e) => changePageSize(e.target.value)}
+            >
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+            <button
+              onClick={() => goToPage(page - 1)}
+              disabled={page <= 1}
+              className="saas-input"
+              style={{ cursor: page <= 1 ? "not-allowed" : "pointer", width: '90px' }}
+            >
+              ← Prev
+            </button>
+            <span className="text-sm text-[var(--text-primary)]" style={{ minWidth: '48px', textAlign: 'center' }}>{page}</span>
+            <button
+              onClick={() => goToPage(page + 1)}
+              disabled={page >= totalPages}
+              className="saas-input"
+              style={{ cursor: page >= totalPages ? "not-allowed" : "pointer", width: '90px' }}
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+      )}
 
       {showDeletePopup && (
         <div className="modal-shell" onClick={() => setShowDeletePopup(false)}>
@@ -646,7 +725,7 @@ export default function AdminMembers() {
                   <p className="muted-copy">Current Validity: {formatDate(selectedMember.validityEnd)}</p>
                   <p className="muted-copy">Current Plan: {selectedMember.gymPlan || "-"}</p>
                   <p className="muted-copy">Training Type: {selectedMember.trainingType || "-"}</p>
-                  <p className="muted-copy">Issued By: {currentAdmin?.fullName || currentAdmin?.username || "Admin"}</p>
+                  <p className="muted-copy">Issued By: {admin?.fullName || admin?.username || "Admin"}</p>
                 </div>
               </div>
 
