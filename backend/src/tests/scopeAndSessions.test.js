@@ -29,7 +29,9 @@ import Attendance from '../models/Attendance.js';
 import adminAuth from '../middleware/adminAuth.js';
 import memberController from '../controllers/memberController.js';
 import memberRepository from '../repositories/memberRepository.js';
+import draftController from '../controllers/draftController.js';
 import Counter from '../services/atomicCounter.js';
+import DraftRegistration from '../models/DraftRegistration.js';
 import config from '../config/index.js';
 import redisClient from '../config/redis.js';
 
@@ -684,5 +686,171 @@ describe('member identity: duplicate gymId + scope-aware lookup + atomic counter
     doc = await Counter.findOne({ key });
     expect(doc.seq).to.equal(1005);
     await Counter.deleteMany({ key });
+  });
+});
+
+describe('register member: scope matrix + M/F counter + idempotency + draft isolation (integration)', function () {
+  this.timeout(40000);
+
+  let connected = false;
+
+  const mockRes = () => {
+    const res = { statusCode: 200, body: null };
+    res.status = (code) => { res.statusCode = code; return res; };
+    res.json = (body) => { res.body = body; return res; };
+    return res;
+  };
+
+  const uniqueNum = () => String(Math.floor(100000000 + Math.random() * 899999999));
+  const uniqueAadhar = () => String(100000000000 + Math.floor(Math.random() * 899999999999));
+
+  const makeRegisterReq = (scope, role, overrides = {}, extra = {}) => ({
+    body: {
+      fullName: `Reg ${scope} ${uniqueNum()}`,
+      fatherName: 'Father',
+      dob: '1992-05-10',
+      bloodGroup: 'O+',
+      phone: `9${uniqueNum()}`,
+      aadhar: uniqueAadhar(),
+      occupation: 'Engineer',
+      address: 'Test Address',
+      gymPlan: '1 Month',
+      trainingType: 'Weight Loss',
+      paymentStatus: 'paid',
+      paymentMode: 'cash',
+      amount: '2000',
+      ...overrides,
+    },
+    file: null,
+    admin: { id: new mongoose.Types.ObjectId(), username: 'regtest', role, scope },
+    sessionId: `ses-${scope}-${Math.random().toString(36).slice(2, 8)}`,
+    ip: '127.0.0.1',
+    id: 'req-reg',
+    method: 'POST',
+    path: '/api/members/register',
+    get: () => 'test-agent',
+    app: { locals: {} },
+    ...extra,
+  });
+
+  const runRegister = async (req) => {
+    // Each HTTP request has a fresh body; clone so the controller's body
+    // mutations (e.g. delete clientRequestId) don't affect a retry.
+    const clonedReq = { ...req, body: { ...req.body } };
+    const res = mockRes();
+    let nextErr = null;
+    const next = (err) => { nextErr = err; };
+    await memberController.registerMember(clonedReq, res, next);
+    return { res, nextErr };
+  };
+
+  before(async function () {
+    try {
+      await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
+      connected = true;
+      await Member.deleteMany({ fullName: /^Reg / });
+      await DraftRegistration.deleteMany({});
+    } catch (err) {
+      await redisClient.quit().catch(() => {});
+      this.skip();
+    }
+  });
+
+  after(async () => {
+    if (connected) {
+      await Member.deleteMany({ fullName: /^Reg / });
+      await DraftRegistration.deleteMany({});
+      await mongoose.disconnect();
+    }
+    await redisClient.quit().catch(() => {});
+  });
+
+  it('1. male trainer can register Male', async () => {
+    const { res, nextErr } = await runRegister(makeRegisterReq('male', 'trainer', { gender: 'Male' }));
+    if (nextErr) throw nextErr;
+    expect(res.statusCode).to.equal(201);
+    expect(res.body.data.memberCode).to.match(/^M/);
+  });
+
+  it('2. male trainer cannot register Female (403)', async () => {
+    const { nextErr } = await runRegister(makeRegisterReq('male', 'trainer', { gender: 'Female' }));
+    expect(nextErr).to.not.be.null;
+    expect(nextErr.statusCode).to.equal(403);
+  });
+
+  it('3. male trainer cannot register Transgender (403)', async () => {
+    const { nextErr } = await runRegister(makeRegisterReq('male', 'trainer', { gender: 'Transgender' }));
+    expect(nextErr).to.not.be.null;
+    expect(nextErr.statusCode).to.equal(403);
+  });
+
+  it('4. female trainer can register Female (F-series)', async () => {
+    const { res, nextErr } = await runRegister(makeRegisterReq('female_plus_transgender', 'trainer', { gender: 'Female' }));
+    if (nextErr) throw nextErr;
+    expect(res.statusCode).to.equal(201);
+    expect(res.body.data.memberCode).to.match(/^F/);
+  });
+
+  it('5. female trainer can register Transgender and it consumes the F counter', async () => {
+    const f = await runRegister(makeRegisterReq('female_plus_transgender', 'trainer', { gender: 'Female' }));
+    if (f.nextErr) throw f.nextErr;
+    const t = await runRegister(makeRegisterReq('female_plus_transgender', 'trainer', { gender: 'Transgender' }));
+    if (t.nextErr) throw t.nextErr;
+    const fCode = f.res.body.data.memberCode; // Fxxxx
+    const tCode = t.res.body.data.memberCode; // Fxxxx (same series, higher number)
+    expect(fCode).to.match(/^F/);
+    expect(tCode).to.match(/^F/);
+    expect(Number(tCode.slice(1))).to.be.greaterThan(Number(fCode.slice(1)));
+  });
+
+  it('6. female trainer cannot register Male (403)', async () => {
+    const { nextErr } = await runRegister(makeRegisterReq('female_plus_transgender', 'trainer', { gender: 'Male' }));
+    expect(nextErr).to.not.be.null;
+    expect(nextErr.statusCode).to.equal(403);
+  });
+
+  it('7. superadmin can register all genders', async () => {
+    for (const gender of ['Male', 'Female', 'Transgender']) {
+      const { res, nextErr } = await runRegister(makeRegisterReq('all', 'superadmin', { gender }));
+      if (nextErr) throw nextErr;
+      expect(res.statusCode).to.equal(201);
+    }
+  });
+
+  it('8. clientRequestId idempotency — duplicate submission creates one member', async () => {
+    const cri = `cri-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const req = makeRegisterReq('all', 'superadmin', { gender: 'Male', clientRequestId: cri });
+    const first = await runRegister(req);
+    if (first.nextErr) throw first.nextErr;
+    expect(first.res.statusCode).to.equal(201);
+    const second = await runRegister(req);
+    if (second.nextErr) throw second.nextErr;
+    expect(second.res.statusCode).to.equal(200);
+    expect(second.res.body.duplicate).to.be.true;
+    expect(String(second.res.body.data._id)).to.equal(String(first.res.body.data._id));
+    const count = await Member.countDocuments({ clientRequestId: cri });
+    expect(count).to.equal(1);
+  });
+
+  it('9. draft is isolated by admin + session', async () => {
+    const superReq = makeRegisterReq('all', 'superadmin');
+    superReq.body = { data: { fullName: 'Draft Name', phone: '9876543210' } };
+    const maleReq = makeRegisterReq('male', 'trainer');
+
+    const saveRes = mockRes();
+    await draftController.saveDraft(superReq, saveRes);
+    expect(saveRes.body.success).to.be.true;
+
+    // A different admin/session cannot read the draft.
+    const maleGet = mockRes();
+    await draftController.getDraft(maleReq, maleGet);
+    expect(maleGet.body.data).to.be.null;
+
+    // The original admin/session can.
+    const superGet = mockRes();
+    await draftController.getDraft(superReq, superGet);
+    expect(superGet.body.data).to.not.be.null;
+
+    await DraftRegistration.deleteMany({});
   });
 });
