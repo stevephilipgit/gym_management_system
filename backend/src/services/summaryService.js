@@ -26,14 +26,16 @@ import logger from "../core/logger.js";
  * 
  * Returns: DailySummary document for today
  */
-export async function getTodaySummary() {
+export async function getTodaySummary(session = null) {
   try {
     const now = new Date();
     const today = new Date(now);
     today.setHours(0, 0, 0, 0); // Start of day (00:00:00)
 
     // Try to find existing summary
-    let summary = await DailySummary.findOne({ date: today });
+    let summary = session
+      ? await DailySummary.findOne({ date: today }).session(session)
+      : await DailySummary.findOne({ date: today });
 
     // If not found, create new summary for today
     if (!summary) {
@@ -47,7 +49,7 @@ export async function getTodaySummary() {
         incomeByTrainingType: new Map(),
         membersByTrainingType: new Map(),
       });
-      await summary.save();
+      await (session ? summary.save({ session }) : summary.save());
       logger.info("📊 Created new daily summary for", today.toISOString().split('T')[0]);
     }
 
@@ -73,9 +75,9 @@ export async function getTodaySummary() {
  *   - plan: package plan (e.g., "1 Month", "3 Months")
  *   - trainingType: training type (e.g., "Weight Loss", "Weight Gain")
  */
-export async function updateTodaySummary(transactionLog) {
+export async function updateTodaySummary(transactionLog, session = null) {
   try {
-    const summary = await getTodaySummary();
+    const summary = await getTodaySummary(session);
 
     const amount = Number(transactionLog.amount) || 0;
     const plan = transactionLog.plan || "Unknown";
@@ -114,11 +116,9 @@ export async function updateTodaySummary(transactionLog) {
     updateOps.$inc[`incomeByTrainingType.${trainingType}`] = amount;
 
     // Execute update
-    const updated = await DailySummary.findByIdAndUpdate(
-      summary._id,
-      updateOps,
-      { new: true } // Return updated document
-    );
+    const updated = session
+      ? await DailySummary.findByIdAndUpdate(summary._id, updateOps, { new: true, session })
+      : await DailySummary.findByIdAndUpdate(summary._id, updateOps, { new: true });
 
     logger.info(`📈 Summary updated: +₹${amount} (${type}) | Total: ₹${updated.totalRevenue}`);
     return updated;

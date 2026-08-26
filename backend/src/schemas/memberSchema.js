@@ -144,6 +144,10 @@ export const memberRegisterSchema = Joi.object({
   customFields: Joi.alternatives()
     .try(Joi.object(), Joi.string())
     .optional(),
+
+  // Idempotency key (optional, backward compatible): prevents duplicate
+  // member creation on retry/double-submit.
+  clientRequestId: Joi.string().trim().max(100).optional(),
 }).unknown(true);
 
 export const memberUpdateSchema = Joi.object({

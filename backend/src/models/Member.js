@@ -110,6 +110,15 @@ const memberSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+
+    // Idempotency key: the frontend-sent clientRequestId ensures that a
+    // duplicate submission (network retry, double-click) never creates two
+    // members. A sparse unique index enforces the constraint.
+    clientRequestId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
   },
   { timestamps: true }
 );

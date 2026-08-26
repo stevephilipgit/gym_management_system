@@ -1,4 +1,8 @@
 // controllers/memberController.js - Business logic for member operations
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import mongoose from "mongoose";
 import Member from "../models/Member.js";
 import memberRepository from "../repositories/memberRepository.js";
 import paymentRepository from "../repositories/paymentRepository.js";
@@ -10,8 +14,11 @@ import FinanceLog from "../models/FinanceLog.js";
 import Counter from "../services/atomicCounter.js";
 import scopeResolver from "../core/scopeResolver.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const MS_DAY = 1000 * 60 * 60 * 24;
-const GENDER_PREFIX = { Male: "M", Female: "F", Transgender: "T" };
+const GENDER_PREFIX = { Male: "M", Female: "F", Transgender: "F" };
 
 const getPlanMonths = (plan) =>
   ({
@@ -86,7 +93,8 @@ export const memberController = {
   // Register a new member
   registerMember: asyncHandler(async (req, res) => {
     const data = req.body;
-    const photoUrl = req.file ? `/uploads/${req.file.filename}` : null;
+    const photoFile = req.file;
+    const photoUrl = photoFile ? `/uploads/${photoFile.filename}` : null;
 
     // Validate required fields
     if (!data.fullName || !data.fatherName || !data.phone) {
@@ -97,7 +105,8 @@ export const memberController = {
     const customFields = data.customFields ? JSON.parse(data.customFields) : {};
     delete data.customFields;
 
-    // Verify requested gender against admin scope (centralized rule)
+    // Verify requested gender against admin scope (centralized rule).
+    // A client may send any gender; the backend rejects out-of-scope with 403.
     if (data.gender) {
       const allowedGenders = scopeResolver.getScopeAllowedGenders(req);
       if (allowedGenders.length > 0 && !allowedGenders.includes(data.gender)) {
@@ -118,14 +127,28 @@ export const memberController = {
       paymentMode = mode;
     }
 
+    // Idempotency guard: if the client supplied a clientRequestId and a member
+    // already exists for it (network retry / double-click), return the existing
+    // member instead of creating a duplicate.
+    const clientRequestId = data.clientRequestId ? String(data.clientRequestId).trim() : null;
+    delete data.clientRequestId;
+    if (clientRequestId) {
+      const existing = await Member.findOne({ clientRequestId });
+      if (existing) {
+        return res.status(200).json({ success: true, data: existing, member: existing, duplicate: true });
+      }
+    }
+
     // Generate next per-gender Gym ID (atomic, never reuses deleted numbers)
     const gymId = await getNextGymId(data.gender);
 
-    // Generate atomic member code
+    // Generate atomic member code.
+    // Business rule: Male → M-series, Female → F-series, Transgender → F-series
+    // (transgender consumes the female gym counter — there is NO T-series).
     const codePrefix = {
       Male: "M",
       Female: "F",
-      Transgender: "T",
+      Transgender: "F",
     }[data.gender] || "M";
     const counter = await Counter.increment(`member_code_${codePrefix}`);
     const memberCode = `${codePrefix}${counter
@@ -144,8 +167,7 @@ export const memberController = {
       validityEnd.setDate(validityEnd.getDate() - 1);
     }
 
-    // Create member
-    const member = await memberRepository.create({
+    const memberData = {
       gymId,
       memberCode,
       ...data,
@@ -158,40 +180,68 @@ export const memberController = {
       customFields,
       photoUrl,
       status: paymentStatus === "paid" ? "active" : "draft",
-    });
+      ...(clientRequestId ? { clientRequestId } : {}),
+    };
 
-    // Create finance and payment logs if paid
-    if (paymentStatus === "paid") {
-      const financeLog = await FinanceLog.create({
-        gymId,
-        memberName: member.fullName,
-        amount: Number(data.amount) || 0,
-        plan: data.gymPlan,
-        trainingType: data.trainingType,
-        type: "new",
-        date: new Date(),
-      });
+    // Persist the business records in a single MongoDB transaction so no
+    // partial state remains if any write fails. The audit event is kept
+    // OUTSIDE the transaction (an audit failure must never block registration).
+    const session = await mongoose.startSession();
+    let member;
+    try {
+      session.startTransaction();
+      member = await memberRepository.create(memberData, session);
 
-      await PaymentLog.create({
-        gymId,
-        name: member.fullName,
-        amount: Number(data.amount) || 0,
-        plan: data.gymPlan,
-        trainingType: data.trainingType,
-        paidAt: new Date(),
-        paymentMode: paymentMode,
-        type: "new",
-        dietId: data.dietId || null,
-        dietName: data.dietName || null,
-      });
+      if (paymentStatus === "paid") {
+        const financeLog = new FinanceLog({
+          gymId,
+          memberName: member.fullName,
+          amount: Number(data.amount) || 0,
+          plan: data.gymPlan,
+          trainingType: data.trainingType,
+          type: "new",
+          date: new Date(),
+        });
+        await financeLog.save({ session });
 
-      // Update daily summary
-      await updateTodaySummary(financeLog);
+        const paymentLog = new PaymentLog({
+          gymId,
+          name: member.fullName,
+          amount: Number(data.amount) || 0,
+          plan: data.gymPlan,
+          trainingType: data.trainingType,
+          paidAt: new Date(),
+          paymentMode,
+          type: "new",
+          dietId: data.dietId || null,
+          dietName: data.dietName || null,
+        });
+        await paymentLog.save({ session });
+
+        await updateTodaySummary(financeLog, session);
+      }
+
+      await session.commitTransaction();
+    } catch (error) {
+      await session.abortTransaction().catch(() => {});
+      // If the photo was uploaded but the transaction failed, remove the
+      // orphaned file so the filesystem does not accumulate garbage.
+      if (photoFile) {
+        try {
+          await fs.promises.unlink(path.join(__dirname, "..", "uploads", photoFile.filename));
+        } catch {
+          // cleanup is best-effort — a manual sweep can remove leftovers
+        }
+      }
+      throw error;
+    } finally {
+      await session.endSession().catch(() => {});
     }
 
-    // Audit log
+    // Audit log (outside the business transaction)
     await auditActions.memberCreated(req, member._id, {
       gymId: member.gymId,
+      memberCode: member.memberCode,
       fullName: member.fullName,
       phone: member.phone,
       plan: data.gymPlan,

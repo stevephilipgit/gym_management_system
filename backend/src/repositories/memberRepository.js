@@ -76,10 +76,10 @@ class MemberRepository {
     return Member.countDocuments(filters);
   }
 
-  // Create member
-  async create(memberData) {
+  // Create member (optionally within a transaction session)
+  async create(memberData, session = null) {
     const member = new Member(memberData);
-    return member.save();
+    return session ? member.save({ session }) : member.save();
   }
 
   // Update member
