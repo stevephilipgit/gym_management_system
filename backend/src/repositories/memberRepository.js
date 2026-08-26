@@ -1,6 +1,16 @@
 // repositories/memberRepository.js - Data access layer for members
 import Member from "../models/Member.js";
 
+export const MAX_PAGE_SIZE = 100;
+
+// Pure helper — safe to import and test without a database.
+export const clampPagination = (page, pageSize) => {
+  const safePage = Number.isFinite(Number(page)) && Number(page) >= 1 ? Math.floor(Number(page)) : 1;
+  const rawSize = Number.isFinite(Number(pageSize)) && Number(pageSize) >= 1 ? Math.floor(Number(pageSize)) : 10;
+  const safeSize = Math.min(MAX_PAGE_SIZE, rawSize);
+  return { page: safePage, pageSize: safeSize };
+};
+
 class MemberRepository {
   normalizeGymId(gymId) {
     const digitsOnly = String(gymId ?? "").replace(/\D/g, "");
@@ -166,10 +176,11 @@ async findExpiringMembers(days = 7, options = {}) {
 
   // Get members with pagination
   async getPaginated(page = 1, pageSize = 10, filters = {}) {
-    const skip = (page - 1) * pageSize;
+    const { page: safePage, pageSize: safePageSize } = clampPagination(page, pageSize);
+    const skip = (safePage - 1) * safePageSize;
     const members = await this.findAll(filters, {
       skip,
-      limit: pageSize,
+      limit: safePageSize,
       sort: { createdAt: -1 },
     });
     const total = await this.countAll(filters);
@@ -177,10 +188,10 @@ async findExpiringMembers(days = 7, options = {}) {
     return {
       data: members,
       pagination: {
-        page,
-        pageSize,
+        page: safePage,
+        pageSize: safePageSize,
         total,
-        pages: Math.ceil(total / pageSize),
+        pages: Math.ceil(total / safePageSize),
       },
     };
   }
