@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   FiActivity,
   FiBarChart2,
-  FiCalendar,
   FiClock,
   FiCpu,
   FiHome,
@@ -35,7 +34,6 @@ const NAV_GROUPS = [
     label: "Members",
     items: [
       { label: "Register Member", icon: <FiUserPlus />, path: "/admin/register" },
-      { label: "View Dues",       icon: <FiCalendar />, path: "/admin/due" },
       { label: "All Members",    icon: <FiUsers />,    path: "/admin/members" },
     ],
   },

@@ -17,7 +17,6 @@ const PAGE_TITLES = {
   "/admin/members": "All Members",
   "/admin/register": "Register Member",
   "/admin/update": "Update Member",
-  "/admin/due": "View Dues",
   "/admin/packages": "Packages",
   "/admin/fields": "Form Fields",
   "/admin/diet-manager": "Diet Manager",

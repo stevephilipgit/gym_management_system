@@ -14,7 +14,6 @@ const AdminLayout = lazy(() => import("./admin/AdminLayout"));
 const AdminDashboardHome = lazy(() => import("./admin/AdminDashboardHome"));
 const AdminRegister = lazy(() => import("./admin/AdminRegister"));
 const AdminUpdate = lazy(() => import("./admin/AdminUpdate"));
-const AdminDues = lazy(() => import("./admin/AdminDues"));
 const AdminMembers = lazy(() => import("./admin/AdminMembers"));
 const AdminManagePackages = lazy(() => import("./admin/AdminManagePackages"));
 const AdminManageFields = lazy(() => import("./admin/AdminManageFields"));
@@ -67,7 +66,6 @@ function App() {
               <Route path="members" element={<AdminMembers />} />
               <Route path="register" element={<AdminRegister />} />
               <Route path="update" element={<AdminUpdate />} />
-              <Route path="due" element={<AdminDues />} />
               <Route path="packages" element={<RoleGuard roles={["superadmin"]}><AdminManagePackages /></RoleGuard>} />
               <Route path="fields" element={<RoleGuard roles={["superadmin"]}><AdminManageFields /></RoleGuard>} />
               <Route path="diet-manager" element={<AdminDietManager />} />

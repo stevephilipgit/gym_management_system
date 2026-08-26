@@ -65,9 +65,6 @@ router.delete("/register/draft", adminAuth, draftController.deleteDraft);
 // DELETE /api/members/:gymId
 router.delete("/:gymId", adminAuth, requireRole("superadmin"), memberController.deleteMember);
 
-// GET /api/members/due/list
-router.get("/due/list", adminAuth, memberController.getExpiringMembers);
-
 // GET /api/members (all members)
 router.get("/", adminAuth, memberController.getAllMembers);
 

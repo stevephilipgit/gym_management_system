@@ -505,38 +505,6 @@ describe('member filtering + pagination + trainer scope (integration)', function
     expect(nextErr).to.not.be.null;
     expect(nextErr.statusCode).to.equal(404);
   });
-
-  it('11. male trainer due list excludes female/transgender members', async () => {
-    const req = { admin: { scope: 'male', role: 'trainer' }, query: { days: '3650', includeExpired: 'true', includeDraft: 'true' } };
-    const res = mockRes();
-    let nextErr = null;
-    const next = (err) => { nextErr = err; };
-    await memberController.getExpiringMembers(req, res, next);
-    if (nextErr) throw nextErr;
-    expect(res.body.data.length).to.equal(3);
-    res.body.data.forEach((m) => expect(m.gender).to.equal('Male'));
-  });
-
-  it('12. female trainer due list = female + transgender only', async () => {
-    const req = { admin: { scope: 'female_plus_transgender', role: 'trainer' }, query: { days: '3650', includeExpired: 'true', includeDraft: 'true' } };
-    const res = mockRes();
-    let nextErr = null;
-    const next = (err) => { nextErr = err; };
-    await memberController.getExpiringMembers(req, res, next);
-    if (nextErr) throw nextErr;
-    expect(res.body.data.length).to.equal(3);
-    res.body.data.forEach((m) => expect(['Female', 'Transgender']).to.include(m.gender));
-  });
-
-  it('13. superadmin due list returns all genders', async () => {
-    const req = { admin: { scope: 'all', role: 'superadmin' }, query: { days: '3650', includeExpired: 'true', includeDraft: 'true' } };
-    const res = mockRes();
-    let nextErr = null;
-    const next = (err) => { nextErr = err; };
-    await memberController.getExpiringMembers(req, res, next);
-    if (nextErr) throw nextErr;
-    expect(res.body.data.length).to.equal(6);
-  });
 });
 
 describe('member identity: duplicate gymId + scope-aware lookup + atomic counters (integration)', function () {

@@ -437,40 +437,6 @@ export const memberController = {
     return res.json({ success: true, message: "Member deleted successfully" });
   }),
 
-  // Get expiring members
-  getExpiringMembers: asyncHandler(async (req, res) => {
-    const {
-      days = 3650,
-      includeExpired = "true",
-      includeDraft = "true",
-      includeAllStatuses = "false",
-      gender,
-    } = req.query;
-
-    // Gender-scope enforcement (centralized via scopeResolver)
-    const genderFilter = scopeResolver.buildGenderFilter(req);
-
-    // Superadmin-only narrowing filter (?gender= on the Due page).
-    if (gender && req.admin?.scope === "all" && ["Male", "Female", "Transgender"].includes(gender)) {
-      genderFilter.gender = gender;
-    }
-
-    const members = await memberRepository.findExpiringMembers(Number(days), {
-      includeExpired: includeExpired === "true",
-      includeDraft: includeDraft === "true",
-      includeAllStatuses: includeAllStatuses === "true",
-      // Pass the scope filter as an explicit key so findExpiringMembers applies
-      // it (previously spread as `...genderFilter` which the repository never read).
-      genderFilter,
-    });
-
-    return res.json({
-      success: true,
-      data: members,
-      message: `Members due within ${days} days`,
-    });
-  }),
-
   // Get expired members
   getExpiredMembers: asyncHandler(async (req, res) => {
     // Gender-scope enforcement (centralized via scopeResolver)

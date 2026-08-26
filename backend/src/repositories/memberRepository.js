@@ -130,32 +130,6 @@ class MemberRepository {
     return Member.findOneAndDelete(filter);
   }
 
-  // Find expiring members (validity ending within N days)
-  async findExpiringMembers(days = 7, options = {}) {
-    const now = new Date();
-    const futureDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-    const includeExpired = Boolean(options.includeExpired);
-    const includeDraft = Boolean(options.includeDraft);
-    const includeAllStatuses = Boolean(options.includeAllStatuses);
-
-    const query = {
-      validityEnd: includeExpired ? { $lte: futureDate } : { $gte: now, $lte: futureDate },
-    };
-
-    if (!includeAllStatuses) {
-      query.status = includeDraft ? { $in: ["active", "expired", "draft"] } : { $in: ["active", "expired"] };
-    }
-
-    // Gender scope: prefer the explicit `genderFilter` key; fall back to a
-    // top-level `gender` fragment (defensive for any future caller that spreads).
-    const genderConstraint = options.genderFilter?.gender || options.gender;
-    if (genderConstraint) {
-      query.gender = genderConstraint;
-    }
-
-    return Member.find(query).sort({ validityEnd: 1 });
-  }
-
   // Find expired members
   async findExpiredMembers(genderFilter = {}) {
     const now = new Date();
