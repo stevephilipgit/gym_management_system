@@ -108,7 +108,6 @@ export const errorHandler = (err, req, res, next) => {
   });
 };
 
-// Async error wrapper
-export const asyncHandler = (fn) => (req, res, next) => {
+// Async error wrapper — returns the promise so callers (tests) can await.
+export const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
-};

@@ -26,4 +26,15 @@ CounterSchema.statics.increment = async function (key) {
   return doc.seq;
 };
 
+// Ensure a counter never starts below a floor (used to seed per-gender gymId
+// counters from the current max without lowering an existing value).
+CounterSchema.statics.ensureMin = async function (key, min) {
+  const doc = await this.findOneAndUpdate(
+    { key, seq: { $lt: min } },
+    { $set: { seq: min } },
+    { new: true, upsert: true }
+  );
+  return doc.seq;
+};
+
 export default mongoose.model("Counter", CounterSchema);

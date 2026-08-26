@@ -4,7 +4,7 @@ import { generateFormattedName } from "../utils/nameFormatter.js";
 
 const memberSchema = new mongoose.Schema(
   {
-    gymId: { type: Number, unique: true, required: true },
+    gymId: { type: Number, required: true },
 
     fullName: { type: String, required: true },
     fatherName: { type: String, required: true },
@@ -76,9 +76,14 @@ const memberSchema = new mongoose.Schema(
       default: {},
     },
 
-    // ✅ Feature 4: Member Code - front-facing member identifier
+    // ✅ Feature 4: Member Code - canonical gender-prefixed system identifier
+    // (M0001 / F0001 / T0001). Globally unique by construction (per-gender
+    // atomic counters with disjoint prefixes). Sparse unique index guards
+    // against accidental duplicates; legacy rows are backfilled by migration.
     memberCode: {
       type: String,
+      unique: true,
+      sparse: true,
     },
     dietId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -140,5 +145,11 @@ memberSchema.index({ phone: 1, validityEnd: 1 });
 // Without this compound index, MongoDB sorts by createdAt then filters by
 // gender in memory (or vice versa) — slow at scale.
 memberSchema.index({ gender: 1, createdAt: -1 });
+
+// Identity: a numeric gymId is only unique WITHIN a gender (male gym "101"
+// and female gym "101" are distinct members). The global gymId unique index
+// was removed — the compound unique below is the correct uniqueness boundary.
+// NOTE: the old global index must be dropped by scripts/migrate-member-identity.js.
+memberSchema.index({ gymId: 1, gender: 1 }, { unique: true });
 
 export default mongoose.model("Member", memberSchema);

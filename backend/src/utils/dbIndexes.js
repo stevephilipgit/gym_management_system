@@ -10,11 +10,16 @@ export const collectionIndexes = [
   {
     collection: "members",
     indexes: [
-      { key: { gymId: 1 }, options: { unique: true, name: "idx_members_gymId_unique" } },
+      // Identity: gymId is only unique WITHIN a gender (male "101" and female
+      // "101" are distinct). The old global gymId unique index was replaced by
+      // this compound unique. Drop the old one via scripts/migrate-member-identity.js.
+      { key: { gymId: 1, gender: 1 }, options: { unique: true, name: "idx_members_gym_gender_unique" } },
+      { key: { memberCode: 1 }, options: { unique: true, sparse: true, name: "idx_members_memberCode_unique" } },
       { key: { aadhar: 1 }, options: { unique: true, name: "idx_members_aadhar_unique" } },
       { key: { phone: 1 }, options: { unique: true, name: "idx_members_phone_unique" } },
       { key: { paymentStatus: 1, validityEnd: 1 }, options: { name: "idx_members_status_validity" } },
       { key: { status: 1, createdAt: -1 }, options: { name: "idx_members_status_createdAt" } },
+      { key: { gender: 1, createdAt: -1 }, options: { name: "idx_members_gender_createdAt" } },
     ],
   },
   {

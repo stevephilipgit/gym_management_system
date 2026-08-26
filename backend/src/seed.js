@@ -56,8 +56,10 @@ async function seedDatabase() {
     await Admin.collection.createIndex({ email: 1 }, { unique: true });
     console.log("  ✓ Admin indexes created");
 
-    await Member.collection.createIndex({ gymId: 1 }, { unique: true });
+    await Member.collection.createIndex({ gymId: 1, gender: 1 }, { unique: true });
+    await Member.collection.createIndex({ memberCode: 1 }, { unique: true, sparse: true });
     await Member.collection.createIndex({ aadhar: 1 }, { unique: true });
+    await Member.collection.createIndex({ phone: 1 }, { unique: true });
     console.log("  ✓ Member indexes created");
 
     await PaymentLog.collection.createIndex({ gymId: 1 });

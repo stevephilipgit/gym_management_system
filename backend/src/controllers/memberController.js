@@ -1,4 +1,5 @@
 // controllers/memberController.js - Business logic for member operations
+import Member from "../models/Member.js";
 import memberRepository from "../repositories/memberRepository.js";
 import paymentRepository from "../repositories/paymentRepository.js";
 import { updateTodaySummary } from "../services/summaryService.js";
@@ -10,6 +11,7 @@ import Counter from "../services/atomicCounter.js";
 import scopeResolver from "../core/scopeResolver.js";
 
 const MS_DAY = 1000 * 60 * 60 * 24;
+const GENDER_PREFIX = { Male: "M", Female: "F", Transgender: "T" };
 
 const getPlanMonths = (plan) =>
   ({
@@ -31,10 +33,54 @@ const calculateDaysLeft = (date) => {
   return Math.ceil(diffTime / MS_DAY);
 };
 
-const getNextGymId = async () => {
-  const last = await memberRepository.findAll({}, { limit: 1, sort: { gymId: -1 } });
-  return last[0] ? last[0].gymId + 1 : 1001;
+// Per-gender atomic gymId generation. The counter is seeded from the current
+// max for that gender on first use then monotonically incremented.
+// Existing members' gymId values are never changed.
+const getNextGymId = async (gender) => {
+  const prefix = GENDER_PREFIX[gender] || "M";
+  const key = `gym_id_${prefix}`;
+  const maxDoc = await Member.findOne({ gender }).sort({ gymId: -1 }).select("gymId").lean();
+  const floor = Math.max(1000, maxDoc?.gymId || 1000);
+  await Counter.ensureMin(key, floor);
+  return Counter.increment(key);
 };
+
+// Resolve a member by gymId with the current admin's scope, returning either
+// the single member or a disambiguation list when multiple matches exist.
+// Used by getMemberByGymId, updateMember, deleteMember, renewMember.
+const resolveMemberForAdmin = async (req, gymId, { memberCode } = {}) => {
+  // memberCode is globally unique — exact resolution, ignores scope.
+  if (memberCode) {
+    const member = await memberRepository.findByGymId(gymId, { memberCode });
+    return member ? { member } : { member: null };
+  }
+
+  // Superadmin: never silently pick one of several duplicate numeric gymIds.
+  if (req.admin?.scope === "all") {
+    const matches = await memberRepository.findAllByGymId(gymId);
+    if (matches.length === 1) {
+      const member = await memberRepository.findByGymId(gymId);
+      return member ? { member } : { member: null };
+    }
+    if (matches.length > 1) {
+      return { members: matches.map((m) => ({ gymId: m.gymId, memberCode: m.memberCode, fullName: m.fullName, gender: m.gender, _id: m._id })) };
+    }
+    return { member: null };
+  }
+
+  // Trainer: resolve within authorized scope.
+  const allowedGenders = scopeResolver.getScopeAllowedGenders(req);
+  const member = await memberRepository.findByGymId(gymId, { allowedGenders });
+  return member ? { member } : { member: null };
+};
+
+const sendMultipleMembers = (res, members) =>
+  res.status(300).json({
+    success: false,
+    multiple: true,
+    message: "Multiple members share this gym ID. Specify the member code.",
+    members,
+  });
 
 export const memberController = {
   // Register a new member
@@ -72,8 +118,8 @@ export const memberController = {
       paymentMode = mode;
     }
 
-    // Generate next Gym ID
-    const gymId = await getNextGymId();
+    // Generate next per-gender Gym ID (atomic, never reuses deleted numbers)
+    const gymId = await getNextGymId(data.gender);
 
     // Generate atomic member code
     const codePrefix = {
@@ -224,17 +270,18 @@ export const memberController = {
     });
   }),
 
-  // Get member by Gym ID
+  // Get member by Gym ID (scope-aware; superadmin disambiguation)
   getMemberByGymId: asyncHandler(async (req, res) => {
-    const member = await memberRepository.findByGymId(req.params.gymId);
+    const gymId = req.params.gymId;
+    const memberCode = req.query?.memberCode;
 
+    const { member, members } = await resolveMemberForAdmin(req, gymId, { memberCode });
+
+    if (members) {
+      return sendMultipleMembers(res, members);
+    }
     if (!member) {
       throw new NotFoundError("Member not found");
-    }
-
-    // Verify admin scope against member gender
-    if (!scopeResolver.checkMemberScope(req, member.gender)) {
-      throw new ForbiddenError("Access denied: insufficient scope for this member");
     }
 
     const daysLeft = calculateDaysLeft(member.validityEnd);
@@ -251,19 +298,19 @@ export const memberController = {
   // Update member
   updateMember: asyncHandler(async (req, res) => {
     const lookupGymId = req.params.gymId || req.params.id;
+    const memberCode = req.body?.memberCode || req.query?.memberCode;
 
-    // Load member first and verify scope BEFORE mutation
-    const existingMember = await memberRepository.findByGymId(lookupGymId);
+    // Load member first (scope-aware) and verify scope BEFORE mutation
+    const { member: existingMember, members } = await resolveMemberForAdmin(req, lookupGymId, { memberCode });
+    if (members) {
+      return sendMultipleMembers(res, members);
+    }
     if (!existingMember) {
       throw new NotFoundError("Member not found");
     }
 
-    // Verify admin scope against existing member gender
-    if (!scopeResolver.checkMemberScope(req, existingMember.gender)) {
-      throw new ForbiddenError("Access denied: insufficient scope for this member");
-    }
-
     const data = req.body;
+    delete data.memberCode; // memberCode is immutable
 
     // Optimistic concurrency: require the version the trainer loaded.
     const expectedVersion = Number(data.version);
@@ -282,14 +329,19 @@ export const memberController = {
       data.customFields = JSON.parse(data.customFields);
     }
 
-    // Do NOT trust incoming gender to authorize the operation.
-    // Scope is verified against the existing member gender above.
-
-    const member = await memberRepository.updateByGymId(lookupGymId, data, expectedVersion);
+    const member = await memberRepository.updateByGymId(
+      lookupGymId,
+      data,
+      expectedVersion,
+      { allowedGenders: scopeResolver.getScopeAllowedGenders(req), memberCode }
+    );
 
     if (!member) {
       // Distinguish "member deleted" (404) from "another admin edited it" (409)
-      const stillExists = await memberRepository.findByGymId(lookupGymId);
+      const stillExists = await memberRepository.findByGymId(lookupGymId, {
+        allowedGenders: scopeResolver.getScopeAllowedGenders(req),
+        memberCode,
+      });
       if (stillExists) {
         throw new ConflictError(
           "This member was modified by another user. Please reload the member and try again."
@@ -304,9 +356,13 @@ export const memberController = {
   // Delete member
   deleteMember: asyncHandler(async (req, res) => {
     const lookupGymId = req.params.gymId || req.params.id;
+    const memberCode = req.body?.memberCode || req.query?.memberCode;
 
-    // Load member first and verify scope
-    const existingMember = await memberRepository.findByGymId(lookupGymId);
+    // Load member first (scope-aware) and verify scope
+    const { member: existingMember, members } = await resolveMemberForAdmin(req, lookupGymId, { memberCode });
+    if (members) {
+      return sendMultipleMembers(res, members);
+    }
     if (!existingMember) {
       throw new NotFoundError("Member not found");
     }
@@ -316,7 +372,10 @@ export const memberController = {
       throw new ForbiddenError("Access denied: only superadmin can delete members");
     }
 
-    const member = await memberRepository.deleteByGymId(lookupGymId);
+    const member = await memberRepository.deleteByGymId(lookupGymId, {
+      allowedGenders: scopeResolver.getScopeAllowedGenders(req),
+      memberCode,
+    });
 
     if (!member) {
       throw new NotFoundError("Member not found");
@@ -394,7 +453,24 @@ export const memberController = {
       if (!/^\d{4,6}$/.test(cleanGymId)) {
         throw new ValidationError("Invalid Gym ID format");
       }
-      member = await memberRepository.findByGymId(cleanGymId);
+      // Public lookup has no admin scope: if the numeric gymId is ambiguous
+      // (duplicate across genders), return "not found" rather than silently
+      // resolving an arbitrary member.
+      const matches = await memberRepository.findAllByGymId(cleanGymId);
+      if (matches.length === 1) {
+        member = matches[0];
+      } else if (matches.length === 0) {
+        member = null;
+      } else {
+        return res.json({
+          success: true,
+          data: {
+            found: false,
+            ambiguous: true,
+            message: "Multiple members share this gym ID. Use phone or contact the gym.",
+          },
+        });
+      }
     } else {
       throw new ValidationError("Provide gymId or phone");
     }
@@ -450,16 +526,15 @@ export const memberController = {
   // Renew member
   renewMember: asyncHandler(async (req, res) => {
     const lookupGymId = req.params.gymId || req.params.id;
+    const memberCode = req.body?.memberCode || req.query?.memberCode;
 
-    // Load member first and verify scope BEFORE mutation
-    const existingMember = await memberRepository.findByGymId(lookupGymId);
+    // Load member first (scope-aware) and verify scope BEFORE mutation
+    const { member: existingMember, members } = await resolveMemberForAdmin(req, lookupGymId, { memberCode });
+    if (members) {
+      return sendMultipleMembers(res, members);
+    }
     if (!existingMember) {
       throw new NotFoundError("Member not found");
-    }
-
-    // Verify admin scope against member gender
-    if (!scopeResolver.checkMemberScope(req, existingMember.gender)) {
-      throw new ForbiddenError("Access denied: insufficient scope for this member renewal");
     }
 
     const {
@@ -509,11 +584,17 @@ export const memberController = {
       dietId: dietId || existingMember.dietId || null,
       dietName: dietName || existingMember.dietName || null,
       dietIncludedInLastBilling: dietIncludedInLastBilling === "true" || Boolean(dietIncludedInLastBilling),
-    }, expectedVersion);
+    }, expectedVersion, {
+      allowedGenders: scopeResolver.getScopeAllowedGenders(req),
+      memberCode,
+    });
 
     if (!updatedMember) {
       // Distinguish "member deleted" (404) from "another admin edited it" (409)
-      const stillExists = await memberRepository.findByGymId(lookupGymId);
+      const stillExists = await memberRepository.findByGymId(lookupGymId, {
+        allowedGenders: scopeResolver.getScopeAllowedGenders(req),
+        memberCode,
+      });
       if (stillExists) {
         throw new ConflictError(
           "This member was modified by another user. Please reload the member and try again."

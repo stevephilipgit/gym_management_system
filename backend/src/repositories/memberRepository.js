@@ -19,23 +19,44 @@ class MemberRepository {
     return Number.isFinite(parsed) ? parsed : null;
   }
 
-  // Find by ID
+  // Find by ID (ObjectId — always unique)
   async findById(id) {
     return Member.findById(id).populate("dietId");
   }
 
-  // Find by Gym ID
-  async findByGymId(gymId) {
+  // Find by Gym ID with optional scope + disambiguation.
+  // opts = { allowedGenders, memberCode }
+  //   memberCode · globally unique — exact match, ignores scope.
+  //   allowedGenders · scoped lookup (trainer resolve).
+  //   neither · backward-compatible unscoped lookup.
+  async findByGymId(gymId, opts = {}) {
     const parsedGymId = this.normalizeGymId(gymId);
     if (!parsedGymId) return null;
-    return Member.findOne({ gymId: parsedGymId }).populate("dietId");
+    const filter = { gymId: parsedGymId };
+    if (opts.memberCode) {
+      filter.memberCode = opts.memberCode;
+    } else if (opts.allowedGenders && opts.allowedGenders.length > 0) {
+      filter.gender = { $in: opts.allowedGenders };
+    }
+    return Member.findOne(filter).populate("dietId");
   }
 
-  // Find by phone
-  async findByPhone(phone) {
+  // Find all members with a given gymId (for superadmin disambiguation).
+  async findAllByGymId(gymId) {
+    const parsed = this.normalizeGymId(gymId);
+    if (!parsed) return [];
+    return Member.find({ gymId: parsed }).populate("dietId").lean();
+  }
+
+  // Find by phone with optional scope
+  async findByPhone(phone, allowedGenders = null) {
     const normalizedPhone = String(phone ?? "").replace(/\D/g, "");
     if (!normalizedPhone) return null;
-    return Member.findOne({ phone: normalizedPhone }).populate("dietId");
+    const filter = { phone: normalizedPhone };
+    if (allowedGenders && allowedGenders.length > 0) {
+      filter.gender = { $in: allowedGenders };
+    }
+    return Member.findOne(filter).populate("dietId");
   }
 
   // Find all members with filters
@@ -69,20 +90,20 @@ class MemberRepository {
     }).populate("dietId");
   }
 
-  // Update by Gym ID with optimistic concurrency.
-  // expectedVersion: the version the caller loaded. The write only succeeds if
-  // the stored version still matches, and increments version atomically.
-  // Returns null when the member is missing OR the version has changed —
-  // the controller distinguishes 404 vs 409.
-  async updateByGymId(gymId, updateData, expectedVersion) {
+  // Update by Gym ID with optimistic concurrency and optional scope.
+  // opts = { allowedGenders, memberCode }
+  async updateByGymId(gymId, updateData, expectedVersion, opts = {}) {
     const parsedGymId = this.normalizeGymId(gymId);
     if (!parsedGymId) return null;
 
     const filter = { gymId: parsedGymId };
+    if (opts.memberCode) {
+      filter.memberCode = opts.memberCode;
+    } else if (opts.allowedGenders && opts.allowedGenders.length > 0) {
+      filter.gender = { $in: opts.allowedGenders };
+    }
     if (typeof expectedVersion === "number" && Number.isInteger(expectedVersion)) {
       if (expectedVersion === 0) {
-        // Legacy members created before the version field have no `version`
-        // (effective 0). Their first update sets version to 1 via $inc.
         filter.$or = [{ version: 0 }, { version: { $exists: false } }];
       } else {
         filter.version = expectedVersion;
@@ -96,20 +117,21 @@ class MemberRepository {
     ).populate("dietId");
   }
 
-  // Delete member
-  async delete(id) {
-    return Member.findByIdAndDelete(id);
-  }
-
-  // Delete by Gym ID
-  async deleteByGymId(gymId) {
+  // Delete by Gym ID with optional scope
+  async deleteByGymId(gymId, opts = {}) {
     const parsedGymId = this.normalizeGymId(gymId);
     if (!parsedGymId) return null;
-    return Member.findOneAndDelete({ gymId: parsedGymId });
+    const filter = { gymId: parsedGymId };
+    if (opts.memberCode) {
+      filter.memberCode = opts.memberCode;
+    } else if (opts.allowedGenders && opts.allowedGenders.length > 0) {
+      filter.gender = { $in: opts.allowedGenders };
+    }
+    return Member.findOneAndDelete(filter);
   }
 
   // Find expiring members (validity ending within N days)
-async findExpiringMembers(days = 7, options = {}) {
+  async findExpiringMembers(days = 7, options = {}) {
     const now = new Date();
     const futureDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
     const includeExpired = Boolean(options.includeExpired);
@@ -154,7 +176,7 @@ async findExpiringMembers(days = 7, options = {}) {
     return Member.find({ gymPlan }).populate("dietId");
   }
 
-  // Search members (by name, phone, aadhar, gymId)
+  // Search members (by name, phone, aadhar, gymId) — scope-aware via genderFilter
   async search(searchTerm, genderFilter = {}) {
     return Member.find({
       $or: [
@@ -169,9 +191,7 @@ async findExpiringMembers(days = 7, options = {}) {
 
   // Update member status
   async updateStatus(id, status) {
-    return Member.findByIdAndUpdate(id, { status }, { new: true }).populate(
-      "dietId"
-    );
+    return Member.findByIdAndUpdate(id, { status }, { new: true }).populate("dietId");
   }
 
   // Get members with pagination

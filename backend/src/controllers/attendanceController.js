@@ -121,12 +121,32 @@ export const searchPunch = async (req, res) => {
       });
     }
 
-    // 2. Find member
+    // 2. Find member (scope-aware)
     let member;
     if (type === 'phone') {
       member = await Member.findOne({ phone: value }).lean();
+    } else if (req.body.memberCode) {
+      // Superadmin disambiguation: an explicit memberCode resolves exactly.
+      member = await Member.findOne({ gymId: value, memberCode: req.body.memberCode }).lean();
     } else {
-      member = await Member.findOne({ gymId: value }).lean();
+      const allowedGenders = scopeResolver.getScopeAllowedGenders(req);
+      if (allowedGenders.length > 0 && allowedGenders.length < 3) {
+        // Trainer: resolve within authorized scope only.
+        member = await Member.findOne({ gymId: value, gender: { $in: allowedGenders } }).lean();
+      } else {
+        // Superadmin (all): resolve all matches; never silently pick one.
+        const matches = await Member.find({ gymId: value }).select('gymId memberCode fullName gender').lean();
+        if (matches.length === 1) {
+          member = matches[0];
+        } else if (matches.length > 1) {
+          return res.status(300).json({
+            success: false,
+            multiple: true,
+            message: 'Multiple members share this Gym ID. Select the member.',
+            members: matches,
+          });
+        }
+      }
     }
 
     if (!member) {
