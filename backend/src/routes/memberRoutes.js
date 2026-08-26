@@ -6,6 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import rateLimit from "express-rate-limit";
 import memberController from "../controllers/memberController.js";
+import draftController from "../controllers/draftController.js";
 import adminAuth from "../middleware/adminAuth.js";
 import requireRole from "../middleware/requireRole.js";
 import { validateSchema } from "../middleware/schemaValidator.js";
@@ -54,6 +55,12 @@ const upload = multer({
 
 // POST /api/members/register
 router.post("/register", adminAuth, upload.single("photo"), validateSchema(memberRegisterSchema), memberController.registerMember);
+
+// Registration draft (per-session) — placed before the /:gymId route so the
+// literal paths never collide with the numeric gymId lookup.
+router.get("/register/draft", adminAuth, draftController.getDraft);
+router.put("/register/draft", adminAuth, draftController.saveDraft);
+router.delete("/register/draft", adminAuth, draftController.deleteDraft);
 
 // DELETE /api/members/:gymId
 router.delete("/:gymId", adminAuth, requireRole("superadmin"), memberController.deleteMember);
