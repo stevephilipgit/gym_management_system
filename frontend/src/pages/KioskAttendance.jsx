@@ -31,6 +31,7 @@ export default function KioskAttendance() {
   const [modalError, setModalError] = useState("");
   const [modalType, setModalType] = useState("");
   const [autoCloseCountdown, setAutoCloseCountdown] = useState(5);
+  const [multipleMembers, setMultipleMembers] = useState(null);
   const autoCloseTimerRef = useRef(null);
   const countdownIntervalRef = useRef(null);
 
@@ -136,7 +137,11 @@ export default function KioskAttendance() {
       }
     } catch (err) {
       const errData = err.response?.data;
-      if (errData?.gymClosed) {
+      if (errData?.multiple) {
+        // Superadmin disambiguation: same numeric ID matches multiple members.
+        setMultipleMembers(errData.members || []);
+        setInput("");
+      } else if (errData?.gymClosed) {
         setModalType("closed");
         setModalData(errData);
         setModalError("");
@@ -145,6 +150,42 @@ export default function KioskAttendance() {
         setModalData(null);
         setModalError(errData?.message || "Something went wrong");
       }
+      if (!errData?.multiple) {
+        setShowModal(true);
+        startAutoClose();
+      }
+    } finally {
+      setLoading(false);
+      setCooldownUntil(Date.now() + COOLDOWN_MS);
+      inputRef.current?.focus();
+    }
+  };
+
+  const punchSelectedMember = async (memberCode) => {
+    setLoading(true);
+    try {
+      const response = await apiClient.post(
+        "/attendance/search-punch",
+        { input: sanitizeInput(input), memberCode },
+        { headers: { "x-attendance-source": "kiosk" } }
+      );
+      const data = response.data;
+      setMultipleMembers(null);
+      if (data.success) {
+        if (data.isLate) setModalType("late");
+        else if (data.isCheckOut) setModalType("checkout");
+        else setModalType("checkin");
+        setModalData(data);
+        setModalError("");
+        setShowModal(true);
+        startAutoClose();
+        setInput("");
+      }
+    } catch (err) {
+      setMultipleMembers(null);
+      setModalType("error");
+      setModalData(null);
+      setModalError(err.response?.data?.message || "Something went wrong");
       setShowModal(true);
       startAutoClose();
     } finally {
@@ -192,6 +233,36 @@ export default function KioskAttendance() {
         autoCloseCountdown={autoCloseCountdown}
         onClose={closeModal}
       />
+
+      {multipleMembers && multipleMembers.length > 0 && (
+        <div className="modal-shell" onClick={() => { setMultipleMembers(null); inputRef.current?.focus(); }}>
+          <div className="modal-card" style={{ maxWidth: '400px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="panel-title">Multiple members found</h3>
+              <p className="muted-copy">This Gym ID matches more than one member. Select the correct one.</p>
+            </div>
+            <div className="modal-content" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {multipleMembers.map((m) => (
+                <button
+                  key={m.memberCode || m._id}
+                  onClick={() => punchSelectedMember(m.memberCode)}
+                  disabled={loading}
+                  style={{ textAlign: 'left', padding: '12px', cursor: 'pointer', background: 'var(--surface-muted)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '6px' }}
+                >
+                  <strong>{m.fullName}</strong> — {m.gender} ({m.gymId})
+                  {m.memberCode && <span className="text-xs text-[var(--text-secondary)] ml-2">#{m.memberCode}</span>}
+                </button>
+              ))}
+              <button
+                onClick={() => { setMultipleMembers(null); }}
+                className="btn-secondary mt-2"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

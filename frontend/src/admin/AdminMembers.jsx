@@ -23,6 +23,7 @@ export default function AdminMembers() {
   const [loadError, setLoadError] = useState(null);
   const [showDeletePopup, setShowDeletePopup] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
+  const [deleteMemberCode, setDeleteMemberCode] = useState(null);
   const [showRenewPopup, setShowRenewPopup] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
   const [showEditPopup, setShowEditPopup] = useState(false);
@@ -122,11 +123,12 @@ export default function AdminMembers() {
     setEditSubmitError(null);
   };
 
-  const openEditModal = async (gymId) => {
+  const openEditModal = async (gymId, memberCode) => {
     setEditSubmitError(null);
     setEditLoadingGymId(gymId);
     try {
-      const res = await apiClient.get(`/members/${gymId}`);
+      const codeParam = memberCode ? `?memberCode=${encodeURIComponent(memberCode)}` : "";
+      const res = await apiClient.get(`/members/${gymId}${codeParam}`);
       const member = res.data?.data || res.data;
       if (!member || !member._id) {
         throw new Error("Member data not found");
@@ -220,14 +222,15 @@ export default function AdminMembers() {
     setRenewMode(enabled);
   };
 
-  const confirmDelete = (gymId) => {
+  const confirmDelete = (gymId, memberCode) => {
     setDeleteId(gymId);
+    setDeleteMemberCode(memberCode || null);
     setShowDeletePopup(true);
   };
 
   const deleteMember = async () => {
     try {
-      await apiClient.delete(`/members/${deleteId}`);
+      await apiClient.delete(`/members/${deleteId}`, { data: { memberCode: deleteMemberCode } });
       setMembers((prev) => prev.filter((member) => member.gymId !== deleteId));
       setShowDeletePopup(false);
       alert("Member deleted successfully");
@@ -237,11 +240,12 @@ export default function AdminMembers() {
     }
   };
 
-  const openRenew = async (gymId) => {
+  const openRenew = async (gymId, memberCode) => {
     setRenewError(null);
     setRenewLoadingGymId(gymId);
     try {
-      const res = await apiClient.get(`/members/${gymId}`);
+      const codeParam = memberCode ? `?memberCode=${encodeURIComponent(memberCode)}` : "";
+      const res = await apiClient.get(`/members/${gymId}${codeParam}`);
       const member = res.data?.data || res.data;
       
       if (!member || !member._id) {
@@ -390,6 +394,8 @@ export default function AdminMembers() {
       price: renewData.price,
       // Optimistic concurrency: version this renewal is based on.
       version: selectedMember.version,
+      // Disambiguator when duplicate gymIds exist (superadmin).
+      memberCode: selectedMember.memberCode || undefined,
     };
 
     if (renewData.includeDiet && renewData.dietId) {
@@ -562,22 +568,22 @@ export default function AdminMembers() {
                 </td>
                 <td style={{ textAlign: 'center' }}>
                   <div className="flex justify-center items-center gap-2">
-                    <IconButton
+<IconButton
                       type="refresh"
-                      onClick={() => openRenew(member.gymId)}
+                      onClick={() => openRenew(member.gymId, member.memberCode)}
                       title="Renew membership"
                       disabled={renewLoadingGymId === member.gymId}
                       className={renewLoadingGymId === member.gymId ? "cursor-wait" : ""}
                     />
-                                    <IconButton
+                    <IconButton
                       type="edit"
-                      onClick={() => openEditModal(member.gymId)}
+                      onClick={() => openEditModal(member.gymId, member.memberCode)}
                       title="Edit member details"
                       disabled={editLoadingGymId === member.gymId}
                     />
                     <IconButton
                       type="delete"
-                      onClick={() => confirmDelete(member.gymId)}
+                      onClick={() => confirmDelete(member.gymId, member.memberCode)}
                       title="Delete member"
                     />
                   </div>
