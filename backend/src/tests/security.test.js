@@ -14,6 +14,7 @@ import {
 } from '../schemas/authSchema.js';
 import { memberUpdateSchema, memberRenewSchema } from '../schemas/memberSchema.js';
 import { sessionCookieName, accessCookieForSession, refreshCookieForSession } from '../utils/sessionCookies.js';
+import { clampPagination, MAX_PAGE_SIZE } from '../repositories/memberRepository.js';
 
 const mockReq = (admin = null) => ({ admin });
 const mockRes = () => {
@@ -351,6 +352,24 @@ describe('member update/renew schemas — optimistic concurrency version', () =>
       version: 0,
     });
     expect(error).to.not.exist;
+  });
+});
+
+describe('member pagination clamp (page size safety)', () => {
+  it('clamps pageSize above MAX_PAGE_SIZE', () => {
+    expect(clampPagination(1, 100000).pageSize).to.equal(MAX_PAGE_SIZE);
+    expect(clampPagination(1, 5000).pageSize).to.equal(MAX_PAGE_SIZE);
+  });
+
+  it('passes through valid page and pageSize', () => {
+    expect(clampPagination(2, 10)).to.deep.equal({ page: 2, pageSize: 10 });
+    expect(clampPagination(1, 25)).to.deep.equal({ page: 1, pageSize: 25 });
+  });
+
+  it('defaults invalid/negative values safely', () => {
+    expect(clampPagination(0, -5)).to.deep.equal({ page: 1, pageSize: 10 });
+    expect(clampPagination('abc', 'xyz')).to.deep.equal({ page: 1, pageSize: 10 });
+    expect(clampPagination(undefined, undefined)).to.deep.equal({ page: 1, pageSize: 10 });
   });
 });
 

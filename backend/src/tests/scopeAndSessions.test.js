@@ -26,6 +26,7 @@ import AdminSession from '../models/AdminSession.js';
 import Member from '../models/Member.js';
 import Attendance from '../models/Attendance.js';
 import adminAuth from '../middleware/adminAuth.js';
+import memberController from '../controllers/memberController.js';
 import config from '../config/index.js';
 import redisClient from '../config/redis.js';
 
@@ -343,5 +344,152 @@ describe('adminAuth — STRICT per-session contract (integration)', function () 
     // restore for subsequent tests
     await AdminSession.updateOne({ sessionId: session.sessionId }, { $set: { adminId: admin._id } });
     await Admin.deleteOne({ _id: otherAdmin._id });
+  });
+});
+
+describe('member filtering + pagination + trainer scope (integration)', function () {
+  this.timeout(30000);
+
+  let connected = false;
+  const testGymIds = [];
+
+  const mockRes = () => {
+    const res = { statusCode: 200, body: null };
+    res.status = (code) => { res.statusCode = code; return res; };
+    res.json = (body) => { res.body = body; return res; };
+    return res;
+  };
+
+  const makeMember = async (gender, prefix) => {
+    const gymId = 40000 + Math.floor(Math.random() * 5000) + testGymIds.length;
+    testGymIds.push(gymId);
+    return Member.create({
+      gymId,
+      fullName: `Filter Test ${gender} ${prefix}`,
+      fatherName: 'Father',
+      dob: new Date(1992, 3, 10),
+      bloodGroup: 'O+',
+      gender,
+      phone: `9${String(100000000 + Math.floor(Math.random() * 899999999))}`,
+      aadhar: String(900000000000 + Math.floor(Math.random() * 899999999999)),
+      occupation: 'Test',
+      address: 'Test',
+      gymPlan: '1 Month',
+      trainingType: 'Weight Loss',
+      paymentStatus: 'paid',
+      validityEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      status: 'active',
+    });
+  };
+
+  before(async function () {
+    try {
+      await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
+      connected = true;
+      // Baseline: 3 Male, 2 Female, 1 Transgender
+      await Member.deleteMany({ gymId: { $gte: 40000, $lte: 46000 } });
+      await makeMember('Male', 'A');
+      await makeMember('Male', 'B');
+      await makeMember('Male', 'C');
+      await makeMember('Female', 'D');
+      await makeMember('Female', 'E');
+      await makeMember('Transgender', 'F');
+    } catch (err) {
+      await redisClient.quit().catch(() => {});
+      this.skip();
+    }
+  });
+
+  after(async () => {
+    if (connected) {
+      await Member.deleteMany({ gymId: { $gte: 40000, $lte: 46000 } });
+      await mongoose.disconnect();
+    }
+    await redisClient.quit().catch(() => {});
+  });
+
+  const allMembers = async (scope, query = {}) => {
+    const req = { admin: { scope, role: scope === 'all' ? 'superadmin' : 'trainer' }, query: { pageSize: '100', ...query } };
+    const res = mockRes();
+    await memberController.getAllMembers(req, res);
+    return res.body;
+  };
+
+  it('1. superadmin ?gender=Male returns only Male', async () => {
+    const body = await allMembers('all', { gender: 'Male' });
+    expect(body.data.length).to.equal(3);
+    body.data.forEach((m) => expect(m.gender).to.equal('Male'));
+  });
+
+  it('2. superadmin ?gender=Female returns only Female', async () => {
+    const body = await allMembers('all', { gender: 'Female' });
+    expect(body.data.length).to.equal(2);
+    body.data.forEach((m) => expect(m.gender).to.equal('Female'));
+  });
+
+  it('3. superadmin ?gender=Transgender returns only Transgender', async () => {
+    const body = await allMembers('all', { gender: 'Transgender' });
+    expect(body.data.length).to.equal(1);
+    body.data.forEach((m) => expect(m.gender).to.equal('Transgender'));
+  });
+
+  it('4. superadmin without gender returns all genders', async () => {
+    const body = await allMembers('all', {});
+    expect(body.data.length).to.equal(6);
+  });
+
+  it('5. male trainer ?gender=Female → Male scope still enforced', async () => {
+    const body = await allMembers('male', { gender: 'Female' });
+    expect(body.data.length).to.equal(3);
+    body.data.forEach((m) => expect(m.gender).to.equal('Male'));
+  });
+
+  it('6. female trainer ?gender=Male → Female + Transgender scope still enforced', async () => {
+    const body = await allMembers('female_plus_transgender', { gender: 'Male' });
+    expect(body.data.length).to.equal(3);
+    body.data.forEach((m) => expect(['Female', 'Transgender']).to.include(m.gender));
+  });
+
+  it('7. pagination page1/page2 with pageSize 10 returns correct records + metadata', async () => {
+    for (let i = 0; i < 12; i++) await makeMember('Male', `P${i}`);
+    const page1 = await allMembers('male', { page: '1', pageSize: '10' });
+    const page2 = await allMembers('male', { page: '2', pageSize: '10' });
+    expect(page1.data.length).to.equal(10);
+    expect(page2.data.length).to.be.greaterThan(0);
+    expect(page1.pagination.page).to.equal(1);
+    expect(page1.pagination.pageSize).to.equal(10);
+    expect(page1.pagination.pages).to.equal(2);
+    // No overlap between pages
+    const ids1 = new Set(page1.data.map((m) => String(m._id)));
+    page2.data.forEach((m) => expect(ids1.has(String(m._id))).to.be.false);
+  });
+
+  it('8. pageSize=100000 is safely clamped to the maximum', async () => {
+    const body = await allMembers('all', { pageSize: '100000' });
+    expect(body.pagination.pageSize).to.be.at.most(100);
+  });
+
+  it('9. trainer search cannot expose another gender', async () => {
+    const req = {
+      admin: { scope: 'female_plus_transgender', role: 'trainer' },
+      query: { search: 'Filter Test Male' },
+    };
+    const res = mockRes();
+    await memberController.getAllMembers(req, res);
+    expect(res.body.data.length).to.equal(0);
+  });
+
+  it('10. single-member lookup: trainer cannot retrieve out-of-scope member', async () => {
+    const female = await Member.findOne({ gender: 'Female' }).select('gymId');
+    const req = { admin: { scope: 'male', role: 'trainer' }, params: { gymId: String(female.gymId) } };
+    const res = mockRes();
+    let thrown = null;
+    try {
+      await memberController.getMemberByGymId(req, res);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).to.not.be.null;
+    expect(thrown.statusCode).to.equal(403);
   });
 });
