@@ -20,6 +20,7 @@ import '../models/Admin.js';
 import '../models/AdminSession.js';
 import '../models/Member.js';
 import '../models/Attendance.js';
+import '../models/Diet.js';
 import scopeResolver from '../core/scopeResolver.js';
 import Admin from '../models/Admin.js';
 import AdminSession from '../models/AdminSession.js';
@@ -27,6 +28,8 @@ import Member from '../models/Member.js';
 import Attendance from '../models/Attendance.js';
 import adminAuth from '../middleware/adminAuth.js';
 import memberController from '../controllers/memberController.js';
+import memberRepository from '../repositories/memberRepository.js';
+import Counter from '../services/atomicCounter.js';
 import config from '../config/index.js';
 import redisClient from '../config/redis.js';
 
@@ -41,10 +44,10 @@ describe('Gender scope + per-device sessions (integration)', function () {
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
-      // Keep the DB clean for repeatable runs.
+      // Keep the DB clean for repeatable runs (isolated test database).
       await AdminSession.deleteMany({});
-      await Admin.deleteMany({ username: { $regex: /^scope_test_/ } });
-      await Member.deleteMany({ gymId: { $in: [10101, 10102, 10103] } });
+      await Admin.deleteMany({});
+      await Member.deleteMany({});
       await Attendance.deleteMany({});
       // Deterministic signing secret for middleware contract tests.
       config.jwt.accessSecret = 'test-access-secret';
@@ -139,8 +142,8 @@ describe('Gender scope + per-device sessions (integration)', function () {
       dob: new Date(1990, 1, 1),
       bloodGroup: 'O+',
       gender: 'Male',
-      phone: `91${Math.floor(100000000 + Math.random() * 899999999)}`,
-      aadhar: `10${Math.floor(100000000000 + Math.random() * 899999999999)}`,
+      phone: `9${String(100000000 + Math.floor(Math.random() * 899999999))}`,
+      aadhar: String(100000000000 + Math.floor(Math.random() * 899999999999)),
       occupation: 'Engineer',
       address: 'Test',
       gymPlan: '1 Month',
@@ -156,8 +159,8 @@ describe('Gender scope + per-device sessions (integration)', function () {
       dob: new Date(1990, 1, 1),
       bloodGroup: 'O+',
       gender: 'Female',
-      phone: `92${Math.floor(100000000 + Math.random() * 899999999)}`,
-      aadhar: `11${Math.floor(100000000000 + Math.random() * 899999999999)}`,
+      phone: `9${String(100000000 + Math.floor(Math.random() * 899999999))}`,
+      aadhar: String(100000000000 + Math.floor(Math.random() * 899999999999)),
       occupation: 'Engineer',
       address: 'Test',
       gymPlan: '1 Month',
@@ -173,8 +176,9 @@ describe('Gender scope + per-device sessions (integration)', function () {
     ]);
 
     const maleScopeIds = await scopeResolver.getScopedMemberIds({ admin: { scope: 'male' } }, Member);
-    expect(maleScopeIds).to.include(maleMember._id);
-    expect(maleScopeIds).to.not.include(femaleMember._id);
+    const maleScopeHex = maleScopeIds.map((id) => id.toString());
+    expect(maleScopeHex).to.include(maleMember._id.toString());
+    expect(maleScopeHex).to.not.include(femaleMember._id.toString());
 
     const maleStats = await attendanceService.getTodayStats(maleScopeIds);
     expect(maleStats.totalPunches).to.equal(1);
@@ -371,7 +375,7 @@ describe('member filtering + pagination + trainer scope (integration)', function
       bloodGroup: 'O+',
       gender,
       phone: `9${String(100000000 + Math.floor(Math.random() * 899999999))}`,
-      aadhar: String(900000000000 + Math.floor(Math.random() * 899999999999)),
+      aadhar: String(100000000000 + Math.floor(Math.random() * 899999999999)),
       occupation: 'Test',
       address: 'Test',
       gymPlan: '1 Month',
@@ -386,8 +390,11 @@ describe('member filtering + pagination + trainer scope (integration)', function
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
+      // Deterministic counts: getAllMembers is DB-wide, so clear ALL members
+      // (and attendance) in the isolated test DB before seeding.
+      await Member.deleteMany({});
+      await Attendance.deleteMany({});
       // Baseline: 3 Male, 2 Female, 1 Transgender
-      await Member.deleteMany({ gymId: { $gte: 40000, $lte: 46000 } });
       await makeMember('Male', 'A');
       await makeMember('Male', 'B');
       await makeMember('Male', 'C');
@@ -481,15 +488,148 @@ describe('member filtering + pagination + trainer scope (integration)', function
 
   it('10. single-member lookup: trainer cannot retrieve out-of-scope member', async () => {
     const female = await Member.findOne({ gender: 'Female' }).select('gymId');
-    const req = { admin: { scope: 'male', role: 'trainer' }, params: { gymId: String(female.gymId) } };
+    const req = { admin: { scope: 'male', role: 'trainer' }, params: { gymId: String(female.gymId) }, query: {} };
     const res = mockRes();
-    let thrown = null;
+    let nextErr = null;
+    const next = (err) => { nextErr = err; };
+    await memberController.getMemberByGymId(req, res, next);
+    // Scope-aware lookup never leaks existence — resolves to NotFound (404).
+    expect(nextErr).to.not.be.null;
+    expect(nextErr.statusCode).to.equal(404);
+  });
+});
+
+describe('member identity: duplicate gymId + scope-aware lookup + atomic counters (integration)', function () {
+  this.timeout(30000);
+
+  let connected = false;
+
+  const mockRes = () => {
+    const res = { statusCode: 200, body: null };
+    res.status = (code) => { res.statusCode = code; return res; };
+    res.json = (body) => { res.body = body; return res; };
+    return res;
+  };
+
+  const makeMember = async (gymId, gender, memberCode) =>
+    Member.create({
+      gymId,
+      fullName: `Identity ${gender} ${gymId}`,
+      fatherName: 'Father',
+      dob: new Date(1990, 1, 1),
+      bloodGroup: 'O+',
+      gender,
+      phone: `9${String(600000000 + Math.floor(Math.random() * 399999999))}`,
+      aadhar: String(100000000000 + Math.floor(Math.random() * 899999999999)),
+      occupation: 'Test',
+      address: 'Test',
+      gymPlan: '1 Month',
+      trainingType: 'Weight Loss',
+      paymentStatus: 'paid',
+      validityEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      status: 'active',
+      memberCode,
+    });
+
+  before(async function () {
     try {
-      await memberController.getMemberByGymId(req, res);
+      await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
+      connected = true;
+      await Member.deleteMany({ gymId: { $gte: 55000, $lte: 55999 } });
+      await Counter.deleteMany({ key: { $in: ['gym_id_TEST'] } });
+      // Pre-create members needed by the tests
+      await makeMember(55001, 'Male', 'I0001');
+      await makeMember(55001, 'Female', 'I0002');
+      await makeMember(55002, 'Male', 'I0003');
+      await makeMember(55003, 'Male', 'I0004');
+      await makeMember(55010, 'Male', 'I0010');
+      await makeMember(55010, 'Female', 'I0011');
     } catch (err) {
-      thrown = err;
+      console.log('IDENTITY BEFORE FAILED:', err.message);
+      await redisClient.quit().catch(() => {});
+      this.skip();
     }
-    expect(thrown).to.not.be.null;
-    expect(thrown.statusCode).to.equal(403);
+  });
+
+  after(async () => {
+    if (connected) {
+      await Member.deleteMany({ gymId: { $gte: 55000, $lte: 55999 } });
+      await Counter.deleteMany({ key: { $in: ['gym_id_TEST'] } });
+      await mongoose.disconnect();
+    }
+    await redisClient.quit().catch(() => {});
+  });
+
+  it('A. duplicate numeric gymId across genders is allowed (compound unique)', async () => {
+    const male = await Member.findOne({ gymId: 55001, gender: 'Male' }).lean();
+    const female = await Member.findOne({ gymId: 55001, gender: 'Female' }).lean();
+    expect(male).to.not.be.null;
+    expect(female).to.not.be.null;
+    expect(male.gymId).to.equal(female.gymId);
+  });
+
+  it('B. duplicate (gymId, gender) pair is rejected by the compound unique', async () => {
+    let threw = false;
+    try {
+      await makeMember(55002, 'Male', 'I0008'); // same gymId AND gender as I0003
+    } catch (err) {
+      threw = err.code === 11000;
+    }
+    expect(threw).to.be.true;
+  });
+
+  it('C. duplicate memberCode is rejected', async () => {
+    let threw = false;
+    try {
+      await makeMember(55020, 'Male', 'I0004'); // memberCode I0004 already exists
+    } catch (err) {
+      threw = err.code === 11000;
+    }
+    expect(threw).to.be.true;
+  });
+
+  it('D. trainer-scoped lookup resolves the correct duplicate', async () => {
+    const male = await memberRepository.findByGymId(55010, { allowedGenders: ['Male'] });
+    const female = await memberRepository.findByGymId(55010, { allowedGenders: ['Female', 'Transgender'] });
+    expect(male.gender).to.equal('Male');
+    expect(female.gender).to.equal('Female');
+  });
+
+  it('E. superadmin getMemberByGymId returns a disambiguation list for duplicates', async () => {
+    const matches = await memberRepository.findAllByGymId(55010);
+    if (matches.length !== 2) {
+      throw new Error(`expected 2 matches for 55010, got ${matches.length}: ${JSON.stringify(matches.map((m) => ({ g: m.gender, c: m.memberCode })))}`);
+    }
+    const req = { admin: { scope: 'all', role: 'superadmin' }, params: { gymId: '55010' }, query: {} };
+    const res = mockRes();
+    let nextErr = null;
+    const next = (err) => { nextErr = err; };
+    await memberController.getMemberByGymId(req, res, next);
+    if (nextErr) throw nextErr;
+    expect(res.statusCode).to.equal(300);
+    expect(res.body.multiple).to.be.true;
+    expect(res.body.members.length).to.equal(2);
+  });
+
+  it('F. superadmin disambiguates with memberCode', async () => {
+    const req = { admin: { scope: 'all', role: 'superadmin' }, params: { gymId: '55010' }, query: { memberCode: 'I0011' } };
+    const res = mockRes();
+    let nextErr = null;
+    const next = (err) => { nextErr = err; };
+    await memberController.getMemberByGymId(req, res, next);
+    if (nextErr) throw nextErr;
+    expect(res.statusCode).to.equal(200);
+    expect(res.body.data.memberCode).to.equal('I0011');
+    expect(res.body.data.gender).to.equal('Female');
+  });
+
+  it('G. atomic per-gender gymId counter produces distinct values under concurrency', async () => {
+    const results = await Promise.all([
+      Counter.increment('gym_id_TEST'),
+      Counter.increment('gym_id_TEST'),
+      Counter.increment('gym_id_TEST'),
+    ]);
+    const unique = new Set(results);
+    expect(unique.size).to.equal(3);
   });
 });
