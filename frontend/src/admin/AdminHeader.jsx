@@ -86,7 +86,6 @@ export default function AdminHeader({ admin, toggleSidebar }) {
             <div className="admin-avatar-info">
               <span className="admin-avatar-name">{displayName}</span>
               <span className="admin-avatar-role">{roleLabel}</span>
-              <span className="admin-avatar-scope">{scopeLabel}</span>
             </div>
           </div>
         </div>

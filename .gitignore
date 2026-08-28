@@ -138,3 +138,6 @@ OPTIMIZATION_*.md
 INTERNAL_*.md
 SETUP_*.md
 DEPLOYMENT_*.md
+
+# Kilo tooling state (agent worktrees, plans, internal deps)
+.kilo/

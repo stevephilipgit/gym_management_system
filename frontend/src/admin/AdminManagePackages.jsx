@@ -133,8 +133,7 @@ export default function AdminManagePackages() {
   return (
     <div className="saas-container">
       <div className="saas-page-header">
-        <h1>Packages</h1>
-        <p>Maintain plan duration and training-specific pricing from one screen.</p>
+        <h3>Maintain plan duration and training-specific pricing from one screen.</h3>
       </div>
 
       {notice && (
