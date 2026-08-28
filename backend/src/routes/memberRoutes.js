@@ -71,8 +71,8 @@ router.get("/", adminAuth, memberController.getAllMembers);
 // PUT /api/members/renew/:gymId
 router.put("/renew/:gymId", adminAuth, validateSchema(memberRenewSchema), memberController.renewMember);
 
-// GET /api/members/:gymId (get single member)
-router.get("/:gymId", sensitiveLimiter, adminAuth, memberController.getMemberById);
+// GET /api/members/:gymId (get single member, scope-aware with memberCode disambiguation)
+router.get("/:gymId", sensitiveLimiter, adminAuth, memberController.getMemberByGymId);
 
 // PUT /api/members/:gymId (update member)
 router.put("/:gymId", adminAuth, upload.single("photo"), validateSchema(memberUpdateSchema), memberController.updateMember);
