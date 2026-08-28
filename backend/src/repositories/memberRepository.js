@@ -62,9 +62,14 @@ class MemberRepository {
   // Find all members with filters
   async findAll(filters = {}, options = {}) {
     const { skip = 0, limit = 100, sort = { createdAt: -1 } } = options;
+    // Stable sort: when the sort field has duplicate values (e.g. many members
+    // sharing the same validityEnd) MongoDB's order is non-deterministic and,
+    // combined with skip/limit, can return the same document multiple times.
+    // Appending _id (globally unique) as a tiebreaker makes the order stable.
+    const stableSort = sort._id ? sort : { ...sort, _id: 1 };
     const query = Member.find(filters);
 
-    if (sort) query.sort(sort);
+    if (sort) query.sort(stableSort);
     if (skip) query.skip(skip);
     if (limit) query.limit(limit);
 
@@ -166,19 +171,48 @@ class MemberRepository {
     }).populate("dietId");
   }
 
+  // Paginated + sorted search (same matching rules as search()).
+  async searchPaginated(searchTerm, page = 1, pageSize = 10, filters = {}, sort = { createdAt: -1 }) {
+    const { page: safePage, pageSize: safePageSize } = clampPagination(page, pageSize);
+    const skip = (safePage - 1) * safePageSize;
+    const query = {
+      $or: [
+        { fullName: { $regex: searchTerm, $options: "i" } },
+        { phone: { $regex: searchTerm, $options: "i" } },
+        { aadhar: { $regex: searchTerm, $options: "i" } },
+        { gymId: Number(searchTerm) || null },
+      ],
+      ...filters,
+    };
+    const stableSort = sort._id ? sort : { ...sort, _id: 1 };
+    const [members, total] = await Promise.all([
+      Member.find(query).sort(stableSort).skip(skip).limit(safePageSize).populate("dietId"),
+      Member.countDocuments(query),
+    ]);
+    return {
+      data: members,
+      pagination: {
+        page: safePage,
+        pageSize: safePageSize,
+        total,
+        pages: Math.ceil(total / safePageSize),
+      },
+    };
+  }
+
   // Update member status
   async updateStatus(id, status) {
     return Member.findByIdAndUpdate(id, { status }, { new: true }).populate("dietId");
   }
 
   // Get members with pagination
-  async getPaginated(page = 1, pageSize = 10, filters = {}) {
+  async getPaginated(page = 1, pageSize = 10, filters = {}, sort = { createdAt: -1 }) {
     const { page: safePage, pageSize: safePageSize } = clampPagination(page, pageSize);
     const skip = (safePage - 1) * safePageSize;
     const members = await this.findAll(filters, {
       skip,
       limit: safePageSize,
-      sort: { createdAt: -1 },
+      sort,
     });
     const total = await this.countAll(filters);
 

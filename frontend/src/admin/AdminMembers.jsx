@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { DietSelector } from "./components/DietSelector";
 import apiClient from "../utils/apiClient.js";
 import { downloadMembershipInvoice } from "./utils/invoicePdf.js";
@@ -12,10 +13,15 @@ const MS_DAY = 1000 * 60 * 60 * 24;
 
 export default function AdminMembers() {
   const admin = useAdmin();
+  const navigate = useNavigate();
   const [members, setMembers] = useState([]);
   const [packages, setPackages] = useState([]);
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterGender, setFilterGender] = useState("all");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [sortBy, setSortBy] = useState("daysLeft");
+  const [sortOrder, setSortOrder] = useState("asc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
@@ -32,7 +38,6 @@ export default function AdminMembers() {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editSubmitError, setEditSubmitError] = useState(null);
   const [renewMode, setRenewMode] = useState(false);
-  const [sortAsc, setSortAsc] = useState(true);
   const [renewSubmitting, setRenewSubmitting] = useState(false);
   const [renewError, setRenewError] = useState(null);
   const [renewLoadingGymId, setRenewLoadingGymId] = useState(null);
@@ -53,19 +58,29 @@ export default function AdminMembers() {
     dietDescription: "",
   });
   const lastFetchKeyRef = useRef("");
+  const searchTimerRef = useRef(null);
+  const abortRef = useRef(null);
 
-  // Server-driven fetch: filters + pagination are resolved by the backend.
+  // Server-driven fetch: filters, sort + pagination are resolved by the backend.
   const loadMembers = useCallback(async () => {
+    // Abort any in-flight request so a stale response can never overwrite a
+    // newer one (e.g. rapid filter/sort/page changes).
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setLoadError(null);
     try {
-      const params = { page, pageSize };
+      const params = { page, pageSize, sortBy, sortOrder };
       if (filterGender !== "all") params.gender = filterGender;
       if (filterStatus !== "all") params.paymentStatus = filterStatus;
-      const res = await apiClient.get("/members", { params });
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+      const res = await apiClient.get("/members", { params, signal: controller.signal });
       setMembers(res.data?.data || []);
       setTotal(res.data?.pagination?.total ?? 0);
     } catch (err) {
+      if (err.code === "ERR_CANCELED") return;
       console.log("Error loading members:", err);
       setLoadError("Failed to load members. Please try again.");
       setMembers([]);
@@ -73,20 +88,28 @@ export default function AdminMembers() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, filterGender, filterStatus]);
+  }, [page, pageSize, filterGender, filterStatus, debouncedSearch, sortBy, sortOrder]);
 
   useEffect(() => {
     loadPackages();
   }, []);
 
-  // Fetch members whenever page/filter changes. lastFetchKeyRef dedupes the
+  // Fetch members whenever page/filter/sort changes. lastFetchKeyRef dedupes the
   // React StrictMode double-mount so we never fire duplicate requests.
   useEffect(() => {
-    const key = `${page}|${pageSize}|${filterGender}|${filterStatus}`;
+    const key = `${page}|${pageSize}|${filterGender}|${filterStatus}|${debouncedSearch}|${sortBy}|${sortOrder}`;
     if (lastFetchKeyRef.current === key) return;
     lastFetchKeyRef.current = key;
     loadMembers();
-  }, [page, pageSize, filterGender, filterStatus, loadMembers]);
+  }, [page, pageSize, filterGender, filterStatus, debouncedSearch, sortBy, sortOrder, loadMembers]);
+
+  // Clean up the debounce timer and abort any in-flight request on unmount.
+  useEffect(() => {
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, []);
 
   const loadPackages = async () => {
     try {
@@ -109,6 +132,33 @@ export default function AdminMembers() {
 
   const changePageSize = (value) => {
     setPageSize(Number(value));
+    setPage(1);
+  };
+
+  // Debounced search — no request per keystroke. Resets to page 1.
+  const handleSearchChange = (value) => {
+    setSearch(value);
+    clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(value);
+      setPage(1);
+    }, 300);
+  };
+
+  const changeSort = (value) => {
+    const [sb, so] = value.split(":");
+    setSortBy(sb);
+    setSortOrder(so);
+    setPage(1);
+  };
+
+  const clearFilters = () => {
+    setFilterStatus("all");
+    setFilterGender("all");
+    setSearch("");
+    setDebouncedSearch("");
+    setSortBy("daysLeft");
+    setSortOrder("asc");
     setPage(1);
   };
 
@@ -231,8 +281,8 @@ export default function AdminMembers() {
   const deleteMember = async () => {
     try {
       await apiClient.delete(`/members/${deleteId}`, { data: { memberCode: deleteMemberCode } });
-      setMembers((prev) => prev.filter((member) => member.gymId !== deleteId));
       setShowDeletePopup(false);
+      await loadMembers();
       alert("Member deleted successfully");
     } catch (err) {
       alert("Delete failed");
@@ -406,7 +456,8 @@ export default function AdminMembers() {
     try {
       setRenewSubmitting(true);
       await apiClient.put(`/members/renew/${selectedMember.gymId}`, body);
-      const refreshed = await apiClient.get(`/members/${selectedMember.gymId}`);
+      const codeParam = selectedMember.memberCode ? `?memberCode=${encodeURIComponent(selectedMember.memberCode)}` : "";
+      const refreshed = await apiClient.get(`/members/${selectedMember.gymId}${codeParam}`);
       const renewedMember = refreshed.data?.data || refreshed.data;
 
       downloadMembershipInvoice({
@@ -481,53 +532,80 @@ export default function AdminMembers() {
     }
   };
 
-  const displayedMembers = [...members]
-    .map((member) => ({
-      ...member,
-      daysLeft: getDaysRemaining(member.validTill || member.validityEnd),
-    }))
-    .sort((a, b) => (sortAsc ? a.daysLeft - b.daysLeft : b.daysLeft - a.daysLeft));
+  const rows = members.map((member) => ({
+    ...member,
+    daysLeft: getDaysRemaining(member.validTill || member.validityEnd),
+  }));
 
   return (
     <div className="saas-container">
-      <div className="saas-header" style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+      <div className="members-page-header">
         <div>
-          <h1>Member management</h1>
-          <p>Review members, sort by urgency, renew plans, and remove records.</p>
+          <h1>All Members · {total} member{total === 1 ? "" : "s"}</h1>
+          <p>Manage registered members and memberships.</p>
         </div>
+        <button
+          className="btn-primary"
+          onClick={() => navigate("/admin/register")}
+          style={{ minHeight: 0, padding: "10px 16px", fontSize: "14px", whiteSpace: "nowrap" }}
+        >
+          + Register Member
+        </button>
       </div>
-      
+
       {renewError && (
         <div className="mt-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700 mb-6">
           {renewError}
         </div>
       )}
 
-      <div className="saas-filter-bar">
-        <select className="saas-input" style={{ flex: '1 1 200px' }} value={filterStatus} onChange={(e) => changeStatus(e.target.value)}>
-          <option value="all">All Members</option>
-          <option value="paid">Paid</option>
-          <option value="not_paid">Not Paid</option>
-        </select>
-        {admin?.scope === "all" && (
-          <select className="saas-input" style={{ flex: '1 1 200px' }} value={filterGender} onChange={(e) => changeGender(e.target.value)}>
-            <option value="all">All Genders</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-            <option value="Transgender">Transgender</option>
+      <div className="members-toolbar">
+        <div className="members-toolbar-filters">
+          <select className="saas-input" value={filterStatus} onChange={(e) => changeStatus(e.target.value)} aria-label="Payment status">
+            <option value="all">All Members</option>
+            <option value="paid">Paid</option>
+            <option value="not_paid">Not Paid</option>
           </select>
-        )}
-        <button onClick={() => setSortAsc((prev) => !prev)} className="saas-input" style={{ cursor: "pointer", background: "var(--surface-muted)", border: "1px solid var(--border-color)", color: "var(--text-primary)" }}>
-          Sort Days Left {sortAsc ? "↑ Ascending" : "↓ Descending"}
-        </button>
+          {admin?.scope === "all" && (
+            <select className="saas-input" value={filterGender} onChange={(e) => changeGender(e.target.value)} aria-label="Gender">
+              <option value="all">All Genders</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Transgender">Transgender</option>
+            </select>
+          )}
+          <div className="members-search">
+            <svg className="members-search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Search name, phone, gym ID…"
+              aria-label="Search members"
+            />
+          </div>
+        </div>
+        <div className="members-toolbar-sort">
+          <span className="members-sort-label">Sort:</span>
+          <select className="saas-input" value={`${sortBy}:${sortOrder}`} onChange={(e) => changeSort(e.target.value)} aria-label="Sort members">
+            <option value="daysLeft:asc">Days Left ↑</option>
+            <option value="daysLeft:desc">Days Left ↓</option>
+            <option value="validityEnd:asc">Valid Till ↑</option>
+            <option value="validityEnd:desc">Valid Till ↓</option>
+            <option value="createdAt:desc">Newest first</option>
+          </select>
+        </div>
       </div>
 
-      <div className="saas-table-container">
+      <div className="saas-table-container members-table">
         <table className="saas-table">
           <thead>
             <tr>
               <th>Gym ID</th>
-              <th>Name</th>
+              <th>Member</th>
               <th>Phone</th>
               <th>Valid Till</th>
               <th>Days Left</th>
@@ -538,26 +616,34 @@ export default function AdminMembers() {
           </thead>
           <tbody>
             {loading ? (
-              <tr>
-                <td colSpan="8" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
-                  Loading members…
-                </td>
-              </tr>
+              Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="members-skeleton-row">
+                  {Array.from({ length: 8 }).map((__, j) => (
+                    <td key={j}><div className="members-skeleton" /></td>
+                  ))}
+                </tr>
+              ))
             ) : loadError ? (
               <tr>
-                <td colSpan="8" style={{ textAlign: 'center', padding: '48px', color: '#c33' }}>
-                  {loadError}
+                <td colSpan="8">
+                  <div className="members-empty">
+                    <p className="members-empty-title">Unable to load members</p>
+                    <p className="members-empty-sub">Please try again.</p>
+                    <button className="btn-secondary" onClick={loadMembers} style={{ minHeight: 0, padding: "8px 14px", fontSize: "13px" }}>
+                      Retry
+                    </button>
+                  </div>
                 </td>
               </tr>
-            ) : displayedMembers.map((member) => (
-              <tr key={member.gymId}>
+            ) : rows.map((member) => (
+              <tr key={member._id}>
                 <td>{member.gymId}</td>
-                <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{member.name || member.fullName}</td>
+                <td className="members-cell-name">{member.name || member.fullName}</td>
                 <td>{member.phone}</td>
                 <td>{formatDate(member.validTill || member.validityEnd)}</td>
                 <td>
                   <span className={getDaysIndicatorClass(member.daysLeft)}>
-                    {member.daysLeft}
+                    {member.daysLeft} days
                   </span>
                 </td>
                 <td>{member.plan || member.gymPlan}</td>
@@ -568,7 +654,7 @@ export default function AdminMembers() {
                 </td>
                 <td style={{ textAlign: 'center' }}>
                   <div className="flex justify-center items-center gap-2">
-<IconButton
+                    <IconButton
                       type="refresh"
                       onClick={() => openRenew(member.gymId, member.memberCode)}
                       title="Renew membership"
@@ -591,15 +677,72 @@ export default function AdminMembers() {
               </tr>
             ))}
 
-            {!loading && !loadError && displayedMembers.length === 0 && (
+            {!loading && !loadError && rows.length === 0 && (
               <tr>
-                <td colSpan="8" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
-                  No members found.
+                <td colSpan="8">
+                  <div className="members-empty">
+                    <p className="members-empty-title">No members found</p>
+                    <p className="members-empty-sub">No members match the selected filters.</p>
+                    <button className="btn-secondary" onClick={clearFilters} style={{ minHeight: 0, padding: "8px 14px", fontSize: "13px" }}>
+                      Clear filters
+                    </button>
+                  </div>
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile card list */}
+      <div className="members-cards">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="members-card">
+              <div className="members-skeleton" style={{ width: "40%", height: 16 }} />
+              <div className="members-skeleton" style={{ width: "70%" }} />
+              <div className="members-skeleton" style={{ width: "55%" }} />
+            </div>
+          ))
+        ) : loadError ? (
+          <div className="members-empty" style={{ border: "1px solid var(--border-color)", borderRadius: "10px" }}>
+            <p className="members-empty-title">Unable to load members</p>
+            <p className="members-empty-sub">Please try again.</p>
+            <button className="btn-secondary" onClick={loadMembers} style={{ minHeight: 0, padding: "8px 14px", fontSize: "13px" }}>
+              Retry
+            </button>
+          </div>
+        ) : rows.map((member) => (
+          <div key={member._id} className="members-card">
+            <div className="members-card-top">
+              <span className="members-card-id">#{member.gymId}</span>
+              <span className="members-card-name">{member.name || member.fullName}</span>
+            </div>
+            <div className="members-card-sub">{member.phone}</div>
+            <div className="members-card-meta">
+              <span className={getDaysIndicatorClass(member.daysLeft)}>{member.daysLeft} days</span>
+              <span className="members-card-plan">{member.plan || member.gymPlan}</span>
+              <span className={`saas-badge-pill ${member.paymentStatus === 'paid' ? 'saas-badge-success' : 'saas-badge-warning'}`}>
+                {member.paymentStatus.replace('_', ' ').toUpperCase()}
+              </span>
+            </div>
+            <div className="members-card-actions">
+              <IconButton type="refresh" onClick={() => openRenew(member.gymId, member.memberCode)} title="Renew membership" />
+              <IconButton type="edit" onClick={() => openEditModal(member.gymId, member.memberCode)} title="Edit member details" />
+              <IconButton type="delete" onClick={() => confirmDelete(member.gymId, member.memberCode)} title="Delete member" />
+            </div>
+          </div>
+        ))}
+
+        {!loading && !loadError && rows.length === 0 && (
+          <div className="members-empty" style={{ border: "1px dashed var(--border-color)", borderRadius: "10px" }}>
+            <p className="members-empty-title">No members found</p>
+            <p className="members-empty-sub">No members match the selected filters.</p>
+            <button className="btn-secondary" onClick={clearFilters} style={{ minHeight: 0, padding: "8px 14px", fontSize: "13px" }}>
+              Clear filters
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Pagination + result summary (server-driven) */}

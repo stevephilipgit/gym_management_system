@@ -20,6 +20,25 @@ const __dirname = path.dirname(__filename);
 const MS_DAY = 1000 * 60 * 60 * 24;
 const GENDER_PREFIX = { Male: "M", Female: "F", Transgender: "F" };
 
+// Sort mapping for the member list. "daysLeft" is a derived value (validityEnd
+// minus today), so it maps to validityEnd for server-side sorting. Unknown or
+// missing keys fall back to newest-first (createdAt desc).
+const MEMBER_SORT_FIELDS = {
+  daysLeft: "validityEnd",
+  validTill: "validityEnd",
+  validityEnd: "validityEnd",
+  createdAt: "createdAt",
+  name: "fullName",
+  gymId: "gymId",
+  phone: "phone",
+};
+const buildMemberSort = (sortBy, sortOrder) => {
+  const field = MEMBER_SORT_FIELDS[sortBy];
+  if (!field) return { createdAt: -1 };
+  const order = String(sortOrder).toLowerCase() === "asc" ? 1 : -1;
+  return { [field]: order };
+};
+
 const getPlanMonths = (plan) =>
   ({
     "1 Month": 1,
@@ -252,7 +271,7 @@ export const memberController = {
 
   // Get all members
   getAllMembers: asyncHandler(async (req, res) => {
-    const { page = 1, pageSize = 10, status, search, gender, paymentStatus } = req.query;
+    const { page = 1, pageSize = 10, status, search, gender, paymentStatus, sortBy, sortOrder } = req.query;
     const filters = {};
 
     // Gender-scope enforcement (centralized via scopeResolver).
@@ -272,20 +291,28 @@ export const memberController = {
     if (paymentStatus && ["paid", "not_paid"].includes(paymentStatus)) {
       filters.paymentStatus = paymentStatus;
     }
+
+    // Server-side sort (daysLeft maps to validityEnd). Default newest-first.
+    const sort = buildMemberSort(sortBy, sortOrder);
+
     if (search) {
-      // The search path MUST keep the same gender scope as the list path —
-      // otherwise a trainer could list all genders by adding ?search=.
-      const members = await memberRepository.search(search, filters);
-      return res.json({
-        success: true,
-        data: members,
-      });
+      // Search stays scope-aware and paginated so the UI gets consistent
+      // pagination metadata whether or not a search term is active.
+      const members = await memberRepository.searchPaginated(
+        search,
+        Number(page),
+        Number(pageSize),
+        filters,
+        sort
+      );
+      return res.json({ success: true, ...members });
     }
 
     const result = await memberRepository.getPaginated(
       Number(page),
       Number(pageSize),
-      filters
+      filters,
+      sort
     );
 
     return res.json({
