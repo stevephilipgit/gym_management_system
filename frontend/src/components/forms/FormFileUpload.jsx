@@ -1,34 +1,34 @@
 // components/forms/FormFileUpload.jsx — image upload with preview
 export default function FormFileUpload({ onFile, preview, error, accept = "image/jpeg,image/png" }) {
   return (
-    <div className="register-file-upload" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-      <label
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "8px",
-          padding: "10px 16px",
-          borderRadius: "8px",
-          border: "1px dashed var(--border-color)",
-          cursor: "pointer",
-          color: "var(--text-primary)",
-          fontSize: "14px",
-          background: "var(--surface-muted)",
-        }}
-      >
-        <input
-          type="file"
-          accept={accept}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) onFile(file);
-          }}
-          style={{ display: "none" }}
-        />
-        📷 Upload Photo
-      </label>
-      {preview && <img src={preview} alt="Member preview" style={{ width: 56, height: 56, borderRadius: 8, objectFit: "cover" }} />}
-      {error && <span role="alert" style={{ fontSize: "12px", color: "#e11d48" }}>{error}</span>}
+    <div className="register-upload">
+      <div className="register-upload-box" aria-hidden="true">
+        {preview ? (
+          <img src={preview} alt="Member preview" />
+        ) : (
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4 20c0-3.3 3.6-5.5 8-5.5s8 2.2 8 5.5" />
+          </svg>
+        )}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+        <label className="register-upload-btn" title="Upload Photo">
+          <input
+            type="file"
+            accept={accept}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onFile(file);
+            }}
+          />
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </label>
+        {preview && <span className="register-field-hint">Replace by uploading a new photo.</span>}
+        {error && <span className="register-field-error" role="alert">{error}</span>}
+      </div>
     </div>
   );
 }

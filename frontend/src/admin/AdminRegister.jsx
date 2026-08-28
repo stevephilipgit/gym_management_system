@@ -16,7 +16,6 @@ import {
   FormActions,
 } from "../components/forms/index.js";
 
-const MS_DAY = 1000 * 60 * 60 * 24;
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
 const TRAINING_TYPES = [
   { value: "WeightLoss", label: "Weight Loss" },
@@ -24,9 +23,13 @@ const TRAINING_TYPES = [
   { value: "Transformation", label: "Transformation" },
 ];
 const TRAINING_TYPE_MAP = { WeightLoss: "Weight Loss", WeightGain: "Weight Gain", Transformation: "Transformation" };
+const packagePriceFor = (pkg, trainingType) => {
+  if (!pkg) return null;
+  return { WeightLoss: pkg.priceWeightLoss, WeightGain: pkg.priceWeightGain, Transformation: pkg.priceTransformation }[trainingType] ?? null;
+};
 const PAYMENT_MODES = [
   { value: "cash", label: "Cash" },
-  { value: "gpay", label: "GPay" },
+  { value: "gpay", label: "UPI" },
   { value: "card", label: "Card" },
 ];
 
@@ -59,9 +62,11 @@ export default function AdminRegister() {
   const [dynamicFields, setDynamicFields] = useState([]);
   const [customFields, setCustomFields] = useState({});
   const [packages, setPackages] = useState([]);
+  const [packagesLoading, setPackagesLoading] = useState(true);
+  const [packagesError, setPackagesError] = useState(null);
   const [photo, setPhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState("paid");
+  const [paymentStatus, setPaymentStatus] = useState("not_paid");
   const [paymentMode, setPaymentMode] = useState("cash");
   const [includeDiet, setIncludeDiet] = useState(false);
   const [selectedDietId, setSelectedDietId] = useState(null);
@@ -93,13 +98,7 @@ export default function AdminRegister() {
       return;
     }
     const pkg = packages.find((item) => item._id === form.gymPlan);
-    if (!pkg) return;
-    const trainingMap = {
-      WeightLoss: pkg.priceWeightLoss,
-      WeightGain: pkg.priceWeightGain,
-      Transformation: pkg.priceTransformation,
-    };
-    setForm((prev) => ({ ...prev, selectedPrice: trainingMap[form.trainingType] || 0 }));
+    setForm((prev) => ({ ...prev, selectedPrice: packagePriceFor(pkg, form.trainingType) || 0 }));
   }, [form.gymPlan, form.trainingType, packages]);
 
   useEffect(() => {
@@ -117,12 +116,17 @@ export default function AdminRegister() {
   }, []);
 
   const loadPackages = async () => {
+    setPackagesLoading(true);
+    setPackagesError(null);
     try {
       const res = await apiClient.get("/packages");
       setPackages(res.data?.data || res.data || []);
     } catch (err) {
       console.log("Failed loading packages:", err);
       setPackages([]);
+      setPackagesError("Unable to load packages. Please try again.");
+    } finally {
+      setPackagesLoading(false);
     }
   };
 
@@ -143,7 +147,7 @@ export default function AdminRegister() {
       if (draft && typeof draft === "object" && Object.keys(draft).length > 0) {
         setForm((prev) => ({ ...prev, ...(draft.form || {}) }));
         setCustomFields(draft.customFields || {});
-        setPaymentStatus(draft.paymentStatus || "paid");
+        setPaymentStatus(draft.paymentStatus || "not_paid");
         setPaymentMode(draft.paymentMode || "cash");
         setIncludeDiet(!!draft.includeDiet);
         setSelectedDietId(draft.selectedDietId || null);
@@ -193,7 +197,7 @@ export default function AdminRegister() {
     setCustomFields({});
     setPhoto(null);
     setPhotoPreview("");
-    setPaymentStatus("paid");
+    setPaymentStatus("not_paid");
     setPaymentMode("cash");
     setIncludeDiet(false);
     setSelectedDietId(null);
@@ -341,7 +345,7 @@ export default function AdminRegister() {
       setPhoto(null);
       setPhotoPreview("");
       setShowPreview(false);
-      setPaymentStatus("paid");
+      setPaymentStatus("not_paid");
       setPaymentMode("cash");
       setCustomFields({});
       setIncludeDiet(false);
@@ -362,13 +366,11 @@ export default function AdminRegister() {
   };
 
   const enabledCustomFields = dynamicFields.filter((f) => !SYSTEM_KEYS.includes(f.key) && f.isEnabled);
+  const emergencyFields = enabledCustomFields.filter((f) => f.key.toLowerCase().includes("emergency"));
+  const otherCustomFields = enabledCustomFields.filter((f) => !f.key.toLowerCase().includes("emergency"));
 
   return (
     <div className="saas-container">
-      <div className="saas-header">
-        <p>Create a complete member profile, choose a package, and confirm billing.</p>
-      </div>
-
       {registerSuccessMessage && (
         <div className="mt-4 rounded border border-green-300 bg-green-50 p-3 text-sm text-green-700 mb-4">
           {registerSuccessMessage}
@@ -380,10 +382,12 @@ export default function AdminRegister() {
         </div>
       )}
 
-      <form onSubmit={openPreview} noValidate style={{ background: "var(--surface-muted)", padding: "28px", borderRadius: "14px", border: "1px solid var(--border-color)", marginTop: "20px" }}>
+      <form onSubmit={openPreview} noValidate className="register-form-shell" style={{ background: "var(--surface-soft)", padding: "20px 20px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-color)" }}>
+        <div className="register-layout">
+          <div className="register-layout-main">
         {/* ── 1. Personal Information ─────────────────────────────────── */}
         <FormSection title="Personal Information" subtitle="Identity and contact details">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+          <div className="register-grid">
             <FormField label="Full Name" required error={fieldErrors.fullName}>
               <FormInput name="fullName" value={form.fullName} onChange={handleChange} placeholder="e.g. Ravi Kumar" error={fieldErrors.fullName} />
             </FormField>
@@ -394,8 +398,10 @@ export default function AdminRegister() {
               <FormDate name="dob" value={form.dob} onChange={handleChange} error={fieldErrors.dob} />
             </FormField>
             <FormField label="Gender" required>
-              <FormRadioGroup name="gender" value={form.gender} onChange={(v) => handleChange({ target: { name: "gender", value: v } })} options={allowedGenders.map((g) => ({ value: g, label: g }))} />
-              {allowedGenders.length === 1 && <p style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: 4 }}>Your scope only allows {allowedGenders[0]} members.</p>}
+              <FormSelect name="gender" value={form.gender} onChange={handleChange}>
+                {allowedGenders.map((g) => (<option key={g} value={g}>{g}</option>))}
+              </FormSelect>
+              {allowedGenders.length === 1 && <p className="register-field-hint">Your scope only allows {allowedGenders[0]} members.</p>}
             </FormField>
             <FormField label="Blood Group" required error={fieldErrors.bloodGroup}>
               <FormSelect name="bloodGroup" value={form.bloodGroup} onChange={handleChange} placeholder="Select blood group" error={fieldErrors.bloodGroup}>
@@ -405,59 +411,72 @@ export default function AdminRegister() {
             <FormField label="Occupation" required error={fieldErrors.occupation}>
               <FormInput name="occupation" value={form.occupation} onChange={handleChange} placeholder="e.g. Engineer" error={fieldErrors.occupation} />
             </FormField>
-            <FormField label="Aadhar (12 digits)" required error={fieldErrors.aadhar}>
+            <FormField label="Aadhaar Number" required error={fieldErrors.aadhar} hint="12-digit Aadhaar number">
               <FormInput name="aadhar" value={form.aadhar} onChange={(e) => setForm((prev) => ({ ...prev, aadhar: e.target.value.replace(/\D/g, "") }))} placeholder="0000 0000 0000" inputMode="numeric" maxLength={12} error={fieldErrors.aadhar} />
             </FormField>
             <FormField label="Phone" required error={fieldErrors.phone}>
               <FormInput name="phone" value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value.replace(/\D/g, "") }))} placeholder="10-digit mobile" inputMode="numeric" maxLength={10} error={fieldErrors.phone} />
             </FormField>
-            <div style={{ gridColumn: "1 / -1" }}>
+            <div className="register-span-full">
               <FormField label="Address" required error={fieldErrors.address}>
-                <FormTextarea name="address" value={form.address} onChange={handleChange} placeholder="Full address" error={fieldErrors.address} />
+                <FormTextarea name="address" value={form.address} onChange={handleChange} placeholder="Full address" rows={3} error={fieldErrors.address} />
               </FormField>
             </div>
           </div>
         </FormSection>
 
-        {/* ── 2. Membership Information ─────────────────────────────── */}
-        <FormSection title="Membership Information" subtitle="Package, training and billing">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-            <div style={{ gridColumn: "1 / -1" }}>
-              <FormField label="Training Type" required error={fieldErrors.trainingType}>
+        {/* ── 2. Membership ─────────────────────────────── */}
+        <FormSection title="Membership" subtitle="Training goal, plan and add-ons">
+          <div className="register-grid">
+            <div className="register-span-full">
+              <FormField label="Training Goal" required error={fieldErrors.trainingType}>
                 <FormRadioGroup name="trainingType" value={form.trainingType} onChange={(v) => handleChange({ target: { name: "trainingType", value: v } })} options={TRAINING_TYPES.map((t) => ({ value: t.value, label: t.label }))} />
               </FormField>
             </div>
-            <div style={{ gridColumn: "1 / -1" }}>
-              <FormField label="Gym Plan / Package" required error={fieldErrors.gymPlan}>
-                {packages.length > 0 && packages.length <= 6 ? (
-                  <FormRadioGroup name="gymPlan" value={form.gymPlan} onChange={(v) => handleChange({ target: { name: "gymPlan", value: v } })} options={packages.map((p) => ({ value: p._id, label: `${p.name} — ${p.months} ${p.months === 1 ? "Month" : "Months"}` }))} />
+            <div className="register-span-full">
+              <FormField label="Membership Plan" required error={fieldErrors.gymPlan}>
+                {packagesLoading ? (
+                  <p className="register-field-hint">Loading packages…</p>
+                ) : packagesError ? (
+                  <p className="register-field-error" role="alert">{packagesError}</p>
+                ) : packages.length === 0 ? (
+                  <p className="register-field-hint">No packages available. Contact your administrator.</p>
                 ) : (
-                  <FormSelect name="gymPlan" value={form.gymPlan} onChange={handleChange} placeholder="Select package" error={fieldErrors.gymPlan}>
-                    {packages.map((p) => (<option key={p._id} value={p._id}>{p.name} — {p.months} {p.months === 1 ? "Month" : "Months"}</option>))}
-                  </FormSelect>
+                  <div className="register-package-grid">
+                    {packages.map((pkg) => {
+                      const selected = form.gymPlan === pkg._id;
+                      const price = packagePriceFor(pkg, form.trainingType);
+                      return (
+                        <div
+                          key={pkg._id}
+                          role="radio"
+                          aria-checked={selected}
+                          tabIndex={0}
+                          className={`register-package-card${selected ? " is-selected" : ""}`}
+                          onClick={() => handleChange({ target: { name: "gymPlan", value: pkg._id } })}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleChange({ target: { name: "gymPlan", value: pkg._id } }); } }}
+                        >
+                          <span className="register-package-name">{pkg.name}</span>
+                          <span className="register-package-duration">{pkg.months} {pkg.months === 1 ? "Month" : "Months"}</span>
+                          <span className="register-package-price">{price != null ? `Rs. ${price}` : "—"}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </FormField>
             </div>
-            {form.selectedPrice > 0 && (
-              <div style={{ gridColumn: "1 / -1", background: "var(--surface-soft)", padding: "14px 18px", borderRadius: "10px", border: "1px solid var(--border-color)", display: "flex", alignItems: "center", gap: "12px" }}>
-                <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-secondary)" }}>Amount</span>
-                <span style={{ fontSize: "22px", fontWeight: 800, color: "#3ddc84" }}>Rs. {form.selectedPrice}</span>
+            <div className="register-span-full">
+              <div className="register-addon">
+                <input type="checkbox" checked={includeDiet} onChange={(e) => setIncludeDiet(e.target.checked)} className="accent-check" id="include-diet" />
+                <div>
+                  <label htmlFor="include-diet" className="register-addon-title">Include Diet Plan</label>
+                  <p className="register-addon-desc">Personalized diet plan attached to the membership.</p>
+                </div>
               </div>
-            )}
-            <FormField label="Payment Status" required>
-              <FormRadioGroup name="paymentStatus" value={paymentStatus} onChange={setPaymentStatus} options={[{ value: "paid", label: "Paid" }, { value: "not_paid", label: "Not Paid" }]} />
-            </FormField>
-            {paymentStatus === "paid" && (
-              <FormField label="Payment Mode" required>
-                <FormRadioGroup name="paymentMode" value={paymentMode} onChange={setPaymentMode} options={PAYMENT_MODES} />
-              </FormField>
-            )}
-            <div style={{ gridColumn: "1 / -1" }}>
-              <label className="checkbox-row" style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
-                <input type="checkbox" checked={includeDiet} onChange={(e) => setIncludeDiet(e.target.checked)} className="accent-check" />
-                <span>Include Diet Plan</span>
-              </label>
-              {includeDiet && (
+            </div>
+            {includeDiet && (
+              <div className="register-span-full">
                 <DietSelector
                   trainingType={form.trainingType}
                   onDietSelect={(dietId, dietName, dietDescription) => {
@@ -466,30 +485,50 @@ export default function AdminRegister() {
                     setSelectedDietDescription(dietDescription || "");
                   }}
                 />
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </FormSection>
 
-        {/* ── 3. Emergency & Medical ────────────────────────────────── */}
-        <FormSection title="Emergency & Medical" subtitle="Health notes for the training team">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-            <div style={{ gridColumn: "1 / -1" }}>
-              <FormField label="Medical Issues" hint="Existing injuries, allergies or conditions">
-                <FormTextarea name="medicalIssues" value={form.medicalIssues} onChange={handleChange} placeholder="e.g. Knee injury, asthma (optional)" />
+        {/* ── 3. Health & Emergency ────────────────────────────────── */}
+        <FormSection title="Health & Emergency" subtitle="Health notes for the training team">
+          <div className="register-grid">
+            <div className="register-span-full">
+              <FormField label="Medical Conditions / Injuries" hint="Existing injuries, allergies or conditions">
+                <FormTextarea name="medicalIssues" value={form.medicalIssues} onChange={handleChange} placeholder="e.g. Knee injury, asthma (optional)" rows={3} />
               </FormField>
             </div>
-            <FormField label="Photo">
-              <FormFileUpload onFile={(file) => { setPhoto(file); setPhotoPreview(URL.createObjectURL(file)); }} preview={photoPreview} />
-            </FormField>
+            {emergencyFields.length > 0 && emergencyFields.map((field) => (
+              <FormField key={field._id} label={field.label} required={field.required} error={fieldErrors[field.key]}>
+                {field.type === "dropdown" ? (
+                  <FormSelect
+                    name={field.key}
+                    value={customFields[field.key] || ""}
+                    onChange={(e) => { handleCustomFieldChange(field.key, e.target.value); if (fieldErrors[field.key]) setFieldErrors((prev) => ({ ...prev, [field.key]: undefined })); }}
+                    placeholder="Select"
+                    error={fieldErrors[field.key]}
+                  >
+                    {(field.options || []).map((opt) => (<option key={opt} value={opt}>{opt}</option>))}
+                  </FormSelect>
+                ) : (
+                  <FormInput
+                    type={field.type || "text"}
+                    name={field.key}
+                    value={customFields[field.key] || ""}
+                    onChange={(e) => { handleCustomFieldChange(field.key, e.target.value); if (fieldErrors[field.key]) setFieldErrors((prev) => ({ ...prev, [field.key]: undefined })); }}
+                    error={fieldErrors[field.key]}
+                  />
+                )}
+              </FormField>
+            ))}
           </div>
         </FormSection>
 
-        {/* ── 4. Custom Fields (driven by the existing Form Fields module) ── */}
-        {enabledCustomFields.length > 0 && (
-          <FormSection title="Custom Fields" subtitle="Configured in System → Form Fields">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-              {enabledCustomFields.map((field) => (
+        {/* ── 5. Additional Information ────────── */}
+        {otherCustomFields.length > 0 && (
+          <FormSection title="Additional Information" subtitle="Additional details for this member">
+            <div className="register-grid">
+              {otherCustomFields.map((field) => (
                 <FormField key={field._id} label={field.label} required={field.required} error={fieldErrors[field.key]}>
                   {field.type === "dropdown" ? (
                     <FormSelect
@@ -516,6 +555,28 @@ export default function AdminRegister() {
           </FormSection>
         )}
 
+        {/* ── 5. Payment ────────────────────────────────── */}
+        <FormSection title="Payment" subtitle="Status and method">
+          <div className="register-grid">
+            <FormField label="Payment Status" required>
+              <FormRadioGroup name="paymentStatus" value={paymentStatus} onChange={setPaymentStatus} options={[{ value: "paid", label: "Paid" }, { value: "not_paid", label: "Not Paid" }]} />
+            </FormField>
+            {paymentStatus === "paid" && (
+              <FormField label="Payment Mode" required>
+                <FormRadioGroup name="paymentMode" value={paymentMode} onChange={setPaymentMode} options={PAYMENT_MODES} />
+              </FormField>
+            )}
+            {form.selectedPrice > 0 && (
+              <div className="register-span-full">
+                <div className="register-amount">
+                  <span className="register-amount-label">Amount</span>
+                  <span className="register-amount-value">Rs. {form.selectedPrice}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </FormSection>
+
         <FormActions
           label="Register Member"
           onPrimary={openPreview}
@@ -523,6 +584,14 @@ export default function AdminRegister() {
           submitting={submitting}
           disabled={submitting}
         />
+          </div>
+
+          <div className="register-photo-side">
+            <FormField label="Profile Photo" hint="Optional photo used on the membership card">
+              <FormFileUpload onFile={(file) => { setPhoto(file); setPhotoPreview(URL.createObjectURL(file)); }} preview={photoPreview} />
+            </FormField>
+          </div>
+        </div>
       </form>
 
       {/* ── Final preview modal ─────────────────────────────────────── */}
@@ -538,12 +607,12 @@ export default function AdminRegister() {
                 ["Gender", finalGender],
                 ["Blood Group", form.bloodGroup],
                 ["Phone", form.phone],
-                ["Aadhar", form.aadhar.replace(/\D/g, "")],
+                ["Aadhaar", form.aadhar.replace(/\D/g, "")],
                 ["Occupation", form.occupation],
                 ["Address", form.address],
               ]} />
               <PreviewGroup title="Membership & Billing" rows={[
-                ["Training Type", TRAINING_TYPE_MAP[form.trainingType]],
+                ["Training Goal", TRAINING_TYPE_MAP[form.trainingType]],
                 ["Package", planLabel],
                 ["Amount", `Rs. ${form.selectedPrice}`],
                 ["Payment Status", paymentStatus === "paid" ? "Paid" : "Not Paid"],
@@ -551,9 +620,9 @@ export default function AdminRegister() {
                 ["Valid Until", computeValidityLabel()],
                 ["Diet Plan", includeDiet && selectedDietName ? selectedDietName : "—"],
               ]} />
-              <PreviewGroup title="Medical & Custom" rows={[
+              <PreviewGroup title="Medical & Additional" rows={[
                 ["Medical Issues", form.medicalIssues || "—"],
-                ...enabledCustomFields.map((f) => [f.label, customFields[f.key] || "—"]),
+                ...otherCustomFields.map((f) => [f.label, customFields[f.key] || "—"]),
               ]} />
               {photoPreview && <PreviewGroup title="Photo" rows={[["", "Uploaded ✓"]]} />}
             </div>
