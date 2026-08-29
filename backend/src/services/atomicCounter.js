@@ -40,6 +40,17 @@ CounterSchema.statics.increment = async function (key) {
   }
 };
 
+// Atomically advance a counter by N (used for bulk import member-code
+// allocation — avoids N separate increments). Returns the NEW seq value.
+CounterSchema.statics.incrementBy = async function (key, n) {
+  const doc = await this.findOneAndUpdate(
+    { key },
+    { $inc: { seq: n } },
+    { new: true, upsert: true }
+  );
+  return doc.seq;
+};
+
 // Ensure a counter never starts below a floor (used to seed per-gender gymId
 // counters from the current max without lowering an existing value).
 // Uses $max with an equality filter: NEVER attempts an upsert insert when the

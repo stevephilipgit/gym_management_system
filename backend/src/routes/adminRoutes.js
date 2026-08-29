@@ -47,6 +47,9 @@ router.post("/logout-all", adminAuth, authController.logoutAllSessions);
 // POST /api/admin/create (Superadmin only)
 router.post("/create", adminAuth, requireRole("superadmin"), validateSchema(createAdminSchema), authController.createAdmin);
 
+// PUT /api/admin/preferences (any authenticated admin — updates only the caller's preferences)
+router.put("/preferences", adminAuth, authController.updatePreferences);
+
 // PUT /api/admin/:id (Superadmin only)
 router.put("/:id", adminAuth, requireRole("superadmin"), authController.updateAdmin);
 

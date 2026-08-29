@@ -326,6 +326,24 @@ export const authController = {
     });
   }),
 
+  // Update the calling admin's stored UI preferences (per-admin persistence).
+  // The body is merged at the top level so unrelated preference keys survive.
+  updatePreferences: asyncHandler(async (req, res) => {
+    const admin = await Admin.findById(req.admin.id);
+    if (!admin) {
+      throw new AuthError("Admin not found");
+    }
+
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    admin.preferences = { ...(admin.preferences || {}), ...body };
+    await admin.save();
+
+    return res.json({
+      success: true,
+      preferences: admin.preferences,
+    });
+  }),
+
   // Create new admin (superadmin only)
   createAdmin: asyncHandler(async (req, res) => {
     const { username, password, fullName, email, role, scope } = req.body;

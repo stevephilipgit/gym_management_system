@@ -70,6 +70,13 @@ const AdminSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+
+    // Per-admin UI preferences (e.g. All Members filter state). A shallow
+    // object keyed by feature name; persists per admin across sessions.
+    preferences: {
+      type: Object,
+      default: {},
+    },
   },
   { timestamps: true }
 );

@@ -29,6 +29,7 @@ const MEMBER_SORT_FIELDS = {
   validityEnd: "validityEnd",
   createdAt: "createdAt",
   name: "fullName",
+  plan: "gymPlan",
   gymId: "gymId",
   phone: "phone",
 };
@@ -59,15 +60,31 @@ const calculateDaysLeft = (date) => {
   return Math.ceil(diffTime / MS_DAY);
 };
 
-// Per-gender atomic gymId generation. The counter is seeded from the current
-// max for that gender on first use then monotonically incremented.
+// Per-gender atomic gymId generation. Sequential per-gender numbering starting
+// from 1 (gym manual-register standard): Male -> 1, 2, 3...; Female and
+// transgender share the F-series (same gym) -> 1, 2, 3....
 // Existing members' gymId values are never changed.
+//
+// The counter is always seeded from the highest existing gymId for that gender,
+// so new allocations continue from max+1 and historical IDs (including
+// imported ones) are never reused. When a gender has zero members the counter
+// restarts at 1. Allocation itself is an atomic $inc (concurrency-safe).
 const getNextGymId = async (gender) => {
   const prefix = GENDER_PREFIX[gender] || "M";
   const key = `gym_id_${prefix}`;
+
   const maxDoc = await Member.findOne({ gender }).sort({ gymId: -1 }).select("gymId").lean();
-  const floor = Math.max(1000, maxDoc?.gymId || 1000);
-  await Counter.ensureMin(key, floor);
+  const seed = maxDoc?.gymId || 0;
+
+  if (seed === 0) {
+    // No members for this gender — restart the series from 1.
+    await Counter.updateOne({ key }, { $set: { seq: 0 } }, { upsert: true });
+  } else {
+    // Raise the counter to the highest existing gymId (never lowers it, so
+    // deleted numbers are never reused). Handles import + registration.
+    await Counter.ensureMin(key, seed);
+  }
+
   return Counter.increment(key);
 };
 
@@ -695,6 +712,210 @@ export const memberController = {
       success: true,
       data: members,
       count: members.length,
+    });
+  }),
+
+  // Bulk import historical members (Super Admin only via route).
+  // Preserves each member's historical Gym ID within its gender scope, detects
+  // duplicates (in-file + database), seeds the per-gender gymId counters from
+  // the imported max, and bulk-inserts in a single controlled operation.
+  importMembers: asyncHandler(async (req, res) => {
+    const { members } = req.body || {};
+    if (!Array.isArray(members) || members.length === 0) {
+      throw new ValidationError("members array is required");
+    }
+    const MAX_IMPORT = 5000;
+    if (members.length > MAX_IMPORT) {
+      throw new ValidationError(`Maximum ${MAX_IMPORT} members per import`);
+    }
+
+    const GENDERS = ["Male", "Female", "Transgender"];
+    const prefixOf = { Male: "M", Female: "F", Transgender: "F" };
+
+    // ── 1. Normalize + validate each row (no invented values) ──────────────
+    const seenInFile = new Set(); // `${gender}:${gymId}`
+    const normalized = [];
+    const errors = [];
+
+    const rowError = (field, message) => {
+      const err = new Error(message);
+      err.field = field;
+      return err;
+    };
+
+    for (let i = 0; i < members.length; i++) {
+      const row = members[i] || {};
+      const rowNum = i + 2; // 1-based, +1 for the CSV header row
+      try {
+        const gymId = Number(row.gymId);
+        if (!Number.isInteger(gymId) || gymId < 1) {
+          throw rowError("gymId", `Gym ID must be a positive whole number (row ${rowNum})`);
+        }
+
+        const gender = String(row.gender || "").trim();
+        if (!GENDERS.includes(gender)) {
+          throw rowError("gender", `Gender must be Male, Female, or Transgender (row ${rowNum})`);
+        }
+
+        const fullName = String(row.fullName || "").trim();
+        if (fullName.length < 3) {
+          throw rowError("fullName", `Full name is required (min 3 characters) (row ${rowNum})`);
+        }
+
+        const phone = String(row.phone || "").replace(/\D/g, "");
+        if (!/^[6-9]\d{9}$/.test(phone)) {
+          throw rowError("phone", `Phone must start with 6-9 and be 10 digits (row ${rowNum})`);
+        }
+
+        const dob = row.dob ? new Date(row.dob) : null;
+        if (!dob || Number.isNaN(dob.getTime())) {
+          throw rowError("dob", `Invalid date of birth (row ${rowNum})`);
+        }
+
+        const aadhar = String(row.aadhar || "").replace(/\D/g, "");
+        if (aadhar.length !== 12) {
+          throw rowError("aadhar", `Aadhaar must be 12 digits (row ${rowNum})`);
+        }
+
+        const fatherName = String(row.fatherName || "").trim();
+        const bloodGroup = String(row.bloodGroup || "").trim();
+        const address = String(row.address || "").trim();
+        const occupation = String(row.occupation || "").trim();
+        const gymPlan = String(row.gymPlan || "").trim();
+        const trainingType = String(row.trainingType || "").trim();
+        if (!fatherName) throw rowError("fatherName", `Father name is required (row ${rowNum})`);
+        if (!bloodGroup) throw rowError("bloodGroup", `Blood group is required (row ${rowNum})`);
+        if (!address) throw rowError("address", `Address is required (row ${rowNum})`);
+        if (!occupation) throw rowError("occupation", `Occupation is required (row ${rowNum})`);
+        if (!gymPlan) throw rowError("gymPlan", `Gym plan is required (row ${rowNum})`);
+        if (!trainingType) throw rowError("trainingType", `Training type is required (row ${rowNum})`);
+
+        const m = {
+          gymId,
+          gender,
+          fullName,
+          fatherName,
+          bloodGroup,
+          address,
+          occupation,
+          phone,
+          aadhar,
+          dob,
+          gymPlan,
+          trainingType,
+          medicalIssues: String(row.medicalIssues || "None").trim() || "None",
+          paymentStatus: row.paymentStatus === "paid" ? "paid" : "not_paid",
+          paymentMode: row.paymentStatus === "paid" && ["cash", "gpay", "card"].includes(row.paymentMode)
+            ? row.paymentMode
+            : null,
+          status: row.status === "expired" ? "expired" : row.status === "draft" ? "draft" : "active",
+        };
+        if (row.currentPaymentDate) {
+          const d = new Date(row.currentPaymentDate);
+          if (!Number.isNaN(d.getTime())) m.currentPaymentDate = d;
+        }
+        if (row.validityEnd) {
+          const d = new Date(row.validityEnd);
+          if (!Number.isNaN(d.getTime())) m.validityEnd = d;
+        }
+
+        const fileKey = `${m.gender}:${m.gymId}`;
+        if (seenInFile.has(fileKey)) {
+          errors.push({ row: rowNum, field: "gymId", message: `Duplicate gym ID ${gymId} (${gender}) within the file` });
+          continue;
+        }
+        seenInFile.add(fileKey);
+        m._rowNum = rowNum;
+        normalized.push(m);
+      } catch (err) {
+        errors.push({ row: rowNum, field: err.field || "general", message: err.message });
+      }
+    }
+
+    // ── 2. Duplicate detection against existing database records ───────────
+    const gendersInImport = [...new Set(normalized.map((m) => m.gender))];
+    const existing = gendersInImport.length
+      ? await Member.find({ gender: { $in: gendersInImport } }).select("gender gymId").lean()
+      : [];
+    const existingKeys = new Set(existing.map((m) => `${m.gender}:${m.gymId}`));
+
+    const toInsert = [];
+    for (const m of normalized) {
+      if (existingKeys.has(`${m.gender}:${m.gymId}`)) {
+        errors.push({
+          row: m._rowNum,
+          field: "gymId",
+          message: `Gym ID ${m.gymId} (${m.gender}) already exists in the database`,
+        });
+        continue;
+      }
+      delete m._rowNum;
+      toInsert.push(m);
+    }
+
+    // ── 3. Assign memberCodes (batched atomic increments per prefix) ───────
+    const codePrefixes = [...new Set(toInsert.map((m) => prefixOf[m.gender]))];
+    for (const p of codePrefixes) {
+      // Seed the member_code counter from the current max so imported codes
+      // never collide with existing ones.
+      const codeDocs = await Member.find({ memberCode: { $regex: `^${p}` } }).select("memberCode").lean();
+      let maxNum = 0;
+      for (const d of codeDocs) {
+        const num = parseInt(String(d.memberCode).slice(1), 10);
+        if (Number.isFinite(num) && num > maxNum) maxNum = num;
+      }
+      await Counter.ensureMin(`member_code_${p}`, maxNum);
+
+      const count = toInsert.filter((m) => prefixOf[m.gender] === p).length;
+      const endSeq = await Counter.incrementBy(`member_code_${p}`, count);
+      let seq = endSeq - count + 1;
+      for (const m of toInsert) {
+        if (prefixOf[m.gender] !== p) continue;
+        m.memberCode = `${p}${String(seq).padStart(4, "0").slice(-4)}`;
+        seq += 1;
+      }
+    }
+
+    // ── 4. Bulk insert (single controlled operation) ───────────────────────
+    let inserted = 0;
+    let writeFailures = 0;
+    if (toInsert.length > 0) {
+      try {
+        const result = await Member.insertMany(toInsert, { ordered: false });
+        inserted = result?.length || 0;
+      } catch (err) {
+        // insertMany({ ordered:false }) throws on ANY failure but still inserts
+        // the non-conflicting documents. Reconcile against actual DB state.
+        const insertedGyms = await Member.find({
+          gymId: { $in: toInsert.map((m) => m.gymId) },
+          gender: { $in: gendersInImport },
+        }).countDocuments();
+        inserted = insertedGyms;
+        writeFailures = toInsert.length - inserted;
+        for (const we of err?.writeErrors || []) {
+          errors.push({ row: "bulk", field: "gymId", message: `Insert failed: ${we?.errmsg || "database error"}` });
+        }
+      }
+    }
+
+    // ── 5. Seed per-gender gymId counters from the imported max ────────────
+    if (inserted > 0) {
+      const maxByGender = {};
+      for (const m of toInsert) {
+        if (!maxByGender[m.gender]) maxByGender[m.gender] = 0;
+        maxByGender[m.gender] = Math.max(maxByGender[m.gender], m.gymId);
+      }
+      for (const gender of Object.keys(maxByGender)) {
+        await Counter.ensureMin(`gym_id_${prefixOf[gender]}`, maxByGender[gender]);
+      }
+    }
+
+    return res.json({
+      success: true,
+      imported: inserted,
+      skipped: writeFailures,
+      failed: errors.length,
+      errors,
     });
   }),
 };

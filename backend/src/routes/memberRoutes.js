@@ -62,6 +62,9 @@ router.get("/register/draft", adminAuth, draftController.getDraft);
 router.put("/register/draft", adminAuth, draftController.saveDraft);
 router.delete("/register/draft", adminAuth, draftController.deleteDraft);
 
+// POST /api/members/import (Superadmin only) — bulk historical member import
+router.post("/import", adminAuth, requireRole("superadmin"), memberController.importMembers);
+
 // DELETE /api/members/:gymId
 router.delete("/:gymId", adminAuth, requireRole("superadmin"), memberController.deleteMember);
 
