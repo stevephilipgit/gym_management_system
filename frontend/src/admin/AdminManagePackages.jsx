@@ -1,15 +1,8 @@
 import { useEffect, useState } from "react";
+import { FiPlus } from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
 import IconButton from "./components/ui/IconButton";
-
-const EMPTY_FORM = {
-  name: "",
-  months: "",
-  priceWeightLoss: "",
-  priceWeightGain: "",
-  priceTransformation: "",
-  gender: "All",
-};
+import PackageModal from "./components/PackageModal";
 
 const formatPrice = (value) => {
   const num = Number(value);
@@ -20,13 +13,15 @@ const formatPrice = (value) => {
 export default function AdminManagePackages() {
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [notice, setNotice] = useState(null);
-  const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [genderFilter, setGenderFilter] = useState("All");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState("create"); // "create" | "edit"
+  const [editingPackage, setEditingPackage] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [packageToDelete, setPackageToDelete] = useState(null);
-  const [genderFilter, setGenderFilter] = useState("All");
 
   useEffect(() => {
     loadPackages();
@@ -41,49 +36,51 @@ export default function AdminManagePackages() {
 
   const loadPackages = async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const params = genderFilter && genderFilter !== "All" ? { gender: genderFilter } : {};
       const res = await apiClient.get("/packages", { params });
       setPackages(res.data?.data || res.data || []);
     } catch (err) {
       console.log("LOAD PACKAGE ERROR:", err);
+      setLoadError(true);
+      setPackages([]);
       showNotice("Failed to load packages.", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const updateField = (name, value) => setForm((prev) => ({ ...prev, [name]: value }));
-
-  const resetForm = () => {
-    setForm({ ...EMPTY_FORM });
-    setEditingId(null);
+  const openCreate = () => {
+    setModalMode("create");
+    setEditingPackage(null);
+    setModalOpen(true);
   };
 
-  const savePackage = async (e) => {
-    e.preventDefault();
-    if (!form.name.trim()) return showNotice("Package name is required.", "error");
-    if (!form.months || Number(form.months) <= 0) return showNotice("Duration (months) is required and must be greater than 0.", "error");
+  const openEdit = (pkg) => {
+    setModalMode("edit");
+    setEditingPackage(pkg);
+    setModalOpen(true);
+  };
 
-    const payload = {
-      name: form.name.trim(),
-      months: Number(form.months),
-      priceWeightLoss: Number(form.priceWeightLoss),
-      priceWeightGain: Number(form.priceWeightGain),
-      priceTransformation: Number(form.priceTransformation),
-      gender: form.gender,
-    };
+  const closeModal = () => {
+    if (saving) return;
+    setModalOpen(false);
+    setEditingPackage(null);
+  };
 
+  const handleSubmit = async (data) => {
     setSaving(true);
     try {
-      if (editingId) {
-        await apiClient.put(`/packages/${editingId}`, payload);
+      if (modalMode === "edit") {
+        await apiClient.put(`/packages/${editingPackage._id}`, data);
         showNotice("Package updated successfully.");
       } else {
-        await apiClient.post("/packages", payload);
+        await apiClient.post("/packages", data);
         showNotice("Package created successfully.");
       }
-      resetForm();
+      setModalOpen(false);
+      setEditingPackage(null);
       loadPackages();
     } catch (err) {
       console.log("SAVE PACKAGE ERROR:", err);
@@ -91,18 +88,6 @@ export default function AdminManagePackages() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const editPackage = (pkg) => {
-    setEditingId(pkg._id);
-    setForm({
-      name: pkg.name,
-      months: pkg.months,
-      priceWeightLoss: pkg.priceWeightLoss,
-      priceWeightGain: pkg.priceWeightGain,
-      priceTransformation: pkg.priceTransformation,
-      gender: pkg.gender || "All",
-    });
   };
 
   const confirmDelete = (id) => {
@@ -124,16 +109,17 @@ export default function AdminManagePackages() {
     }
   };
 
-  const handleNumberInput = (name, value) => {
-    if (/^\d*$/.test(value)) {
-      setForm((prev) => ({ ...prev, [name]: value }));
-    }
-  };
-
   return (
     <div className="saas-container">
-      <div className="saas-page-header">
-        <h3>Maintain plan duration and training-specific pricing from one screen.</h3>
+      <div className="saas-page-header pkg-page-header">
+        <div>
+          <h1>Packages</h1>
+          <p>Maintain plan duration and training-specific pricing from one screen.</p>
+        </div>
+        <button className="btn-primary" onClick={openCreate}>
+          <FiPlus size={15} strokeWidth={2.5} aria-hidden="true" />
+          Add Package
+        </button>
       </div>
 
       {notice && (
@@ -142,51 +128,8 @@ export default function AdminManagePackages() {
         </div>
       )}
 
-      <form onSubmit={savePackage} className="pkg-form" aria-label="Add or edit package">
-        <div className="pkg-form-grid">
-          <div className="field-group pk-name-field">
-            <label className="field-label" htmlFor="pkg-name">Package Name</label>
-            <input id="pkg-name" className="saas-input" value={form.name} onChange={(e) => updateField("name", e.target.value)} placeholder="e.g. Weight Loss 3 Month" />
-          </div>
-
-          <Field label="Duration (Months)">
-            <input type="text" inputMode="numeric" pattern="[0-9]*" className="saas-input" value={form.months} onChange={(e) => handleNumberInput("months", e.target.value)} placeholder="6" />
-          </Field>
-
-          <Field label="Weight Loss (₹)">
-            <input type="text" inputMode="numeric" pattern="[0-9]*" className="saas-input" value={form.priceWeightLoss} onChange={(e) => handleNumberInput("priceWeightLoss", e.target.value)} placeholder="0" />
-          </Field>
-
-          <Field label="Weight Gain (₹)">
-            <input type="text" inputMode="numeric" pattern="[0-9]*" className="saas-input" value={form.priceWeightGain} onChange={(e) => handleNumberInput("priceWeightGain", e.target.value)} placeholder="0" />
-          </Field>
-
-          <Field label="Transformation (₹)">
-            <input type="text" inputMode="numeric" pattern="[0-9]*" className="saas-input" value={form.priceTransformation} onChange={(e) => handleNumberInput("priceTransformation", e.target.value)} placeholder="0" />
-          </Field>
-
-          <Field label="Gender">
-            <select className="saas-input" value={form.gender} onChange={(e) => updateField("gender", e.target.value)}>
-              <option value="All">All Members</option>
-              <option value="Male">Male</option>
-              <option value="Female">Female</option>
-              <option value="Transgender">Transgender</option>
-            </select>
-          </Field>
-        </div>
-
-        <div className="pkg-form-actions">
-          {editingId && (
-            <button type="button" onClick={resetForm} className="btn-ghost min-h-0 px-4 py-2">Cancel</button>
-          )}
-          <button type="submit" className="btn-primary min-h-0 px-5 py-2" disabled={saving}>
-            {editingId ? "Update Package" : "Add Package"}
-          </button>
-        </div>
-      </form>
-
       <div className="saas-filter-bar" style={{ marginBottom: '16px' }}>
-        <label className="field-label" style={{ margin: 0 }}>Filter by Gender</label>
+        <label className="field-label" style={{ margin: 0 }}>Filter Packages by Gender</label>
         <select
           className="saas-input"
           style={{ width: '220px' }}
@@ -219,9 +162,16 @@ export default function AdminManagePackages() {
               <tr>
                 <td colSpan="8" className="pk-empty">Loading packages…</td>
               </tr>
+            ) : loadError ? (
+              <tr>
+                <td colSpan="8" className="pk-empty">
+                  Unable to load packages.{' '}
+                  <button onClick={loadPackages} className="btn-secondary min-h-0 px-3 py-1 text-xs">Retry</button>
+                </td>
+              </tr>
             ) : packages.length === 0 ? (
               <tr>
-                <td colSpan="8" className="pk-empty">No packages created yet. Add your first package above.</td>
+                <td colSpan="8" className="pk-empty">No packages found.</td>
               </tr>
             ) : (
               packages.map((pkg, index) => (
@@ -234,7 +184,7 @@ export default function AdminManagePackages() {
                   <td className="pk-col-num">{formatPrice(pkg.priceTransformation)}</td>
                   <td>{pkg.gender || "All"}</td>
                   <td className="pk-col-actions">
-                    <IconButton type="edit" title="Edit package" aria-label={`Edit ${pkg.name}`} onClick={() => editPackage(pkg)} />
+                    <IconButton type="edit" title="Edit package" aria-label={`Edit ${pkg.name}`} onClick={() => openEdit(pkg)} />
                     <IconButton type="delete" title="Delete package" aria-label={`Delete ${pkg.name}`} onClick={() => confirmDelete(pkg._id)} />
                   </td>
                 </tr>
@@ -244,11 +194,21 @@ export default function AdminManagePackages() {
         </table>
       </div>
 
-      {!loading && packages.length > 0 && (
+      {!loading && !loadError && packages.length > 0 && (
         <div className="pk-table-footer">
           <span>Showing {packages.length} package{packages.length === 1 ? "" : "s"}</span>
         </div>
       )}
+
+      <PackageModal
+        key={modalOpen ? `${modalMode}-${editingPackage?._id || "new"}` : "closed"}
+        isOpen={modalOpen}
+        mode={modalMode}
+        initialData={editingPackage}
+        saving={saving}
+        onSubmit={handleSubmit}
+        onClose={closeModal}
+      />
 
       {deleteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] p-4">
@@ -262,15 +222,6 @@ export default function AdminManagePackages() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <div className="field-group">
-      <label className="field-label">{label}</label>
-      {children}
     </div>
   );
 }

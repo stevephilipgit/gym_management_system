@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { FiDownload } from 'react-icons/fi';
 import apiClient from '../utils/apiClient';
 import { downloadCSV } from './utils/attendanceHelpers';
 
@@ -40,14 +41,13 @@ export default function InactiveReportsPage() {
 
   useEffect(() => {
     fetchInactiveMembers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDays, skip]);
 
   const showMsg = (msg, type = 'error', duration = 3000) => {
     setMessage(msg);
     setMessageType(type);
-    if (duration) {
-      setTimeout(() => setMessage(''), duration);
-    }
+    if (duration) setTimeout(() => setMessage(''), duration);
   };
 
   const exportAsCSV = async () => {
@@ -58,125 +58,121 @@ export default function InactiveReportsPage() {
       );
 
       downloadCSV(res.data, `inactive-${selectedDays}days-${new Date().toISOString().split('T')[0]}.csv`);
-      showMsg('✓ CSV Downloaded', 'success');
+      showMsg('CSV Downloaded', 'success');
     } catch (err) {
       showMsg('Export failed', 'error');
       console.error(err);
     }
   };
 
+  const last30 = members.filter((m) => m.daysSinceVisit <= 30 || m.daysSinceVisit === 'Never').length;
+  const showKpiValue = !(loading && members.length === 0);
+
   return (
-    <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6 dark:text-black">Inactivity Reports</h1>
-
-      {/* Filter Panel */}
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6 mb-6">
-        <div className="flex flex-col sm:flex-row gap-4 items-end">
-          <div>
-            <label className="block text-sm font-semibold mb-2 dark:text-black">
-              Show members inactive for:
-            </label>
-            <select
-              value={selectedDays}
-              onChange={(e) => {
-                setSelectedDays(parseInt(e.target.value));
-                setSkip(0);
-              }}
-              className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 dark:bg-gray-800 dark:text-white dark:border-gray-700"
-            >
-              <option value={7}>7 days</option>
-              <option value={15}>15 days</option>
-              <option value={30}>30 days</option>
-            </select>
-          </div>
-
-          <button
-            onClick={exportAsCSV}
-            disabled={loading || members.length === 0}
-            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 font-semibold"
-          >
-            📥 Export CSV
-          </button>
-        </div>
+    <div className="saas-container">
+      <div className="saas-page-header">
+        <h1>Inactivity Reports</h1>
+        <p>Identify members who haven't visited recently.</p>
       </div>
 
-      {/* Message */}
       {message && (
-        <div
-          className={`mb-6 p-4 rounded-lg ${
-            messageType === 'success'
-              ? 'bg-green-100 text-green-800'
-              : messageType === 'info'
-              ? 'bg-blue-100 text-blue-800'
-              : 'bg-red-100 text-red-800'
-          }`}
-        >
+        <div className={`pkg-notice pkg-notice-${messageType === 'success' ? 'success' : 'error'}`} role="status">
           {message}
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-gray-600 text-sm">Total Inactive</p>
-          <p className="text-2xl font-bold">{total}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-gray-600 text-sm">Showing</p>
-          <p className="text-2xl font-bold">{members.length}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-gray-600 text-sm">Last 30 Days</p>
-          <p className="text-2xl font-bold">
-            {members.filter((m) => m.daysSinceVisit <= 30 || m.daysSinceVisit === 'Never')
-              .length}
-          </p>
-        </div>
+      <div className="saas-filter-bar" style={{ marginBottom: '16px' }}>
+        <label className="field-label" style={{ margin: 0 }}>Show inactive for</label>
+        <select
+          className="saas-input"
+          style={{ width: '150px' }}
+          value={selectedDays}
+          onChange={(e) => {
+            setSelectedDays(parseInt(e.target.value));
+            setSkip(0);
+          }}
+          aria-label="Inactivity threshold"
+        >
+          <option value={7}>7 days</option>
+          <option value={15}>15 days</option>
+          <option value={30}>30 days</option>
+        </select>
+        <button
+          className="btn-secondary min-h-0 px-4 py-2"
+          style={{ marginLeft: 'auto' }}
+          onClick={exportAsCSV}
+          disabled={loading || members.length === 0}
+          title="Export CSV"
+        >
+          <FiDownload size={14} />
+          Export
+        </button>
       </div>
 
-      {/* Members Table */}
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow overflow-x-auto">
-        {members.length === 0 ? (
-          <div className="p-6 text-center text-gray-600 dark:text-gray-400">
-            {loading ? 'Loading...' : 'No members found'}
-          </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-100 dark:bg-gray-800 border-b dark:border-gray-700">
+      <section className="dash-grid dash-grid-kpis" aria-label="Inactivity metrics">
+        <article className="dash-kpi">
+          <span className="dash-kpi-title">Total Inactive</span>
+          <span className="dash-kpi-value">{showKpiValue ? total : '—'}</span>
+        </article>
+        <article className="dash-kpi">
+          <span className="dash-kpi-title">Showing</span>
+          <span className="dash-kpi-value">{showKpiValue ? members.length : '—'}</span>
+        </article>
+        <article className="dash-kpi">
+          <span className="dash-kpi-title">Last 30 Days</span>
+          <span className="dash-kpi-value">{showKpiValue ? last30 : '—'}</span>
+        </article>
+      </section>
+
+      <div className="saas-table-container">
+        <table className="saas-table">
+          <thead>
+            <tr>
+              <th>Gym ID</th>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Plan</th>
+              <th>Days Since Visit</th>
+              <th>Days Left</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && members.length === 0 ? (
               <tr>
-                <th className="px-4 py-3 text-left dark:text-black font-bold">Gym ID</th>
-                <th className="px-4 py-3 text-left dark:text-black font-bold">Name</th>
-                <th className="px-4 py-3 text-left dark:text-black font-bold">Phone</th>
-                <th className="px-4 py-3 text-left dark:text-black font-bold">Plan</th>
-                <th className="px-4 py-3 text-left dark:text-black font-bold">Days Since Visit</th>
-                <th className="px-4 py-3 text-left dark:text-black font-bold">Days Left</th>
-                <th className="px-4 py-3 text-left dark:text-black font-bold">Status</th>
+                <td colSpan="7" className="pk-empty">Loading…</td>
               </tr>
-            </thead>
-            <tbody>
-              {members.map((member) => (
-                <tr key={member._id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <td className="px-4 py-3 font-semibold text-blue-600 dark:text-blue-400">
+            ) : members.length === 0 ? (
+              <tr>
+                <td colSpan="7">
+                  <div className="members-empty">
+                    <p className="members-empty-title">No inactive members found</p>
+                    <p className="members-empty-sub">No members match the selected inactivity period.</p>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              members.map((member) => (
+                <tr key={member._id}>
+                  <td style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
                     {member.gymId}
                   </td>
-                  <td className="px-4 py-3 text-blue-600 dark:text-blue-400 font-semibold">{member.fullName}</td>
-                  <td className="px-4 py-3 text-blue-600 dark:text-blue-400 font-semibold">{member.phone}</td>
-                  <td className="px-4 py-3 text-blue-600 dark:text-blue-400 font-semibold">{member.gymPlan}</td>
-                  <td className="px-4 py-3">
-                    <span className="px-3 py-1 rounded-full text-white text-xs font-semibold bg-red-600">
-                      {member.daysSinceVisit === 'Never'
-                        ? 'Never'
-                        : `${member.daysSinceVisit}d`}
+                  <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{member.fullName}</td>
+                  <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{member.phone}</td>
+                  <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{member.gymPlan}</td>
+                  <td>
+                    <span className={`saas-badge-pill ${member.daysSinceVisit === 'Never' ? 'saas-badge-danger' : 'saas-badge-warning'}`}>
+                      {member.daysSinceVisit === 'Never' ? 'Never' : `${member.daysSinceVisit}d`}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td>
                     <span
-                      className={`px-3 py-1 rounded-full text-white text-xs font-semibold ${
+                      className={`saas-badge-pill ${
                         member.daysLeft > 0
-                          ? 'bg-green-600'
+                          ? 'saas-badge-success'
                           : member.daysLeft === 0
-                          ? 'bg-yellow-600'
-                          : 'bg-red-600'
+                          ? 'saas-badge-warning'
+                          : 'saas-badge-danger'
                       }`}
                     >
                       {member.daysLeft > 0
@@ -186,40 +182,41 @@ export default function InactiveReportsPage() {
                         : 'Expired'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm">
-                    {member.status === 'active' ? (
-                      <span className="text-green-600 dark:text-green-400 font-semibold">Active</span>
-                    ) : (
-                      <span className="text-red-600 dark:text-red-400 font-semibold">Inactive</span>
-                    )}
+                  <td>
+                    <span className={`saas-badge-pill ${member.status === 'active' ? 'saas-badge-success' : 'saas-badge-danger'}`}>
+                      {member.status === 'active' ? 'Active' : 'Inactive'}
+                    </span>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
-      {/* Pagination */}
       {total > LIMIT && (
-        <div className="flex justify-between items-center mt-6">
-          <button
-            onClick={() => setSkip(Math.max(0, skip - LIMIT))}
-            disabled={skip === 0}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
-          >
-            ← Previous
-          </button>
-          <p className="text-gray-600">
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+          <span className="text-sm text-[var(--text-secondary)]">
             Showing {skip + 1} to {Math.min(skip + LIMIT, total)} of {total}
-          </p>
-          <button
-            onClick={() => setSkip(skip + LIMIT)}
-            disabled={skip + LIMIT >= total}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
-          >
-            Next →
-          </button>
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSkip(Math.max(0, skip - LIMIT))}
+              disabled={skip === 0}
+              className="saas-input"
+              style={{ cursor: skip === 0 ? 'not-allowed' : 'pointer', width: '90px' }}
+            >
+              ← Prev
+            </button>
+            <button
+              onClick={() => setSkip(skip + LIMIT)}
+              disabled={skip + LIMIT >= total}
+              className="saas-input"
+              style={{ cursor: skip + LIMIT >= total ? 'not-allowed' : 'pointer', width: '90px' }}
+            >
+              Next →
+            </button>
+          </div>
         </div>
       )}
     </div>

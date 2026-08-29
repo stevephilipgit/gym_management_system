@@ -3899,6 +3899,186 @@ body {
   }
 }
 
+/* Packages page header (heading + Add Package action) */
+.saas-page-header.pkg-page-header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pkg-page-header .btn-primary {
+  min-height: 36px;
+  padding: 0 14px;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 8px;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.pkg-page-header .btn-primary:hover {
+  transform: translateY(-1px);
+}
+
+.pkg-page-header .btn-primary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Package modal form */
+.pkg-modal-section {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
+.pkg-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.pkg-modal-grid .field-group,
+.pkg-modal-pricing .field-group {
+  min-width: 0;
+}
+
+.pkg-modal-grid .saas-input,
+.pkg-modal-pricing .saas-input {
+  width: 100%;
+}
+
+.pkg-modal-pricing {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.pkg-field-error {
+  font-size: 12px;
+  color: var(--danger);
+  margin-top: 4px;
+}
+
+@media (max-width: 480px) {
+  .pkg-modal-grid,
+  .pkg-modal-pricing {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Diet Library page header (matches the Packages page pattern) */
+.saas-page-header.diet-page-header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.diet-page-header .btn-primary {
+  min-height: 36px;
+  padding: 0 14px;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 8px;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.diet-page-header .btn-primary:hover {
+  transform: translateY(-1px);
+}
+
+.diet-page-header .btn-primary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Form Fields page header (matches the Packages/Diet Manager pattern) */
+.saas-page-header.fields-page-header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.fields-page-header .btn-primary {
+  min-height: 36px;
+  padding: 0 14px;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 8px;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.fields-page-header .btn-primary:hover {
+  transform: translateY(-1px);
+}
+
+.fields-page-header .btn-primary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Daily Attendance page header + compact refresh action */
+.saas-page-header.attendance-page-header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.attendance-refresh-btn {
+  min-height: 36px;
+  width: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.attendance-refresh-btn:hover {
+  border-color: var(--border-strong);
+  background: var(--ghost-fill);
+}
+
+.attendance-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.attendance-refresh-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.attendance-spin {
+  animation: attendance-rotate 0.8s linear infinite;
+}
+
+@keyframes attendance-rotate {
+  to { transform: rotate(360deg); }
+}
+
 .dashboard-shell {
   padding-bottom: 16px;
 }
@@ -4628,6 +4808,52 @@ body {
   margin: 2px 0 0;
 }
 
+/* Compact primary action for the All Members page header */
+.members-page-header .btn-primary.members-register-btn {
+  min-height: 36px;
+  padding: 0 14px;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 8px;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.members-page-header .btn-primary.members-register-btn:hover {
+  transform: translateY(-1px);
+}
+
+.members-page-header .btn-primary.members-register-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.members-page-header .btn-primary.members-register-btn:active {
+  transform: translateY(0);
+}
+
+/* Compact secondary action beside Register Member (All Members header) */
+.members-page-header .btn-secondary.members-import-btn {
+  min-height: 36px;
+  padding: 0 14px;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 8px;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.members-page-header .btn-secondary.members-import-btn:hover {
+  transform: translateY(-1px);
+}
+
+.members-page-header .btn-secondary.members-import-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .members-toolbar {
   display: flex;
   align-items: center;
@@ -4713,6 +4939,32 @@ body {
   color: var(--text-muted);
   font-weight: 600;
   border-bottom: 1px solid var(--border-color);
+}
+
+.members-table .saas-table th.members-sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.members-table .saas-table th.members-sortable:hover {
+  color: var(--text-primary);
+}
+
+.members-table .saas-table th.members-sortable[aria-sort="ascending"],
+.members-table .saas-table th.members-sortable[aria-sort="descending"] {
+  color: var(--accent);
+}
+
+.members-table .saas-table th.members-sortable .members-sort-icon {
+  opacity: 0.5;
+  font-size: 12px;
+  margin-left: 2px;
+}
+
+.members-table .saas-table th.members-sortable[aria-sort="ascending"] .members-sort-icon,
+.members-table .saas-table th.members-sortable[aria-sort="descending"] .members-sort-icon {
+  opacity: 1;
 }
 
 .members-table .saas-table td {

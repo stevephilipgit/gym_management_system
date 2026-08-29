@@ -7,17 +7,14 @@
  */
 import { useEffect, useState } from 'react';
 import apiClient from '../utils/apiClient';
-import { GoogleSheetsConnector } from './components/integrations/GoogleSheetsConnector';
 import ToggleSwitch from './components/ui/ToggleSwitch';
 import { getStoredTheme, applyTheme } from '../theme.js';
 
 const SECTION_TABS = [
   { id: 'attendance', label: '⏱ Attendance' },
   { id: 'business',   label: '🏢 Business Info' },
-  { id: 'enquiry',    label: '📩 Enquiry' },
   { id: 'branches',   label: '📍 Branches' },
   { id: 'social',     label: '🔗 Social' },
-  { id: 'integrations', label: '⚙️ Integrations' },
 ];
 
 // All fields allowed to be saved per section
@@ -27,10 +24,6 @@ const SECTION_FIELDS = {
     'openingTime', 'closingTime', 'blockExpiredMembers', 'expiredGraceDays', 'soundEnabled',
   ],
   business: ['gym_name', 'gym_tagline', 'support_phone', 'whatsapp_number', 'public_email', 'footer_text'],
-  enquiry: [
-    'enquiry_notify_email', 'enquiry_success_message', 'enquiry_auto_reply_enabled',
-    'enquiry_auto_reply_subject', 'enquiry_retention_days',
-  ],
   branches: [
     'branch_mathur_name', 'branch_mathur_address', 'branch_mathur_phone',
     'branch_mathur_map_url', 'branch_mathur_image_url',
@@ -38,7 +31,6 @@ const SECTION_FIELDS = {
     'branch_vepery_map_url', 'branch_vepery_image_url',
   ],
   social: ['social_instagram', 'social_facebook', 'social_youtube', 'social_google_reviews'],
-  integrations: ['sheets_enabled', 'sheets_email', 'sheets_default_name', 'email_notifications_enabled'],
 };
 
 export default function SettingsPage() {
@@ -225,29 +217,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ── ENQUIRY SETTINGS TAB ───────────────────────────── */}
-      {activeTab === 'enquiry' && (
-        <div>
-          <Card title="📩 Enquiry Notification Settings">
-            <Field label="Notification Email" help="Admin email to receive new enquiry alerts. Leave blank to disable.">
-              <input style={inputStyle} type="email" value={settings.enquiry_notify_email || ''} onChange={(e) => handleChange('enquiry_notify_email', e.target.value)} maxLength={120} />
-            </Field>
-            <Field label="Success Message Text" help="Shown to user after successful enquiry submission">
-              <textarea style={{ ...inputStyle, height: 80, resize: 'vertical' }} value={settings.enquiry_success_message || ''} onChange={(e) => handleChange('enquiry_success_message', e.target.value)} maxLength={300} />
-            </Field>
-            <ToggleField label="Auto-Reply to User Email" value={settings.enquiry_auto_reply_enabled} onChange={(v) => handleChange('enquiry_auto_reply_enabled', v)} />
-            <Field label="Auto-Reply Subject">
-              <input style={inputStyle} value={settings.enquiry_auto_reply_subject || ''} onChange={(e) => handleChange('enquiry_auto_reply_subject', e.target.value)} maxLength={200} />
-            </Field>
-            <Field label="Data Retention (days)" help="Closed / Spam enquiries older than this are auto-cleaned (min 30)">
-              <input style={inputStyle} type="number" min={30} max={365} value={settings.enquiry_retention_days || 90} onChange={(e) => handleChange('enquiry_retention_days', e.target.value)} />
-            </Field>
-          </Card>
-          <InfoBox type="warning">SMTP credentials (SMTP_HOST, SMTP_USER, SMTP_PASS) must be set in the server .env file. They are never stored in the database.</InfoBox>
-          <SaveRow onSave={() => saveSection('enquiry')} onReset={fetchSettings} loading={loading} />
-        </div>
-      )}
-
       {/* ── BRANCHES TAB ───────────────────────────────────── */}
       {activeTab === 'branches' && (
         <div>
@@ -293,33 +262,6 @@ export default function SettingsPage() {
             ))}
           </Card>
           <SaveRow onSave={() => saveSection('social')} onReset={fetchSettings} loading={loading} />
-        </div>
-      )}
-
-      {/* ── INTEGRATIONS TAB ───────────────────────────────── */}
-      {activeTab === 'integrations' && (
-        <div>
-          <Card title="📊 Google Sheets Integration">
-            <ToggleField label="Enable Google Sheets Sync" value={settings.sheets_enabled} onChange={(v) => handleChange('sheets_enabled', v)} />
-            <Field label="Service Account Email" help="Google Sheets service account email">
-              <input style={inputStyle} type="email" value={settings.sheets_email || ''} onChange={(e) => handleChange('sheets_email', e.target.value)} maxLength={120} />
-            </Field>
-            <Field label="Default Sheet Name">
-              <input style={inputStyle} value={settings.sheets_default_name || ''} onChange={(e) => handleChange('sheets_default_name', e.target.value)} maxLength={100} />
-            </Field>
-          </Card>
-
-          <Card title="📧 Email Notifications">
-            <ToggleField label="Enable Email Notifications" value={settings.email_notifications_enabled} onChange={(v) => handleChange('email_notifications_enabled', v)} />
-            <InfoBox>Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM in the backend .env file for email delivery.</InfoBox>
-          </Card>
-
-          <SaveRow onSave={() => saveSection('integrations')} onReset={fetchSettings} loading={loading} />
-
-          {/* Existing Google Sheets Connector Component */}
-          <div style={{ marginTop: 24 }}>
-            <GoogleSheetsConnector />
-          </div>
         </div>
       )}
     </div>

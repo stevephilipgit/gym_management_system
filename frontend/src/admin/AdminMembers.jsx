@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { FiUserPlus } from "react-icons/fi";
 import { DietSelector } from "./components/DietSelector";
 import apiClient from "../utils/apiClient.js";
 import { downloadMembershipInvoice } from "./utils/invoicePdf.js";
@@ -7,17 +8,43 @@ import { getDaysRemaining, getDaysIndicatorClass } from "../utils/memberStatus.j
 import IconButton from "./components/ui/IconButton";
 import RegisterForm from "./components/forms/RegisterForm";
 import ToggleSwitch from "./components/ui/ToggleSwitch";
-import { useAdmin } from "./authContext.js";
+import MemberImportModal from "./components/MemberImportModal";
+import { useAdmin, canAccess } from "./authContext.js";
 
 const MS_DAY = 1000 * 60 * 60 * 24;
 
+// Module-level member-list cache so navigating away from and back to the
+// All Members page shows previously-loaded data immediately instead of
+// flashing a loading/empty state. Keyed by (scope + page + filters + sort) so
+// two admins with different scopes never share cached results.
+const memberListCache = new Map();
+const CACHE_TTL_MS = 60 * 1000; // 60s — long enough for quick navigation, short enough to stay fresh
+
+// In-session memory of the admin's All Members filter (keyed by admin id).
+// Server-side Admin.preferences is the source of truth across logins/devices;
+// this map only prevents the component from resetting to a stale context value
+// when the admin navigates away and back within the same session.
+const membersFilterMemory = new Map();
+
+// Human-friendly display reference for the member list: M-1006 / F-1006 / T-1006.
+// Display-only — the numeric gymId remains the authoritative identifier.
+const GENDER_REF = { Male: "M", Female: "F", Transgender: "T" };
+const memberRefFor = (member) => {
+  const prefix = GENDER_REF[member.gender] || "M";
+  return `${prefix}-${member.gymId}`;
+};
+
 export default function AdminMembers() {
   const admin = useAdmin();
+  const isSuperadmin = canAccess(admin?.role, ["superadmin"]);
   const navigate = useNavigate();
+  const adminId = admin?._id || admin?.id;
+  const rememberedFilter = adminId ? membersFilterMemory.get(adminId) : null;
+  const savedFilter = rememberedFilter ?? admin?.preferences?.membersFilter;
   const [members, setMembers] = useState([]);
   const [packages, setPackages] = useState([]);
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [filterGender, setFilterGender] = useState("all");
+  const [filterStatus, setFilterStatus] = useState(savedFilter?.paymentStatus || "all");
+  const [filterGender, setFilterGender] = useState(savedFilter?.gender || "all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sortBy, setSortBy] = useState("daysLeft");
@@ -27,6 +54,7 @@ export default function AdminMembers() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [showDeletePopup, setShowDeletePopup] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [deleteMemberCode, setDeleteMemberCode] = useState(null);
@@ -57,11 +85,12 @@ export default function AdminMembers() {
     dietName: null,
     dietDescription: "",
   });
-  const lastFetchKeyRef = useRef("");
   const searchTimerRef = useRef(null);
   const abortRef = useRef(null);
 
   // Server-driven fetch: filters, sort + pagination are resolved by the backend.
+  // Serves a recent cache entry immediately (no blank/"0 members" flash when
+  // navigating back to this page), then refreshes in the background.
   const loadMembers = useCallback(async () => {
     // Abort any in-flight request so a stale response can never overwrite a
     // newer one (e.g. rapid filter/sort/page changes).
@@ -69,39 +98,59 @@ export default function AdminMembers() {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    setLoading(true);
-    setLoadError(null);
+    // Scope is included so a gender-scoped trainer never sees (or overwrites)
+    // a superadmin's cached results for the same filter combination.
+    const cacheKey = `${admin?.scope || "all"}|${page}|${pageSize}|${filterGender}|${filterStatus}|${debouncedSearch}|${sortBy}|${sortOrder}`;
+    const cached = memberListCache.get(cacheKey);
+
+    if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS && cached.data.length > 0) {
+      // Render cached data immediately; the background refresh below keeps it fresh.
+      setMembers(cached.data);
+      setTotal(cached.total);
+      setLoading(false);
+      setLoadError(null);
+    } else {
+      setLoading(true);
+      setLoadError(null);
+    }
+
     try {
       const params = { page, pageSize, sortBy, sortOrder };
       if (filterGender !== "all") params.gender = filterGender;
       if (filterStatus !== "all") params.paymentStatus = filterStatus;
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       const res = await apiClient.get("/members", { params, signal: controller.signal });
-      setMembers(res.data?.data || []);
-      setTotal(res.data?.pagination?.total ?? 0);
+      const data = res.data?.data || [];
+      const totalCount = res.data?.pagination?.total ?? 0;
+      memberListCache.set(cacheKey, { data, total: totalCount, fetchedAt: Date.now() });
+      setMembers(data);
+      setTotal(totalCount);
+      setLoadError(null);
     } catch (err) {
       if (err.code === "ERR_CANCELED") return;
       console.log("Error loading members:", err);
-      setLoadError("Failed to load members. Please try again.");
-      setMembers([]);
-      setTotal(0);
+      // Keep showing cached data if a background refresh failed.
+      if (!(cached && cached.data.length > 0)) {
+        setLoadError("Failed to load members. Please try again.");
+        setMembers([]);
+        setTotal(0);
+      }
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, filterGender, filterStatus, debouncedSearch, sortBy, sortOrder]);
+  }, [page, pageSize, filterGender, filterStatus, debouncedSearch, sortBy, sortOrder, admin?.scope]);
 
   useEffect(() => {
     loadPackages();
   }, []);
 
-  // Fetch members whenever page/filter/sort changes. lastFetchKeyRef dedupes the
-  // React StrictMode double-mount so we never fire duplicate requests.
+  // Fetch members whenever page/filter/sort changes. loadMembers aborts any
+  // in-flight request before starting a new one, so the React StrictMode
+  // double-mount simply results in one aborted request and one completed
+  // request — never in a skipped fetch that leaves the list empty.
   useEffect(() => {
-    const key = `${page}|${pageSize}|${filterGender}|${filterStatus}|${debouncedSearch}|${sortBy}|${sortOrder}`;
-    if (lastFetchKeyRef.current === key) return;
-    lastFetchKeyRef.current = key;
     loadMembers();
-  }, [page, pageSize, filterGender, filterStatus, debouncedSearch, sortBy, sortOrder, loadMembers]);
+  }, [loadMembers]);
 
   // Clean up the debounce timer and abort any in-flight request on unmount.
   useEffect(() => {
@@ -120,14 +169,32 @@ export default function AdminMembers() {
     }
   };
 
+  // Persist the calling admin's filter preference: update the in-session map so
+  // navigation within this session restores it immediately, and save to the
+  // admin's server-side preferences so it survives logout/login and devices.
+  // Fire-and-forget — the UI still applies the filter this session even if
+  // persistence fails.
+  const saveFilterPreferences = useCallback(async (paymentStatus, gender) => {
+    if (adminId) membersFilterMemory.set(adminId, { paymentStatus, gender });
+    try {
+      await apiClient.put("/admin/preferences", {
+        membersFilter: { paymentStatus, gender },
+      });
+    } catch {
+      // Non-fatal: filter state still applies for this session.
+    }
+  }, [adminId]);
+
   const changeGender = (value) => {
     setFilterGender(value);
     setPage(1);
+    saveFilterPreferences(filterStatus, value);
   };
 
   const changeStatus = (value) => {
     setFilterStatus(value);
     setPage(1);
+    saveFilterPreferences(value, filterGender);
   };
 
   const changePageSize = (value) => {
@@ -145,11 +212,23 @@ export default function AdminMembers() {
     }, 300);
   };
 
-  const changeSort = (value) => {
-    const [sb, so] = value.split(":");
-    setSortBy(sb);
-    setSortOrder(so);
+  // Column-header sorting: clicking the active column toggles direction;
+  // clicking a different column makes it the active sort (ascending first).
+  const toggleSort = (sb) => {
+    if (sortBy === sb) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(sb);
+      setSortOrder("asc");
+    }
     setPage(1);
+  };
+
+  // Neutral ⇅ on inactive sortable columns; ↑/↓ on the active one — makes it
+  // obvious which columns can be sorted by clicking.
+  const sortIndicator = (sb) => {
+    if (sortBy === sb) return sortOrder === "asc" ? "↑" : "↓";
+    return "⇅";
   };
 
   const clearFilters = () => {
@@ -160,6 +239,7 @@ export default function AdminMembers() {
     setSortBy("daysLeft");
     setSortOrder("asc");
     setPage(1);
+    saveFilterPreferences("all", "all");
   };
 
   const goToPage = (target) => setPage(target);
@@ -541,16 +621,24 @@ export default function AdminMembers() {
     <div className="saas-container">
       <div className="members-page-header">
         <div>
-          <h1>All Members · {total} member{total === 1 ? "" : "s"}</h1>
+          <h1>All Members{!loading ? ` · ${total} member${total === 1 ? "" : "s"}` : ""}</h1>
           <p>Manage registered members and memberships.</p>
         </div>
         <button
-          className="btn-primary"
+          className="btn-primary members-register-btn"
           onClick={() => navigate("/admin/register")}
-          style={{ minHeight: 0, padding: "10px 16px", fontSize: "14px", whiteSpace: "nowrap" }}
         >
-          + Register Member
+          <FiUserPlus size={15} strokeWidth={2.5} aria-hidden="true" />
+          Register Member
         </button>
+        {admin?.scope === "all" && (
+          <button
+            className="btn-secondary members-import-btn"
+            onClick={() => setImportModalOpen(true)}
+          >
+            Import Members
+          </button>
+        )}
       </div>
 
       {renewError && (
@@ -562,13 +650,13 @@ export default function AdminMembers() {
       <div className="members-toolbar">
         <div className="members-toolbar-filters">
           <select className="saas-input" value={filterStatus} onChange={(e) => changeStatus(e.target.value)} aria-label="Payment status">
-            <option value="all">All Members</option>
+            <option value="all">View All Statuses</option>
             <option value="paid">Paid</option>
             <option value="not_paid">Not Paid</option>
           </select>
           {admin?.scope === "all" && (
             <select className="saas-input" value={filterGender} onChange={(e) => changeGender(e.target.value)} aria-label="Gender">
-              <option value="all">All Genders</option>
+              <option value="all">View All Genders</option>
               <option value="Male">Male</option>
               <option value="Female">Female</option>
               <option value="Transgender">Transgender</option>
@@ -588,28 +676,42 @@ export default function AdminMembers() {
             />
           </div>
         </div>
-        <div className="members-toolbar-sort">
-          <span className="members-sort-label">Sort:</span>
-          <select className="saas-input" value={`${sortBy}:${sortOrder}`} onChange={(e) => changeSort(e.target.value)} aria-label="Sort members">
-            <option value="daysLeft:asc">Days Left ↑</option>
-            <option value="daysLeft:desc">Days Left ↓</option>
-            <option value="validityEnd:asc">Valid Till ↑</option>
-            <option value="validityEnd:desc">Valid Till ↓</option>
-            <option value="createdAt:desc">Newest first</option>
-          </select>
-        </div>
       </div>
 
       <div className="saas-table-container members-table">
         <table className="saas-table">
           <thead>
             <tr>
-              <th>Gym ID</th>
-              <th>Member</th>
+              <th>MEMBER REF</th>
+              <th
+                className="members-sortable"
+                onClick={() => toggleSort("name")}
+                aria-sort={sortBy === "name" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
+              >
+                Member <span className="members-sort-icon">{sortIndicator("name")}</span>
+              </th>
               <th>Phone</th>
-              <th>Valid Till</th>
-              <th>Days Left</th>
-              <th>Plan</th>
+              <th
+                className="members-sortable"
+                onClick={() => toggleSort("validTill")}
+                aria-sort={sortBy === "validTill" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
+              >
+                Valid Till <span className="members-sort-icon">{sortIndicator("validTill")}</span>
+              </th>
+              <th
+                className="members-sortable"
+                onClick={() => toggleSort("daysLeft")}
+                aria-sort={sortBy === "daysLeft" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
+              >
+                Days Left <span className="members-sort-icon">{sortIndicator("daysLeft")}</span>
+              </th>
+              <th
+                className="members-sortable"
+                onClick={() => toggleSort("plan")}
+                aria-sort={sortBy === "plan" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
+              >
+                Plan <span className="members-sort-icon">{sortIndicator("plan")}</span>
+              </th>
               <th>Payment</th>
               <th>Action</th>
             </tr>
@@ -637,7 +739,7 @@ export default function AdminMembers() {
               </tr>
             ) : rows.map((member) => (
               <tr key={member._id}>
-                <td>{member.gymId}</td>
+                <td>{memberRefFor(member)}</td>
                 <td className="members-cell-name">{member.name || member.fullName}</td>
                 <td>{member.phone}</td>
                 <td>{formatDate(member.validTill || member.validityEnd)}</td>
@@ -667,11 +769,13 @@ export default function AdminMembers() {
                       title="Edit member details"
                       disabled={editLoadingGymId === member.gymId}
                     />
-                    <IconButton
-                      type="delete"
-                      onClick={() => confirmDelete(member.gymId, member.memberCode)}
-                      title="Delete member"
-                    />
+                    {isSuperadmin && (
+                      <IconButton
+                        type="delete"
+                        onClick={() => confirmDelete(member.gymId, member.memberCode)}
+                        title="Delete member"
+                      />
+                    )}
                   </div>
                 </td>
               </tr>
@@ -715,7 +819,7 @@ export default function AdminMembers() {
         ) : rows.map((member) => (
           <div key={member._id} className="members-card">
             <div className="members-card-top">
-              <span className="members-card-id">#{member.gymId}</span>
+              <span className="members-card-id">{memberRefFor(member)}</span>
               <span className="members-card-name">{member.name || member.fullName}</span>
             </div>
             <div className="members-card-sub">{member.phone}</div>
@@ -729,7 +833,7 @@ export default function AdminMembers() {
             <div className="members-card-actions">
               <IconButton type="refresh" onClick={() => openRenew(member.gymId, member.memberCode)} title="Renew membership" />
               <IconButton type="edit" onClick={() => openEditModal(member.gymId, member.memberCode)} title="Edit member details" />
-              <IconButton type="delete" onClick={() => confirmDelete(member.gymId, member.memberCode)} title="Delete member" />
+              {isSuperadmin && <IconButton type="delete" onClick={() => confirmDelete(member.gymId, member.memberCode)} title="Delete member" />}
             </div>
           </div>
         ))}
@@ -792,7 +896,7 @@ export default function AdminMembers() {
             <div className="modal-header">
               <div className="section-heading">
                 <span className="eyebrow">Confirm Delete</span>
-                <h3 className="panel-title">Remove member record?</h3>
+                <h3 className="panel-title">This will permanently remove the member?</h3>
               </div>
               <button type="button" onClick={() => setShowDeletePopup(false)} className="icon-close-btn" aria-label="Close delete modal">
                 ✕
@@ -1055,6 +1159,16 @@ export default function AdminMembers() {
             </div>
           </div>
         </div>
+      )}
+
+      {importModalOpen && (
+        <MemberImportModal
+          isOpen={importModalOpen}
+          onClose={() => {
+            setImportModalOpen(false);
+            loadMembers();
+          }}
+        />
       )}
     </div>
   );

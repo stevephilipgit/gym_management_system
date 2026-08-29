@@ -1,23 +1,37 @@
 import { useEffect, useState } from "react";
+import { FiPlus } from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
 import ToggleSwitch from "./components/ui/ToggleSwitch";
 import IconButton from "./components/ui/IconButton";
+import FieldModal from "./components/FieldModal";
+
+const formatOptions = (options) => {
+  if (!options || options.length === 0) return "—";
+  if (options.length <= 3) return options.join(", ");
+  return `${options.slice(0, 3).join(", ")} +${options.length - 3} more`;
+};
 
 export default function AdminManageFields() {
   const [fields, setFields] = useState([]);
-  const [form, setForm] = useState({
-    label: "",
-    type: "text",
-    required: false,
-    options: "",
-  });
   const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState("create");
+  const [editingField, setEditingField] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [fieldToDelete, setFieldToDelete] = useState(null);
 
   useEffect(() => {
     loadFields();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const showNotice = (msg, type = "success") => {
+    setNotice({ msg, type });
+    window.clearTimeout(showNotice._timer);
+    showNotice._timer = window.setTimeout(() => setNotice(null), 3500);
+  };
 
   const loadFields = async () => {
     try {
@@ -25,42 +39,57 @@ export default function AdminManageFields() {
       setFields(res.data?.data || res.data || []);
     } catch (err) {
       console.error("Error loading fields:", err);
-      alert("Failed to load fields");
+      showNotice("Failed to load fields", "error");
     }
   };
 
-  const createField = async (e) => {
-    e.preventDefault();
+  const openCreate = () => {
+    setModalMode("create");
+    setEditingField(null);
+    setModalOpen(true);
+  };
 
-    if (!form.label.trim()) return alert("Label is required");
-    if (form.type === "dropdown" && (!form.options || form.options.length === 0)) {
-      return alert("Dropdown must have at least one option");
-    }
+  const openEdit = (field) => {
+    setModalMode("edit");
+    setEditingField(field);
+    setModalOpen(true);
+  };
 
+  const closeModal = () => {
+    if (saving) return;
+    setModalOpen(false);
+    setEditingField(null);
+  };
+
+  const handleSubmit = async (data) => {
+    setSaving(true);
     try {
-      await apiClient.post(
-        "/fields/member",
-        {
-          ...form,
-          options: form.type === "dropdown" ? form.options.split(",").map((option) => option.trim()) : [],
-        }
-      );
-
-      setForm({ label: "", type: "text", required: false, options: "" });
+      if (modalMode === "edit") {
+        await apiClient.put(`/fields/member/${editingField._id}`, data);
+        showNotice("Field updated successfully.");
+      } else {
+        await apiClient.post("/fields/member", data);
+        showNotice("Field created successfully.");
+      }
+      setModalOpen(false);
+      setEditingField(null);
       loadFields();
     } catch (err) {
-      alert(err.response?.data?.message || "Failed");
+      console.error("Save field error:", err);
+      showNotice(err.response?.data?.message || "Failed to save field.", "error");
+    } finally {
+      setSaving(false);
     }
   };
 
   const toggleField = async (id) => {
+    setLoading(true);
     try {
-      setLoading(true);
       await apiClient.patch(`/fields/member/${id}/toggle`, {});
-      await loadFields();
+      loadFields();
     } catch (err) {
-      console.error("Toggle error:", err.response?.data);
-      alert(`Error: ${err.response?.data?.message || "Failed to toggle field"}`);
+      console.error("Toggle error:", err);
+      showNotice(`Error: ${err.response?.data?.message || "Failed to toggle field"}`, "error");
     } finally {
       setLoading(false);
     }
@@ -77,118 +106,81 @@ export default function AdminManageFields() {
       await apiClient.delete(`/fields/member/${fieldToDelete}`);
       setDeleteModalOpen(false);
       setFieldToDelete(null);
+      showNotice("Field deleted.");
       loadFields();
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to delete field");
+      showNotice(err.response?.data?.message || "Failed to delete field", "error");
     }
   };
 
   return (
-    <div className="section-stack">
-      <section className="panel">
-        <div className="section-heading">
-          <span className="eyebrow">Dynamic Schema</span>
-          <h2 className="text-3xl">Manage form fields</h2>
-          <p className="panel-subtitle">Add custom fields and control whether they are required or enabled.</p>
+    <div className="saas-container">
+      <div className="saas-page-header fields-page-header">
+        <div>
+          <h1>Form Fields</h1>
+          <p>Manage custom fields used throughout member registration and workflows.</p>
         </div>
+        <button className="btn-primary" onClick={openCreate}>
+          <FiPlus size={15} strokeWidth={2.5} aria-hidden="true" />
+          Add Field
+        </button>
+      </div>
 
-        <form onSubmit={createField} className="form-grid-2 mt-6">
-          <Field label="Field Label">
-            <input
-              placeholder="Emergency Contact"
-              value={form.label}
-              onChange={(e) => setForm({ ...form, label: e.target.value })}
-              className="field-control"
-            />
-          </Field>
+      {notice && (
+        <div className={`pkg-notice pkg-notice-${notice.type}`} role="status">
+          {notice.msg}
+        </div>
+      )}
 
-          <Field label="Field Type">
-            <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="field-control">
-              <option value="text">Text</option>
-              <option value="number">Number</option>
-              <option value="date">Date</option>
-              <option value="dropdown">Dropdown</option>
-            </select>
-          </Field>
-
-          {form.type === "dropdown" && (
-            <Field label="Dropdown Options">
-              <input
-                placeholder="Option 1, Option 2"
-                value={form.options}
-                onChange={(e) => setForm({ ...form, options: e.target.value })}
-                className="field-control"
-              />
-            </Field>
-          )}
-
-          <div className="checkbox-row mt-8">
-            <input
-              type="checkbox"
-              checked={form.required}
-              onChange={(e) => setForm({ ...form, required: e.target.checked })}
-              className="accent-check"
-            />
-            <span>Required field</span>
-          </div>
-
-          <div className="md:col-span-2">
-            <button className="btn-primary">Add Field</button>
-          </div>
-        </form>
-      </section>
-
-      <section className="table-shell">
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
+      <div className="saas-table-container">
+        <table className="saas-table">
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th>Type</th>
+              <th>Required</th>
+              <th>Options</th>
+              <th>Status</th>
+              <th className="pk-col-actions" scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fields.length === 0 ? (
               <tr>
-                <th>Label</th>
-                <th>Type</th>
-                <th>Required</th>
-                <th>Options</th>
-                <th>Status</th>
-                <th style={{ width: '80px', textAlign: 'center' }}>Actions</th>
+                <td colSpan="6" className="pk-empty">No custom fields added yet.</td>
               </tr>
-            </thead>
-
-            <tbody>
-              {fields.map((field) => (
+            ) : (
+              fields.map((field) => (
                 <tr key={field._id}>
-                  <td>{field.label}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{field.label}</td>
                   <td>{field.type}</td>
                   <td>{field.required ? "Yes" : "No"}</td>
-                  <td>{field.type === "dropdown" ? field.options.join(", ") : "-"}</td>
+                  <td style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                    {field.type === "dropdown" ? formatOptions(field.options) : "—"}
+                  </td>
                   <td>
-                    <ToggleSwitch 
-                      active={field.isEnabled} 
-                      onClick={() => toggleField(field._id)} 
-                      disabled={loading} 
-                    />
+                    <ToggleSwitch active={field.isEnabled} onClick={() => toggleField(field._id)} disabled={loading} />
                   </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <div className="flex justify-center gap-2">
-                      <IconButton 
-                        type="delete" 
-                        onClick={() => confirmDelete(field._id)} 
-                        disabled={loading} 
-                      />
-                    </div>
+                  <td className="pk-col-actions">
+                    <IconButton type="edit" title="Edit field" aria-label={`Edit ${field.label}`} onClick={() => openEdit(field)} />
+                    <IconButton type="delete" title="Delete field" aria-label={`Delete ${field.label}`} onClick={() => confirmDelete(field._id)} />
                   </td>
                 </tr>
-              ))}
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
-              {fields.length === 0 && (
-                <tr>
-                  <td colSpan="6">
-                    <div className="empty-state">No custom fields added yet.</div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <FieldModal
+        key={modalOpen ? `${modalMode}-${editingField?._id || "new"}` : "closed"}
+        isOpen={modalOpen}
+        mode={modalMode}
+        initialData={editingField}
+        saving={saving}
+        onSubmit={handleSubmit}
+        onClose={closeModal}
+      />
 
       {deleteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] p-4">
@@ -202,15 +194,6 @@ export default function AdminManageFields() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <div className="field-group">
-      <label className="field-label">{label}</label>
-      {children}
     </div>
   );
 }
