@@ -50,14 +50,14 @@ const NAV_GROUPS = [
     label: "Operations",
     items: [
       { label: "Attendance",  icon: <FiClock />,     path: "/admin/attendance-front-desk" },
-      { label: "Reports",     icon: <FiBarChart2 />, path: "/admin/inactivity-reports" },
+      { label: "Inactive Members",     icon: <FiBarChart2 />, path: "/admin/inactivity-reports" },
     ],
   },
   {
     label: "System",
     items: [
-      { label: "Enquiries", icon: <FiInbox />,    path: "/admin/enquiries" },
-      { label: "Admin Accounts", icon: <FiUsers />, path: "/admin/admins", roles: ["superadmin"] },
+      { label: "Customer Enquiries", icon: <FiInbox />,    path: "/admin/enquiries" },
+      { label: "Manage Accounts", icon: <FiUsers />, path: "/admin/admins", roles: ["superadmin"] },
       { label: "Settings",  icon: <FiSettings />, path: "/admin/settings", roles: ["superadmin"] },
     ],
   },
