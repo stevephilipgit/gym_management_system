@@ -180,7 +180,7 @@ export default function AdminEnquiries() {
       setDeleteModalOpen(false);
       setEnquiryToDelete(null);
       showToast('Enquiry deleted.');
-    } catch (err) {
+    } catch {
       showToast('Failed to delete enquiry.');
       setDeleteModalOpen(false);
     }
@@ -203,7 +203,7 @@ export default function AdminEnquiries() {
       a.download = `enquiries_${Date.now()}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (err) {
+    } catch {
       showToast('Export failed.');
     }
   };
@@ -218,7 +218,7 @@ export default function AdminEnquiries() {
   };
 
   return (
-    <div className="saas-container">
+    <div className="saas-container management-page">
       {/* Toast */}
       {toast && (
         <div style={{
@@ -298,6 +298,7 @@ export default function AdminEnquiries() {
           No enquiries found for the current filters.
         </div>
       ) : (
+        <div className="management-table-scroll">
         <div className="saas-table-container">
           <table className="saas-table">
             <thead>
@@ -335,6 +336,7 @@ export default function AdminEnquiries() {
               ))}
             </tbody>
           </table>
+        </div>
         </div>
       )}
 
@@ -383,41 +385,6 @@ export default function AdminEnquiries() {
     </div>
   );
 }
-
-// ── Styles ──────────────────────────────────────────────────────────────────
-const filterInputStyle = {
-  padding: '8px 12px',
-  background: 'var(--surface-muted)',
-  border: '1px solid var(--border-color)',
-  color: 'var(--text-primary)',
-  borderRadius: 8,
-  fontSize: 13,
-  outline: 'none',
-  flex: '1 1 160px',
-  minWidth: 0,
-};
-
-const thStyle = {
-  padding: '10px 14px',
-  color: 'var(--text-muted)',
-  fontWeight: 600,
-  fontSize: 11,
-  textTransform: 'uppercase',
-  letterSpacing: 1,
-  borderBottom: '1px solid var(--border-color)',
-  whiteSpace: 'nowrap',
-};
-
-const tdStyle = {
-  padding: '12px 14px',
-  color: 'var(--text-secondary)',
-  borderBottom: '1px solid var(--border-color)',
-  verticalAlign: 'middle',
-  maxWidth: 180,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
-};
 
 const actionBtnStyle = (bg, color) => ({
   background: bg,

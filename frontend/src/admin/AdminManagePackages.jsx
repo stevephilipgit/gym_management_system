@@ -110,7 +110,7 @@ export default function AdminManagePackages() {
   };
 
   return (
-    <div className="saas-container">
+    <div className="saas-container management-page">
       <div className="saas-page-header pkg-page-header">
         <div>
           <h1>Packages</h1>
@@ -143,6 +143,7 @@ export default function AdminManagePackages() {
         </select>
       </div>
 
+      <div className="management-table-scroll">
       <div className="saas-table-container pk-table">
         <table className="saas-table">
           <thead>
@@ -192,6 +193,7 @@ export default function AdminManagePackages() {
             )}
           </tbody>
         </table>
+      </div>
       </div>
 
       {!loading && !loadError && packages.length > 0 && (

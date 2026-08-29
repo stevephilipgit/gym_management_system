@@ -115,7 +115,7 @@ export const AdminDietManager = () => {
       : diets.filter((d) => d.gender === "All" || d.gender === genderFilter);
 
   return (
-    <div className="saas-container">
+    <div className="saas-container management-page">
       <div className="saas-page-header diet-page-header">
         <div>
           <h1>Diet Library</h1>
@@ -148,6 +148,7 @@ export const AdminDietManager = () => {
         </select>
       </div>
 
+      <div className="management-table-scroll">
       <div className="saas-table-container diet-table">
         <table className="saas-table">
           <thead>
@@ -197,6 +198,7 @@ export const AdminDietManager = () => {
             )}
           </tbody>
         </table>
+      </div>
       </div>
 
       {!fetching && !fetchError && filteredDiets.length > 0 && (

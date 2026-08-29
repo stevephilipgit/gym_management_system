@@ -114,7 +114,7 @@ export default function AdminManageFields() {
   };
 
   return (
-    <div className="saas-container">
+    <div className="saas-container management-page">
       <div className="saas-page-header fields-page-header">
         <div>
           <h1>Form Fields</h1>
@@ -132,6 +132,7 @@ export default function AdminManageFields() {
         </div>
       )}
 
+      <div className="management-table-scroll">
       <div className="saas-table-container">
         <table className="saas-table">
           <thead>
@@ -170,6 +171,7 @@ export default function AdminManageFields() {
             )}
           </tbody>
         </table>
+      </div>
       </div>
 
       <FieldModal

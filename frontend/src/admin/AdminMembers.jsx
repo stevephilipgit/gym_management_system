@@ -618,7 +618,7 @@ export default function AdminMembers() {
   }));
 
   return (
-    <div className="saas-container">
+    <div className="saas-container management-page">
       <div className="members-page-header">
         <div>
           <h1>All Members{!loading ? ` · ${total} member${total === 1 ? "" : "s"}` : ""}</h1>
@@ -678,6 +678,7 @@ export default function AdminMembers() {
         </div>
       </div>
 
+      <div className="management-table-scroll">
       <div className="saas-table-container members-table">
         <table className="saas-table">
           <thead>
@@ -847,6 +848,7 @@ export default function AdminMembers() {
             </button>
           </div>
         )}
+      </div>
       </div>
 
       {/* Pagination + result summary (server-driven) */}

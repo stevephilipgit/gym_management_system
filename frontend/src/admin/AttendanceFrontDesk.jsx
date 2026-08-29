@@ -84,7 +84,7 @@ export default function AttendanceFrontDesk() {
   const showKpiValue = !(loading && records.length === 0);
 
   return (
-    <div className="saas-container">
+    <div className="saas-container management-page">
       <div className="saas-page-header attendance-page-header">
         <div>
           <h1>Daily Attendance</h1>
@@ -126,6 +126,7 @@ export default function AttendanceFrontDesk() {
         </article>
       </section>
 
+      <div className="management-table-scroll">
       <div className="saas-table-container attendance-table">
         <table className="saas-table">
           <thead>
@@ -188,6 +189,7 @@ export default function AttendanceFrontDesk() {
             )}
           </tbody>
         </table>
+      </div>
       </div>
     </div>
   );

@@ -3710,6 +3710,38 @@ body {
   max-width: 100%;
 }
 
+/* Management page layout — fixed header/filters/table-header, scrollable records */
+.management-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.management-page .management-table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto; /* single scroll container: vertical records + horizontal wide tables */
+  width: 100%;
+  position: relative;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* The shared .saas-table-container sets overflow-x:auto, which would become a
+   nested scroll container and break position:sticky on the header. Neutralize
+   it inside the management scroll region so the sticky th anchors to the outer
+   scroll container (top:0). */
+.management-page .management-table-scroll .saas-table-container {
+  overflow: visible;
+}
+
+.management-page .management-table-scroll .saas-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-primary);
+}
+
 .saas-header {
   display: flex;
   flex-direction: column;
@@ -3784,41 +3816,6 @@ body {
   color: #ff9090;
 }
 
-/* Compact horizontal add/edit form */
-.pkg-form {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  padding: 16px;
-  margin-bottom: 20px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--surface-soft);
-}
-
-.pkg-form-grid {
-  display: grid;
-  grid-template-columns: minmax(180px, 1.4fr) repeat(4, minmax(96px, 1fr));
-  gap: 12px;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.pkg-form-grid .field-group {
-  min-width: 0;
-}
-
-.pkg-form-grid .saas-input {
-  width: 100%;
-}
-
-.pkg-form-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
 /* Packages table refinements */
 .pk-table .saas-table th,
 .pk-table .saas-table td {
@@ -3868,35 +3865,6 @@ body {
   border-top: 1px solid var(--border-color);
   color: var(--text-muted);
   font-size: 12px;
-}
-
-@media (max-width: 1023px) {
-  .pkg-form {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .pkg-form-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .pkg-form-grid .pk-name-field {
-    grid-column: 1 / -1;
-  }
-
-  .pkg-form-actions {
-    justify-content: flex-end;
-  }
-}
-
-@media (max-width: 480px) {
-  .pkg-form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .pkg-form-actions .btn-primary {
-    flex: 1;
-  }
 }
 
 /* Packages page header (heading + Add Package action) */
@@ -4029,6 +3997,35 @@ body {
 }
 
 .fields-page-header .btn-primary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Admin Accounts page header (matches the Packages/Diet/Fields pattern) */
+.saas-page-header.admins-page-header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.admins-page-header .btn-primary {
+  min-height: 36px;
+  padding: 0 14px;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 8px;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.admins-page-header .btn-primary:hover {
+  transform: translateY(-1px);
+}
+
+.admins-page-header .btn-primary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

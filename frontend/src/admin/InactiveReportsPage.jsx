@@ -69,7 +69,7 @@ export default function InactiveReportsPage() {
   const showKpiValue = !(loading && members.length === 0);
 
   return (
-    <div className="saas-container">
+    <div className="saas-container management-page">
       <div className="saas-page-header">
         <h1>Inactivity Reports</h1>
         <p>Identify members who haven't visited recently.</p>
@@ -124,6 +124,7 @@ export default function InactiveReportsPage() {
         </article>
       </section>
 
+      <div className="management-table-scroll">
       <div className="saas-table-container">
         <table className="saas-table">
           <thead>
@@ -192,6 +193,7 @@ export default function InactiveReportsPage() {
             )}
           </tbody>
         </table>
+      </div>
       </div>
 
       {total > LIMIT && (
