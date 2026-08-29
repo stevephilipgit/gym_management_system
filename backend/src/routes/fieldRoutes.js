@@ -23,6 +23,9 @@ router.post("/member", adminAuth, requireRole("superadmin"), validateSchema(crea
 // PATCH /api/fields/member/:id/toggle (Superadmin only)
 router.patch("/member/:id/toggle", adminAuth, requireRole("superadmin"), fieldController.toggleField);
 
+// PUT /api/fields/member/:id (Superadmin only) — edit an existing field
+router.put("/member/:id", adminAuth, requireRole("superadmin"), validateSchema(updateFieldSchema), fieldController.updateField);
+
 // DELETE /api/fields/member/:id
 router.delete("/member/:id", adminAuth, requireRole("superadmin"), fieldController.deleteField);
 
