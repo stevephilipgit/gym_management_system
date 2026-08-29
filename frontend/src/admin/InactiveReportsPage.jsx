@@ -201,12 +201,12 @@ export default function InactiveReportsPage() {
           <span className="text-sm text-[var(--text-secondary)]">
             Showing {skip + 1} to {Math.min(skip + LIMIT, total)} of {total}
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setSkip(Math.max(0, skip - LIMIT))}
               disabled={skip === 0}
               className="saas-input"
-              style={{ cursor: skip === 0 ? 'not-allowed' : 'pointer', width: '90px' }}
+              style={{ cursor: skip === 0 ? 'not-allowed' : 'pointer' }}
             >
               ← Prev
             </button>
@@ -214,7 +214,7 @@ export default function InactiveReportsPage() {
               onClick={() => setSkip(skip + LIMIT)}
               disabled={skip + LIMIT >= total}
               className="saas-input"
-              style={{ cursor: skip + LIMIT >= total ? 'not-allowed' : 'pointer', width: '90px' }}
+              style={{ cursor: skip + LIMIT >= total ? 'not-allowed' : 'pointer' }}
             >
               Next →
             </button>

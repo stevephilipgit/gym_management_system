@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FiUserPlus } from "react-icons/fi";
+import { FiUpload, FiUserPlus } from "react-icons/fi";
 import { DietSelector } from "./components/DietSelector";
 import apiClient from "../utils/apiClient.js";
 import { downloadMembershipInvoice } from "./utils/invoicePdf.js";
-import { getDaysRemaining, getDaysIndicatorClass } from "../utils/memberStatus.js";
+import { getDaysRemaining } from "../utils/memberStatus.js";
 import IconButton from "./components/ui/IconButton";
 import RegisterForm from "./components/forms/RegisterForm";
 import ToggleSwitch from "./components/ui/ToggleSwitch";
@@ -32,6 +32,14 @@ const GENDER_REF = { Male: "M", Female: "F", Transgender: "T" };
 const memberRefFor = (member) => {
   const prefix = GENDER_REF[member.gender] || "M";
   return `${prefix}-${member.gymId}`;
+};
+
+// Compact semantic pill for days-left (same thresholds as getDaysIndicatorClass):
+// <3 (incl. expired) red, <7 yellow, else green.
+const daysLeftBadgeClass = (days) => {
+  if (days < 3) return "saas-badge-danger";
+  if (days < 7) return "saas-badge-warning";
+  return "saas-badge-success";
 };
 
 export default function AdminMembers() {
@@ -616,6 +624,7 @@ export default function AdminMembers() {
     ...member,
     daysLeft: getDaysRemaining(member.validTill || member.validityEnd),
   }));
+  const hasActiveFilters = filterStatus !== "all" || filterGender !== "all" || search.trim() !== "";
 
   return (
     <div className="saas-container management-page">
@@ -624,21 +633,28 @@ export default function AdminMembers() {
           <h1>All Members{!loading ? ` · ${total} member${total === 1 ? "" : "s"}` : ""}</h1>
           <p>Manage registered members and memberships.</p>
         </div>
-        <button
-          className="btn-primary members-register-btn"
-          onClick={() => navigate("/admin/register")}
-        >
-          <FiUserPlus size={15} strokeWidth={2.5} aria-hidden="true" />
-          Register Member
-        </button>
-        {admin?.scope === "all" && (
+        <div className="members-header-actions">
+          {admin?.scope === "all" && (
+            <button
+              type="button"
+              className="members-icon-btn"
+              onClick={() => setImportModalOpen(true)}
+              title="Import Members"
+              aria-label="Import Members"
+            >
+              <FiUpload size={17} strokeWidth={2.5} aria-hidden="true" />
+            </button>
+          )}
           <button
-            className="btn-secondary members-import-btn"
-            onClick={() => setImportModalOpen(true)}
+            type="button"
+            className="members-icon-btn members-icon-btn-primary"
+            onClick={() => navigate("/admin/register")}
+            title="Register Member"
+            aria-label="Register Member"
           >
-            Import Members
+            <FiUserPlus size={17} strokeWidth={2.5} aria-hidden="true" />
           </button>
-        )}
+        </div>
       </div>
 
       {renewError && (
@@ -675,6 +691,11 @@ export default function AdminMembers() {
               aria-label="Search members"
             />
           </div>
+          {hasActiveFilters && (
+            <button type="button" className="members-clear-filters" onClick={clearFilters}>
+              Clear filters
+            </button>
+          )}
         </div>
       </div>
 
@@ -745,7 +766,7 @@ export default function AdminMembers() {
                 <td>{member.phone}</td>
                 <td>{formatDate(member.validTill || member.validityEnd)}</td>
                 <td>
-                  <span className={getDaysIndicatorClass(member.daysLeft)}>
+                  <span className={`saas-badge-pill ${daysLeftBadgeClass(member.daysLeft)}`}>
                     {member.daysLeft} days
                   </span>
                 </td>
@@ -825,12 +846,13 @@ export default function AdminMembers() {
             </div>
             <div className="members-card-sub">{member.phone}</div>
             <div className="members-card-meta">
-              <span className={getDaysIndicatorClass(member.daysLeft)}>{member.daysLeft} days</span>
+              <span className={`saas-badge-pill ${daysLeftBadgeClass(member.daysLeft)}`}>{member.daysLeft} days</span>
               <span className="members-card-plan">{member.plan || member.gymPlan}</span>
               <span className={`saas-badge-pill ${member.paymentStatus === 'paid' ? 'saas-badge-success' : 'saas-badge-warning'}`}>
                 {member.paymentStatus.replace('_', ' ').toUpperCase()}
               </span>
             </div>
+            <div className="members-card-validity">Valid till {formatDate(member.validTill || member.validityEnd)}</div>
             <div className="members-card-actions">
               <IconButton type="refresh" onClick={() => openRenew(member.gymId, member.memberCode)} title="Renew membership" />
               <IconButton type="edit" onClick={() => openEditModal(member.gymId, member.memberCode)} title="Edit member details" />
@@ -857,12 +879,11 @@ export default function AdminMembers() {
           <span className="text-sm text-[var(--text-secondary)]">
             Page {page} of {totalPages} · {total} member{total === 1 ? "" : "s"}
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <label className="text-sm text-[var(--text-secondary)]" htmlFor="members-page-size">Per page</label>
             <select
               id="members-page-size"
               className="saas-input"
-              style={{ width: '90px' }}
               value={pageSize}
               onChange={(e) => changePageSize(e.target.value)}
             >
@@ -875,7 +896,7 @@ export default function AdminMembers() {
               onClick={() => goToPage(page - 1)}
               disabled={page <= 1}
               className="saas-input"
-              style={{ cursor: page <= 1 ? "not-allowed" : "pointer", width: '90px' }}
+              style={{ cursor: page <= 1 ? "not-allowed" : "pointer" }}
             >
               ← Prev
             </button>
@@ -884,7 +905,7 @@ export default function AdminMembers() {
               onClick={() => goToPage(page + 1)}
               disabled={page >= totalPages}
               className="saas-input"
-              style={{ cursor: page >= totalPages ? "not-allowed" : "pointer", width: '90px' }}
+              style={{ cursor: page >= totalPages ? "not-allowed" : "pointer" }}
             >
               Next →
             </button>

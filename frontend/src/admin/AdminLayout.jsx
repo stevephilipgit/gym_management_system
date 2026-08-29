@@ -2,30 +2,34 @@ import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import AdminSidebar from "./AdminSidebar";
 import AdminHeader from "./AdminHeader";
+import useMediaQuery from "../hooks/useMediaQuery.js";
 
 export default function AdminLayout({ admin }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
+  // Desktop/tablet layout >= 768px. On mobile the sidebar is a drawer and
+  // must ALWAYS render expanded (icons + labels); the desktop collapse
+  // toggle only affects desktop/tablet and never leaks into mobile.
+  const isDesktopLayout = useMediaQuery("(min-width: 768px)");
+  const effectiveCollapsed = isDesktopLayout && collapsed;
+
   return (
-    <div className={`app-layout ${collapsed ? "sidebar-collapsed" : ""}`}>
-      {/* Sidebar */}
-      <div
-        className={`sidebar transition-transform duration-300 md:static ${
-          sidebarOpen ? "fixed left-0 top-0 translate-x-0" : "hidden md:block"
-        } ${collapsed ? "collapsed" : ""}`}
-      >
+    <div className={`app-layout ${effectiveCollapsed ? "sidebar-collapsed" : ""}`}>
+      {/* Sidebar — in-flow grid column on desktop/tablet, off-canvas
+          drawer on mobile. open/closed classes only drive the drawer. */}
+      <div className={`sidebar ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${effectiveCollapsed ? "collapsed" : ""}`}>
         <AdminSidebar
           closeSidebar={() => setSidebarOpen(false)}
-          collapsed={collapsed}
+          collapsed={effectiveCollapsed}
           setCollapsed={setCollapsed}
           admin={admin}
         />
       </div>
 
-      {/* Mobile overlay */}
+      {/* Mobile backdrop — closes the drawer (hidden on md+) */}
       {sidebarOpen && (
-        <div className="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm md:hidden" onClick={() => setSidebarOpen(false)} />
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm md:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Header */}

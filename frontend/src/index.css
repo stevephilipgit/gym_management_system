@@ -3581,91 +3581,149 @@
   }
 }
 
-/* ADMIN UI REDESIGN */
-html, body, #root {
+/* ══════════════════════════════════════════════════════════════
+   ADMIN APP SHELL — single shared responsive layout system
+   ──────────────────────────────────────────────────────────────
+   One layout, three intentional modes:
+
+   Desktop  (>= 1024px) : sidebar is an in-flow grid column
+                          (240px, or 64px rail when collapsed).
+   Tablet   (768–1023px): same in-flow grid column; the existing
+                          collapse toggle shrinks it to the 64px
+                          rail. Content width = grid track.
+   Mobile   (< 768px)   : single-column grid; sidebar becomes a
+                          fixed overlay drawer. Closed drawer
+                          occupies ZERO layout width and main +
+                          header are 100% of the viewport.
+
+   `sidebarOpen` only drives the mobile drawer + backdrop.
+   `collapsed`   only drives the desktop/tablet rail width.
+   ══════════════════════════════════════════════════════════════ */
+
+html,
+body,
+#root {
   height: 100%;
 }
 
+/* Safety net for stray wide content; the real overflow sources are
+   fixed per-page (tables scroll inside .saas-table-container). */
 body {
   overflow-x: hidden;
 }
 
-
 .app-layout {
   --sidebar-width: 240px;
+  --sidebar-rail: 64px;
+  --header-height: 64px;
   display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr;
-  grid-template-rows: 64px 1fr;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-rows: var(--header-height) minmax(0, 1fr);
   height: 100vh;
 }
 
 .app-layout.sidebar-collapsed {
-  --sidebar-width: 64px;
+  --sidebar-width: var(--sidebar-rail);
 }
 
-/* Mobile responsive app-layout */
-@media (max-width: 767px) {
-  .app-layout {
-    grid-template-columns: 1fr;
-  }
-}
-
+/* Sidebar — in-flow grid column on desktop/tablet, always visible.
+   On mobile it is overridden to a fixed overlay drawer. */
 .sidebar {
-  grid-row: 1 / span 2;
-  height: 100vh;
-  overflow-y: auto;
+  grid-row: 1 / -1;
+  grid-column: 1;
+  position: relative;
+  width: var(--sidebar-width);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   z-index: 40;
 }
 
+/* Header — spans the content column, independent of the sidebar.
+   Block-level so .admin-topbar fills the width naturally. */
 .header {
   grid-column: 2;
   grid-row: 1;
-  position: sticky;
-  top: 0;
-  z-index: 50;
+  position: relative;
+  z-index: 30;
+  min-width: 0;
 }
 
-@media (max-width: 767px) {
-  .header, .main-content {
-    grid-column: 1;
-  }
-}
-
+/* Main content — scrolls independently within the remaining area. */
 .main-content {
   grid-column: 2;
   grid-row: 2;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
   overflow-y: auto;
-  height: calc(100vh - 64px);
 }
 
-/* Admin content uses full column width so it aligns with the topbar padding
-   instead of being inset by the centered public page-frame. */
+/* Mobile < 768px: single column; sidebar becomes an overlay drawer. */
+@media (max-width: 767px) {
+  .app-layout,
+  .app-layout.sidebar-collapsed {
+    --sidebar-width: 240px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: var(--header-height) minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--sidebar-width);
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 260ms ease;
+    visibility: hidden;
+  }
+
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .header,
+  .main-content {
+    grid-column: 1;
+    width: 100%;
+  }
+
+  .header {
+    min-width: 0;
+  }
+
+  .main-content {
+    margin-left: 0;
+  }
+}
+
+/* Admin content uses full column width so it aligns with the topbar
+   padding instead of being inset by the centered public page-frame. */
 .admin-page-frame {
   width: 100%;
   max-width: none;
   margin: 0;
 }
 
-/* Custom thin scrollbar */
-.main-content::-webkit-scrollbar,
-.sidebar::-webkit-scrollbar {
+/* Custom thin scrollbar for the main content area */
+.main-content::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
-.main-content::-webkit-scrollbar-track,
-.sidebar::-webkit-scrollbar-track {
+.main-content::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.main-content::-webkit-scrollbar-thumb,
-.sidebar::-webkit-scrollbar-thumb {
+.main-content::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 4px;
 }
 
-.main-content::-webkit-scrollbar-thumb:hover,
-.sidebar::-webkit-scrollbar-thumb:hover {
+.main-content::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 
@@ -4805,50 +4863,74 @@ body {
   margin: 2px 0 0;
 }
 
-/* Compact primary action for the All Members page header */
-.members-page-header .btn-primary.members-register-btn {
-  min-height: 36px;
-  padding: 0 14px;
-  gap: 6px;
-  font-size: 13.5px;
-  font-weight: 600;
-  border-radius: 8px;
-  white-space: nowrap;
-  box-shadow: none;
+/* Group the header actions on the right (Import + Register Member) */
+.members-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.members-page-header .btn-primary.members-register-btn:hover {
-  transform: translateY(-1px);
+/* Icon-only buttons for Import / Register Member */
+.members-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease;
+  font-family: "Sora", -apple-system, BlinkMacSystemFont, sans-serif;
+  flex-shrink: 0;
 }
 
-.members-page-header .btn-primary.members-register-btn:focus-visible {
+.members-icon-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--ghost-fill);
+}
+
+.members-icon-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.members-page-header .btn-primary.members-register-btn:active {
-  transform: translateY(0);
+.members-icon-btn-primary {
+  background: var(--accent);
+  color: #181818;
+  border-color: var(--accent);
 }
 
-/* Compact secondary action beside Register Member (All Members header) */
-.members-page-header .btn-secondary.members-import-btn {
-  min-height: 36px;
-  padding: 0 14px;
-  gap: 6px;
-  font-size: 13.5px;
-  font-weight: 600;
-  border-radius: 8px;
+.members-icon-btn-primary:hover {
+  background: var(--accent-hover, #c9a146);
+  border-color: var(--accent-hover, #c9a146);
+  color: #181818;
+}
+
+/* Unobtrusive clear-filters action in the filter bar */
+.members-clear-filters {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 6px 4px;
   white-space: nowrap;
-  box-shadow: none;
 }
 
-.members-page-header .btn-secondary.members-import-btn:hover {
-  transform: translateY(-1px);
+.members-clear-filters:hover {
+  color: var(--text-primary);
 }
 
-.members-page-header .btn-secondary.members-import-btn:focus-visible {
+.members-clear-filters:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .members-toolbar {
@@ -4979,6 +5061,31 @@ body {
   color: var(--text-primary);
 }
 
+/* Column width hints — content-aware hierarchy (desktop table) */
+.members-table .saas-table th:nth-child(1), /* MEMBER REF */
+.members-table .saas-table td:nth-child(1) { width: 100px; }
+
+.members-table .saas-table th:nth-child(2), /* Member */
+.members-table .saas-table td:nth-child(2) { width: 24%; }
+
+.members-table .saas-table th:nth-child(3), /* Phone */
+.members-table .saas-table td:nth-child(3) { width: 130px; }
+
+.members-table .saas-table th:nth-child(4), /* Valid Till */
+.members-table .saas-table td:nth-child(4) { width: 110px; }
+
+.members-table .saas-table th:nth-child(5), /* Days Left */
+.members-table .saas-table td:nth-child(5) { width: 110px; }
+
+.members-table .saas-table th:nth-child(6), /* Plan */
+.members-table .saas-table td:nth-child(6) { width: 110px; }
+
+.members-table .saas-table th:nth-child(7), /* Payment */
+.members-table .saas-table td:nth-child(7) { width: 110px; }
+
+.members-table .saas-table th:nth-child(8), /* Action */
+.members-table .saas-table td:nth-child(8) { width: 108px; white-space: nowrap; }
+
 /* Skeleton loading */
 .members-skeleton {
   height: 14px;
@@ -5069,6 +5176,11 @@ body {
   color: var(--text-secondary);
 }
 
+.members-card-validity {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .members-card-actions {
   display: flex;
   gap: 6px;
@@ -5082,37 +5194,66 @@ body {
   }
 }
 
+/* Mobile member pages — consolidated header/toolbar/card behaviors */
 @media (max-width: 767px) {
-  .members-table {
-    display: none;
-  }
+  .members-table { display: none; }
 
   .members-cards {
     display: grid;
     gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .members-toolbar,
   .members-toolbar-filters {
     flex-direction: column;
     align-items: stretch;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .members-toolbar-filters .saas-input,
   .members-toolbar-sort .saas-input {
     width: 100%;
-  }
-
-  .members-search {
+    min-width: 0;
     max-width: 100%;
-    flex: none;
   }
 
   .members-toolbar-sort {
-    justify-content: space-between;
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
   }
 
-  .members-page-header h1 {
-    font-size: 18px;
+  .members-toolbar-sort button { width: 100%; }
+  .members-toolbar-sort span { width: 100%; text-align: center; }
+
+  .members-search {
+    width: 100%;
+    max-width: none;
+    flex: none;
   }
+
+  .members-search input { width: 100%; }
+
+  .members-clear-filters {
+    width: 100%;
+    text-align: center;
+  }
+
+  .members-page-header h1 { font-size: 18px; }
+
+  .members-page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .members-header-actions { width: 100%; justify-content: flex-end; }
+
+  .saas-input { min-width: 0; }
+}
+
+@media (max-width: 375px) {
+  .members-cards { grid-template-columns: 1fr; }
 }
