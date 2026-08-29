@@ -20,7 +20,6 @@ const PAGE_TITLES = {
   "/admin/packages": "Packages",
   "/admin/fields": "Form Fields",
   "/admin/diet-manager": "Diet Manager",
-  "/admin/ai-assistant": "AI Assistant",
   "/admin/attendance-front-desk": "Daily Attendance",
   "/admin/inactivity-reports": "Inactivity Reports",
   "/admin/settings": "Settings",

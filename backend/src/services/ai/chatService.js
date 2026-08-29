@@ -1,19 +1,11 @@
-import "dotenv/config";
 import logger from "../../core/logger.js";
-import { callGemini } from "./aiClient.js";
-import { get as getCachedResponse, set as setCachedResponse } from "./aiCache.js";
-import {
-  addMessage,
-  clearMemory,
-  getHistory,
-  getMemory,
-  setMemory,
-} from "./conversationStore.js";
-import { executeConfirmed, runAgent } from "./agentRunner.js";
-import { cancelPending } from "./pendingActionStore.js";
+import aiConfig from "../../config/aiConfig.js";
+import { generateWithFallback } from "./providerFactory.js";
 import { buildSystemPrompt } from "./promptTemplates.js";
 import { executeTool } from "./toolExecutor.js";
-import { isValidTool, requiresConfirmation } from "./toolSchemas.js";
+import { isValidTool } from "./toolSchemas.js";
+import * as sessionService from "./sessionService.js";
+import * as memoryService from "./memoryService.js";
 
 const injectionPatterns = [
   /ignore (previous|all|above) instructions/i,
@@ -22,236 +14,269 @@ const injectionPatterns = [
   /system prompt/i,
   /forget your/i,
   /act as/i,
+  /disregard (previous|all)/i,
+  /reveal (api|secret|key|password)/i,
+  /print (api|secret|key|password)/i,
 ];
+
+const ALLOWED_MODULES = [
+  "dashboard",
+  "all_members",
+  "attendance",
+  "inactivity_reports",
+  "customer_enquiries",
+];
+
+const sanitizeModule = (value) => {
+  if (!value) return null;
+  const normalized = String(value).toLowerCase().replace(/[^a-z_]/g, "");
+  return ALLOWED_MODULES.includes(normalized) ? normalized : null;
+};
 
 const buildExpiringText = (result) =>
   `${result.count} member(s) have memberships expiring in the next ${result.daysWindow} days.`;
 
-const buildConfirmationText = (result) =>
-  `I found ${result.previewData?.count || 0} member(s) expiring soon. Here are the details. Please confirm to prepare reminders.`;
-
-const buildAgentSummaryText = (result) => {
-  if (result?.reminders) {
-    return `${result.count} reminder(s) are ready with WhatsApp links.`;
+const buildToolText = (toolName, data) => {
+  switch (toolName) {
+    case "getTotalMembers":
+      return `There are ${data.count} total members.`;
+    case "getActiveMembersCount":
+      return `There are ${data.count} active members.`;
+    case "getExpiringMembers":
+      return buildExpiringText(data);
+    case "getTodayAttendanceCount":
+      return `${data.count} member(s) checked in today.`;
+    case "getEnquiriesSummary":
+      return `Enquiries — new: ${data.new}, contacted: ${data.contacted}, closed: ${data.closed}, spam: ${data.spam} (total ${data.total}).`;
+    case "getInactiveMembers":
+      return `Found ${data.count} inactive member(s).`;
+    case "getDashboardSummary":
+      return `Dashboard — total: ${data.totalMembers}, active: ${data.activeMembers}, expiring in 7 days: ${data.expiringIn7Days}, today attendance: ${data.todayAttendance}, enquiries: ${data.enquiries.total}.`;
+    default:
+      return "Here is the requested information.";
   }
-
-  if (result?.members) {
-    return buildExpiringText(result);
-  }
-
-  if (typeof result?.count === "number") {
-    return `There are ${result.count} total members in the gym.`;
-  }
-
-  return "The requested steps completed successfully.";
 };
 
-const buildRuleBasedResponse = async (cleanMessage) => {
-  const normalizedMessage = cleanMessage.toLowerCase();
+const summarizeResults = (results, data) => {
+  const primary = results[0];
+  if (!primary) return "Here is the requested information.";
 
-  if (
-    normalizedMessage.includes("total") ||
-    normalizedMessage.includes("how many") ||
-    normalizedMessage.includes("count")
-  ) {
-    const result = await executeTool("getTotalMembers", {});
-    return {
-      text: `There are ${result.count} total members in the gym.`,
-      data: result,
-      source: "rule-based",
-    };
+  if (results.length === 1) {
+    return buildToolText(primary.tool, data[primary.tool]);
   }
 
-  if (
-    normalizedMessage.includes("expiring") ||
-    normalizedMessage.includes("expire") ||
-    normalizedMessage.includes("renewal")
-  ) {
-    const extractedNum = normalizedMessage.match(/\d+/);
-    const result = await executeTool("getExpiringMembers", {
-      days: extractedNum ? Number(extractedNum[0]) : 7,
-    });
-    return {
-      text: buildExpiringText(result),
-      data: result,
-      source: "rule-based",
-    };
+  return results
+    .map(({ tool, params }) => {
+      const d = data[tool];
+      return d ? buildToolText(tool, d) : null;
+    })
+    .filter(Boolean)
+    .join("\n");
+};
+
+const cleanJson = (text) =>
+  text
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/g, "")
+    .trim();
+
+const parseModelResponse = (text) => {
+  const cleaned = cleanJson(text);
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (parsed && (parsed.tool || parsed.steps)) return { parsed, isJson: true };
+    return { text: cleaned, isJson: false };
+  } catch {
+    return { text: cleaned, isJson: false };
+  }
+};
+
+const buildRuleBasedResponse = async (cleanMessage, adminContext) => {
+  const normalized = cleanMessage.toLowerCase();
+
+  if (/(total|how many|count)/.test(normalized)) {
+    const data = await executeTool("getTotalMembers", {}, adminContext);
+    return { text: buildToolText("getTotalMembers", data), data, source: "rule-based" };
+  }
+
+  if (/(expiring|expire|renewal)/.test(normalized)) {
+    const days = Number((normalized.match(/\d+/) || [7])[0]) || 7;
+    const data = await executeTool("getExpiringMembers", { days }, adminContext);
+    return { text: buildToolText("getExpiringMembers", data), data, source: "rule-based" };
+  }
+
+  if (/(attendance|checked in|check.?in)/.test(normalized)) {
+    const data = await executeTool("getTodayAttendanceCount", {}, adminContext);
+    return { text: buildToolText("getTodayAttendanceCount", data), data, source: "rule-based" };
+  }
+
+  if (/(enquir)/.test(normalized)) {
+    const data = await executeTool("getEnquiriesSummary", {}, adminContext);
+    return { text: buildToolText("getEnquiriesSummary", data), data, source: "rule-based" };
   }
 
   return {
-    text: "I can help you with member counts and expiring memberships. Try asking about total members or expiring memberships.",
+    text: "I can help you with member counts, expiring memberships, attendance, inactivity, and enquiries. Try asking a question about your gym data.",
     source: "rule-based",
   };
 };
 
-const finalizeResponse = (sessionId, originalMessage, cacheKey, response) => {
-  if (response?.data?.members) {
-    setMemory(sessionId, "lastMembers", response.data.members);
-  }
-  if (!response.requiresConfirmation && response.source !== "confirmed" && response.source !== "cancelled") {
-    setCachedResponse(cacheKey, response);
-  }
-  addMessage(sessionId, "user", originalMessage);
-  addMessage(sessionId, "model", response.text);
-  return response;
-};
-
-const buildToolResponse = (toolName, toolData) => {
-  if (toolName === "getTotalMembers") {
-    return {
-      text: `There are ${toolData.count} total members in the gym.`,
-      data: toolData,
-      source: "ai",
-    };
-  }
-
-  if (toolName === "getExpiringMembers") {
-    return {
-      text: buildExpiringText(toolData),
-      data: toolData,
-      source: "ai",
-    };
-  }
-
-  return {
-    text: "I can only access approved data sources.",
-    source: "ai",
-  };
-};
-
-export const processMessage = async (message, sessionId) => {
+/**
+ * Process a user message within a chat session.
+ *
+ * @param {object} options
+ * @param {string} options.message          raw user message
+ * @param {string} [options.sessionId]      existing session id (optional — new session created if absent)
+ * @param {string} [options.currentModule]  informational UI context (never trusted for authz)
+ * @param {{ id:string, username:string, role:string, scope:string }} options.admin  authenticated admin
+ */
+export const processMessage = async ({ message, sessionId, currentModule, admin }) => {
   if (!message || typeof message !== "string") {
-    throw new Error("Message cannot be empty");
+    const error = new Error("Message cannot be empty");
+    error.status = 400;
+    throw error;
   }
 
-  const strippedMessage = message.replace(/<[^>]*>/g, "").trim();
-
-  if (!strippedMessage) {
-    throw new Error("Message cannot be empty");
+  const cleanMessage = message.replace(/<[^>]*>/g, "").trim();
+  if (!cleanMessage) {
+    const error = new Error("Message cannot be empty");
+    error.status = 400;
+    throw error;
+  }
+  if (cleanMessage.length > aiConfig.maxMessageLength) {
+    const error = new Error(`Message too long. Max ${aiConfig.maxMessageLength} characters.`);
+    error.status = 400;
+    throw error;
   }
 
-  if (strippedMessage.length > 500) {
-    throw new Error("Message too long. Max 500 characters.");
-  }
+  const module = sanitizeModule(currentModule);
+  const ownerUserId = admin.id;
 
-  const cached = getCachedResponse(strippedMessage);
-  if (cached) {
-    return { ...cached, source: "cache" };
-  }
-
-  if (injectionPatterns.some((pattern) => pattern.test(strippedMessage))) {
-    const blockedResponse = { text: "I can only help with gym-related queries.", source: "blocked" };
-    return finalizeResponse(sessionId, strippedMessage, strippedMessage, blockedResponse);
-  }
-
-  const pendingToken = getMemory(sessionId, "pendingToken");
-  if (pendingToken) {
-    if (/^\s*(yes|confirm|send|proceed|ok|approve|do it)\s*$/i.test(strippedMessage)) {
-      const confirmed = await executeConfirmed(pendingToken);
-      clearMemory(sessionId, "pendingToken");
-      clearMemory(sessionId, "lastPreviewData");
-      if (!confirmed.success) {
-        throw new Error(confirmed.message);
-      }
-      return finalizeResponse(sessionId, strippedMessage, strippedMessage, {
-        text: "Done. Reminders prepared.",
-        data: confirmed.data,
-        source: "confirmed",
-      });
+  // Resolve the chat session (owned by this admin).
+  let session;
+  if (sessionId) {
+    session = await sessionService.loadSession(sessionId, ownerUserId);
+    if (!session) {
+      const error = new Error("Chat session not found");
+      error.status = 404;
+      throw error;
     }
-
-    if (/^\s*(no|cancel|stop|nevermind|nope)\s*$/i.test(strippedMessage)) {
-      cancelPending(pendingToken);
-      clearMemory(sessionId, "pendingToken");
-      return finalizeResponse(sessionId, strippedMessage, strippedMessage, {
-        text: "Action cancelled.",
-        source: "cancelled",
-      });
-    }
-    // If neither confirm nor cancel, fall through to AI with context
-  }
-
-  const aiEnabled = String(process.env.AI_ENABLED).toLowerCase() === "true";
-  let aiResponse = null;
-
-  if (aiEnabled) {
-    const history = getHistory(sessionId);
-    const systemPrompt = buildSystemPrompt();
-
-    try {
-      const aiText = await callGemini(systemPrompt, history, strippedMessage);
-
-      const cleaned = aiText.trim().replace(/```json|```/g, "").trim();
-      let parsed = null;
-
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch {
-        aiResponse = { text: cleaned, source: "ai" };
-      }
-
-      if (!aiResponse && parsed) {
-        if (parsed.steps && Array.isArray(parsed.steps) && parsed.steps.length > 0) {
-          const result = await runAgent(parsed.steps, sessionId);
-
-          if (result.requiresConfirmation) {
-            setMemory(sessionId, "pendingToken", result.confirmationToken);
-            setMemory(sessionId, "lastPreviewData", result.previewData);
-            aiResponse = {
-              text: buildConfirmationText(result),
-              requiresConfirmation: true,
-              confirmationToken: result.confirmationToken,
-              previewData: result.previewData,
-              source: "agent",
-            };
-          } else if (result.partialData) {
-            aiResponse = {
-              text: `Partial completion. ${result.error}`,
-              data: result.partialData,
-              source: "agent",
-            };
-          } else {
-            aiResponse = {
-              text: buildAgentSummaryText(result),
-              data: result,
-              source: "agent",
-            };
-          }
-        } else if (parsed.tool && typeof parsed.tool === "string") {
-          if (!isValidTool(parsed.tool)) {
-            logger.warn("[AI Security] Attempted unknown tool:", parsed.tool);
-            aiResponse = {
-              text: "I can only access approved data sources.",
-              source: "ai",
-            };
-          } else if (requiresConfirmation(parsed.tool)) {
-            aiResponse = {
-              text: "I need to review the matching members first before preparing reminders.",
-              source: "ai",
-            };
-          } else {
-            const toolData = await executeTool(parsed.tool, parsed.params || {});
-            aiResponse = buildToolResponse(parsed.tool, toolData);
-          }
-        } else {
-          aiResponse = { text: cleaned, source: "ai" };
-        }
-      }
-    } catch (error) {
-      logger.error("[AI] Gemini error:", error);
-    }
-  }
-
-  let finalResponse;
-  if (aiResponse) {
-    finalResponse = aiResponse;
   } else {
-    const fallbackResponse = await buildRuleBasedResponse(strippedMessage);
-    finalResponse = {
-      ...fallbackResponse,
-      source: aiEnabled ? "fallback" : fallbackResponse.source,
-    };
+    session = await sessionService.createSession(ownerUserId, { source: "floating-assistant" });
+    sessionId = session.sessionId;
   }
 
-  return finalizeResponse(sessionId, strippedMessage, strippedMessage, finalResponse);
+  // Update informational module context (never used for authorization).
+  if (module) {
+    session.metadata = { ...(session.metadata || {}), currentModule: module };
+    await session.save().catch(() => {});
+  }
+
+  // Prompt-injection defense (best effort — backend authorization is the
+  // real boundary; tool execution stays whitelisted).
+  if (injectionPatterns.some((pattern) => pattern.test(cleanMessage))) {
+    const blocked = {
+      text: "I can only help with gym-related queries within my approved capabilities.",
+      data: null,
+      source: "blocked",
+    };
+    await sessionService.addMessage(ownerUserId, sessionId, "user", cleanMessage, "text");
+    await sessionService.addMessage(ownerUserId, sessionId, "assistant", blocked.text, "text");
+    return { sessionId, ...blocked };
+  }
+
+  // Build admin context for scope-aware tool execution.
+  const adminContext = { scope: admin.scope === "all" ? "all" : admin.scope };
+
+  // Rule-based fallback when AI is disabled.
+  if (!aiConfig.enabled) {
+    const fallback = await buildRuleBasedResponse(cleanMessage, adminContext);
+    await sessionService.addMessage(ownerUserId, sessionId, "user", cleanMessage, "text");
+    await sessionService.addMessage(
+      ownerUserId,
+      sessionId,
+      "assistant",
+      fallback.text,
+      fallback.data ? "data" : "text",
+      fallback.data || null
+    );
+    return { sessionId, ...fallback };
+  }
+
+  // Load bounded conversation history + memory for context.
+  const history = await sessionService.getHistory(sessionId, ownerUserId);
+  const memory = await memoryService.listMemory(ownerUserId);
+
+  const systemPrompt = buildSystemPrompt(module, memory);
+
+  let aiText;
+  try {
+    aiText = await generateWithFallback({ systemPrompt, history, userMessage: cleanMessage });
+  } catch (error) {
+    logger.warn("[AI] provider chain failed", { error: error.message });
+    const fallback = await buildRuleBasedResponse(cleanMessage, adminContext);
+    const userFacing = {
+      text: fallback.text,
+      data: fallback.data || null,
+      source: "fallback",
+    };
+    await sessionService.addMessage(ownerUserId, sessionId, "user", cleanMessage, "text");
+    await sessionService.addMessage(
+      ownerUserId,
+      sessionId,
+      "assistant",
+      userFacing.text,
+      userFacing.data ? "data" : "text",
+      userFacing.data || null
+    );
+    return { sessionId, ...userFacing };
+  }
+
+  const { parsed, isJson, text: plainText } = parseModelResponse(aiText);
+
+  let userResponse;
+
+  if (isJson && parsed.steps && Array.isArray(parsed.steps) && parsed.steps.length > 0) {
+    const results = [];
+    const data = {};
+    for (const step of parsed.steps.slice(0, 5)) {
+      if (!step?.tool || !isValidTool(step.tool)) continue;
+      try {
+        const stepData = await executeTool(step.tool, step.params || {}, adminContext);
+        data[step.tool] = stepData;
+        results.push({ tool: step.tool, params: step.params || {} });
+      } catch (error) {
+        logger.warn("[AI] tool step failed", { tool: step.tool, error: error.message });
+      }
+    }
+    const text = summarizeResults(results, data);
+    userResponse = {
+      text,
+      data: results.length ? { results, ...data } : null,
+      source: "ai",
+    };
+  } else if (isJson && parsed.tool && isValidTool(parsed.tool)) {
+    const toolData = await executeTool(parsed.tool, parsed.params || {}, adminContext);
+    userResponse = {
+      text: buildToolText(parsed.tool, toolData),
+      data: toolData,
+      source: "ai",
+    };
+  } else {
+    userResponse = { text: plainText || aiText.trim(), data: null, source: "ai" };
+  }
+
+  await sessionService.addMessage(ownerUserId, sessionId, "user", cleanMessage, "text");
+  await sessionService.addMessage(
+    ownerUserId,
+    sessionId,
+    "assistant",
+    userResponse.text,
+    userResponse.data ? "data" : "text",
+    userResponse.data || null
+  );
+
+  return { sessionId, ...userResponse };
 };

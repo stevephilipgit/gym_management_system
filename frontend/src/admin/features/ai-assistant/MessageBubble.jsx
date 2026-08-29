@@ -6,7 +6,34 @@ const formatTime = (timestamp) =>
     minute: "2-digit",
   });
 
-export const MessageBubble = ({ message, onConfirm }) => {
+const IGNORED_KEYS = ["members", "results"];
+
+const prettyLabel = (key) =>
+  key
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, (c) => c.toUpperCase());
+
+const renderDataSummary = (data) => {
+  const entries = Object.entries(data || {}).filter(([key, value]) => {
+    if (IGNORED_KEYS.includes(key)) return false;
+    return value !== null && typeof value !== "object";
+  });
+
+  if (entries.length === 0) return null;
+
+  return (
+    <div>
+      {entries.map(([key, value]) => (
+        <div key={key} className="ai-summary-line">
+          <span className="ai-summary-key">{prettyLabel(key)}</span>
+          <span className="ai-summary-val">{String(value)}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+export const MessageBubble = ({ message }) => {
   const bubbleClass =
     message.role === "user" ? "ai-bubble-base ai-bubble-user" : "ai-bubble-base ai-bubble-assistant";
 
@@ -17,30 +44,11 @@ export const MessageBubble = ({ message, onConfirm }) => {
 
         {message.type === "data" && message.data && (
           <div className="ai-summary">
-            {typeof message.data.count === "number" && <div>Found {message.data.count} record(s).</div>}
-            {Array.isArray(message.data.members) && <ReminderTable members={message.data.members} />}
-          </div>
-        )}
-
-        {message.type === "confirmation" && (
-          <>
-            <div className="ai-summary">
-              <ReminderTable members={message.data?.members || []} showConfirm={true} showWhatsApp={false} />
-            </div>
-            <div className="ai-confirm-actions">
-              <button type="button" className="ai-confirm-btn" onClick={() => onConfirm("confirm")}>
-                Confirm & Prepare
-              </button>
-              <button type="button" className="ai-cancel-btn" onClick={() => onConfirm("cancel")}>
-                Cancel
-              </button>
-            </div>
-          </>
-        )}
-
-        {message.type === "reminders" && (
-          <div className="ai-summary">
-            <ReminderTable members={message.data?.reminders || []} showWhatsApp />
+            {Array.isArray(message.data.members) && message.data.members.length > 0 ? (
+              <ReminderTable members={message.data.members} />
+            ) : (
+              renderDataSummary(message.data)
+            )}
           </div>
         )}
       </div>

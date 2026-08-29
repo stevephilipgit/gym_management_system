@@ -1,22 +1,38 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import aiConfig from "../config/aiConfig.js";
 
-const limiterMessage = {
-  success: false,
-  message: "Too many requests to AI assistant. Please wait.",
+const keyByAdmin = (req) => {
+  if (req.admin?.id) return `admin:${req.admin.id}`;
+  return ipKeyGenerator()(req);
 };
 
-export const aiRequestLimiter = rateLimit({
+/**
+ * Per-minute rate limit keyed by authenticated admin id.
+ * Falls back to IP if admin is somehow missing (shouldn't happen).
+ */
+export const aiPerMinuteLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 20,
-  message: limiterMessage,
+  max: aiConfig.rateLimitPerMinute,
+  keyGenerator: keyByAdmin,
+  message: {
+    success: false,
+    message: "You're sending requests too quickly. Please try again shortly.",
+  },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-export const aiStrictLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: limiterMessage,
+/**
+ * Per-hour rate limit keyed by admin id.
+ */
+export const aiPerHourLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: aiConfig.rateLimitPerHour,
+  keyGenerator: keyByAdmin,
+  message: {
+    success: false,
+    message: "You've reached the hourly limit. Please try again later.",
+  },
   standardHeaders: true,
   legacyHeaders: false,
 });

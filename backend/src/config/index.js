@@ -42,8 +42,12 @@ const config = {
   },
   ai: {
     enabled: String(process.env.AI_ENABLED).toLowerCase() === 'true',
-    apiKey: process.env.GEMINI_API_KEY,
-    model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+    provider: process.env.AI_PROVIDER || 'gemini',
+    model: process.env.AI_MODEL || 'gemini-1.5-flash',
+    apiKey: process.env.AI_API_KEY || process.env.GEMINI_API_KEY || '',
+    fallbackProvider: process.env.AI_FALLBACK_PROVIDER || '',
+    fallbackModel: process.env.AI_FALLBACK_MODEL || '',
+    fallbackApiKey: process.env.AI_FALLBACK_API_KEY || '',
   },
 };
 

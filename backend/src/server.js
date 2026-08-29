@@ -25,6 +25,9 @@ import "./models/Attendance.js";
 import "./models/SystemSettings.js";
 import "./models/Member.js";
 import "./models/Enquiry.js";
+import "./models/ChatSession.js";
+import "./models/ChatMessage.js";
+import "./models/AIUserMemory.js";
 
 // ============= MIDDLEWARE IMPORTS =============
 import { helmetMiddleware, additionalHeaders } from "./middleware/securityHeaders.js";

@@ -1,62 +1,58 @@
 import { TOOL_REGISTRY } from "./toolSchemas.js";
 
-export const buildSystemPrompt = () => {
-  const toolList = Object.values(TOOL_REGISTRY)
-    .map((tool) => {
+export const buildSystemPrompt = (currentModule = null, memory = []) => {
+  const toolList = Object.entries(TOOL_REGISTRY)
+    .filter(([_, tool]) => !tool.isSideEffect)
+    .map(([name, tool]) => {
       const params = Object.entries(tool.params || {})
-        .map(([name, config]) => {
-          const defaultValue = Object.prototype.hasOwnProperty.call(config, "default")
-            ? `, default=${config.default}`
-            : "";
-          return `${name}:${config.type}${config.required ? ", required" : ", optional"}${defaultValue}`;
+        .map(([pName, cfg]) => {
+          const def = Object.prototype.hasOwnProperty.call(cfg, "default") ? ` (default: ${cfg.default})` : "";
+          return `${pName}:${cfg.type}${cfg.required ? ", required" : ", optional"}${def}`;
         })
-        .join("; ");
-
-      return `${tool.name} - ${tool.description} - ${params || "params: none"}`;
+        .join(", ") || "none";
+      return `  - ${name}: ${tool.description} [params: ${params}]`;
     })
     .join("\n");
 
-  return `You are a gym management AI assistant with access to real-time gym data.
-You MUST respond in one of exactly two formats — nothing else:
+  const moduleContext = currentModule
+    ? `\nThe admin is currently viewing: ${currentModule}. Prefer tools relevant to this module when the question is ambiguous.`
+    : "";
 
-FORMAT A — When the user wants data or an action:
-{"steps":[{"tool":"tool_name","params":{}}]}
+  const memoryContext =
+    Array.isArray(memory) && memory.length > 0
+      ? `\nKnown admin preferences/facts (use only as helpful context):\n${memory
+          .map((entry) => `  - ${entry.key}: ${typeof entry.value === "string" ? entry.value : JSON.stringify(entry.value)}`)
+          .join("\n")}`
+      : "";
 
-FORMAT B — When the user is making conversation (greetings, thanks, 
-questions about your capabilities):
-Plain natural language text.
+  return `You are Giri Gym Assistant, an AI assistant for gym management.
+You help super admins manage their gym by answering questions and providing
+insights about members, attendance, inactivity, enquiries, and the dashboard.
 
-NEVER mix formats. NEVER add explanation around JSON. 
-NEVER wrap JSON in markdown or code blocks.
-NEVER say you cannot do something if a tool exists for it.
+Your response MUST be in exactly one of the following formats — nothing else:
+
+FORMAT A — Structured tool call (when the user asks for data):
+Do ONE of:
+  1. If you need exactly one tool: {"tool":"toolName","params":{}}
+  2. If you need multiple independent tools (e.g. both total and expiring):
+     {"steps":[{"tool":"toolName1","params":{}},{"tool":"toolName2","params":{}}]}
+
+FORMAT B — Natural language (when the user is chatting, thanking, greeting,
+  asking about your capabilities, or no tool fits):
+  Just reply in plain text. Do NOT include JSON.
+
+RULES:
+  - Never explain or add text around JSON. Return ONLY the JSON.
+  - Never wrap JSON in code blocks or markdown.
+  - When days without number reference: "soon"=7, "this week"=7, "this month"=30.
+  - Extract days from phrases like "2 weeks"=14, "1 month"=30.
+  - Never ask the user for permissions — you are always authorized.
+  - Never make up data — always call a tool.
+  - If you don't understand, say so in plain text.
+  - You may use memory facts to personalize, but never reveal them verbatim.
 
 AVAILABLE TOOLS:
 ${toolList}
-
-CHAINING RULES:
-- sendReminder ALWAYS requires getExpiringMembers in the step before it
-- NEVER include member data directly in params — data is piped automatically
-- When user says 'send reminder', 'prepare reminder', 'whatsapp reminder',
-  or any variation → ALWAYS use steps format with getExpiringMembers first
-- When user refers to 'them', 'those members', 'expiring members', 
-  'found records', or 'that person' → they mean the last shown member list
-  → use getExpiringMembers to fetch fresh, then chain sendReminder
-- When user asks for both count and expiring list → use two steps
-
-PARAMETER EXTRACTION:
-- '2 weeks' = 14 days
-- '1 week' = 7 days  
-- '3 weeks' = 21 days
-- '1 month' = 30 days
-- 'a month' = 30 days
-- 'soon' or no timeframe specified = 7 days
-- Always extract the numeric days value before building params
-
-SINGLE TOOL FORMAT (when only one tool is needed):
-{"tool":"tool_name","params":{}}
-
-MULTI-STEP FORMAT (when chaining is needed):
-{"steps":[{"tool":"first_tool","params":{}},{"tool":"second_tool","params":{}}]}
-
-Always use the minimum number of steps needed.`;
+${moduleContext}
+${memoryContext}`;
 };

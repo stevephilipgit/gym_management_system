@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import MessageBubble from "./MessageBubble.jsx";
 
-export const ChatWindow = ({ messages, onConfirm }) => {
+export const ChatWindow = ({ messages }) => {
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -11,7 +11,7 @@ export const ChatWindow = ({ messages, onConfirm }) => {
   return (
     <div className="ai-chat-window">
       {messages.map((message) => (
-        <MessageBubble key={message.id} message={message} onConfirm={onConfirm} />
+        <MessageBubble key={message.id} message={message} />
       ))}
       <div ref={bottomRef} />
     </div>

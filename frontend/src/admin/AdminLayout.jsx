@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 import AdminSidebar from "./AdminSidebar";
 import AdminHeader from "./AdminHeader";
 import useMediaQuery from "../hooks/useMediaQuery.js";
+import FloatingAIAssistant from "./features/ai-assistant/FloatingAIAssistant.jsx";
 
 export default function AdminLayout({ admin }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -43,6 +44,10 @@ export default function AdminLayout({ admin }) {
           <Outlet />
         </div>
       </main>
+
+      {/* Global floating AI assistant — superadmin-only, appears on supported
+          modules only. Positioned fixed; isolated from sidebar/header layout. */}
+      <FloatingAIAssistant />
     </div>
   );
 }

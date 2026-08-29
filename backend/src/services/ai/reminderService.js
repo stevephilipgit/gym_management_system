@@ -1,4 +1,4 @@
-import { callGemini } from "./aiClient.js";
+import { generateWithFallback } from "./providerFactory.js";
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
@@ -36,11 +36,11 @@ Return only the message text, nothing else.`;
 
   try {
     return (
-      await callGemini(
-        "You generate short gym reminder messages. Reply with only the message text.",
-        [],
-        prompt
-      )
+      await generateWithFallback({
+        systemPrompt: "You generate short gym reminder messages. Reply with only the message text.",
+        history: [],
+        userMessage: prompt,
+      })
     ).trim();
   } catch {
     return getFallbackMessage(member, daysRemaining);

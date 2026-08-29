@@ -4,7 +4,6 @@ import {
   FiActivity,
   FiBarChart2,
   FiClock,
-  FiCpu,
   FiHome,
   FiInbox,
   FiLogOut,
@@ -42,7 +41,6 @@ const NAV_GROUPS = [
     items: [
       { label: "Packages",     icon: <FiPackage />,  path: "/admin/packages",     roles: ["superadmin"] },
       { label: "Diet Manager", icon: <FiActivity />, path: "/admin/diet-manager" },
-      { label: "AI Assistant", icon: <FiCpu />,      path: "/admin/ai-assistant", roles: ["superadmin"] },
       { label: "Form Fields",  icon: <FiSliders />,  path: "/admin/fields",       roles: ["superadmin"] },
     ],
   },
