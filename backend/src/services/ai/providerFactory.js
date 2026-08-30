@@ -82,13 +82,13 @@ export const generateWithFallback = async (generateOptions) => {
   let lastError = null;
 
   try {
-    const result = await primaryProvider.generate(generateOptions);
+    const text = await primaryProvider.generate(generateOptions);
     logger.info("[AI] request completed", {
       provider: primaryProvider.name,
       model: primaryProvider.modelName,
       latencyMs: Date.now() - startTime,
     });
-    return result;
+    return { text, source: "ai" };
   } catch (error) {
     lastError = error;
     logger.warn("[AI] primary provider failed", {
@@ -106,13 +106,13 @@ export const generateWithFallback = async (generateOptions) => {
 
   if (fallbackProvider) {
     try {
-      const result = await fallbackProvider.generate(generateOptions);
+      const text = await fallbackProvider.generate(generateOptions);
       logger.info("[AI] fallback provider succeeded", {
         provider: fallbackProvider.name,
         model: fallbackProvider.modelName,
         latencyMs: Date.now() - startTime,
       });
-      return result;
+      return { text, source: "fallback_ai" };
     } catch (error) {
       lastError = error;
       logger.warn("[AI] fallback provider also failed", {

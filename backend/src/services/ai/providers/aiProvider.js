@@ -26,3 +26,25 @@ export class AIProviderError extends Error {
 
 export const isRetryableProviderError = (error) =>
   error instanceof AIProviderError && error.retryable;
+
+/**
+ * Optional capability metadata a provider may expose.
+ * The base interface only requires `generate`; capabilities are forward-looking
+ * and never assumed by existing flows.
+ *
+ * @typedef {object} ProviderCapabilities
+ * @property {boolean} [supportsTools]          e.g. native tool/function calling
+ * @property {boolean} [supportsStructuredOutput] e.g. JSON-mode / structured output
+ * @property {boolean} [supportsStreaming]      e.g. SSE streaming
+ */
+
+/**
+ * Create a default capability set for a provider.
+ * @param {Partial<ProviderCapabilities>} overrides
+ * @returns {ProviderCapabilities}
+ */
+export const createCapabilities = (overrides = {}) => ({
+  supportsTools: Boolean(overrides.supportsTools),
+  supportsStructuredOutput: Boolean(overrides.supportsStructuredOutput),
+  supportsStreaming: Boolean(overrides.supportsStreaming),
+});

@@ -35,13 +35,12 @@ mention exact days remaining, end with a call to action.
 Return only the message text, nothing else.`;
 
   try {
-    return (
-      await generateWithFallback({
-        systemPrompt: "You generate short gym reminder messages. Reply with only the message text.",
-        history: [],
-        userMessage: prompt,
-      })
-    ).trim();
+    const result = await generateWithFallback({
+      systemPrompt: "You generate short gym reminder messages. Reply with only the message text.",
+      history: [],
+      userMessage: prompt,
+    });
+    return String(result.text ?? "").trim();
   } catch {
     return getFallbackMessage(member, daysRemaining);
   }

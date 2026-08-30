@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import logger from "../../../core/logger.js";
-import { AIProviderError, ProviderErrorCodes } from "./aiProvider.js";
+import { AIProviderError, ProviderErrorCodes, createCapabilities } from "./aiProvider.js";
 
 /**
  * Gemini adapter over the already-installed @google/generative-ai SDK.
@@ -14,6 +14,12 @@ export class GeminiProvider {
     this.timeoutMs = timeoutMs || 15000;
     this.client = apiKey ? new GoogleGenerativeAI(apiKey) : null;
     this._model = null;
+    this.capabilities = createCapabilities({
+      supportsTools: true,
+      // Gemini Pro/Flash supports function-declaration
+      supportsStructuredOutput: true, // response_mime_type / json
+      supportsStreaming: false,   // not used by current architecture
+    });
   }
 
   get isConfigured() {
