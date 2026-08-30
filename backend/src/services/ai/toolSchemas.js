@@ -70,6 +70,50 @@ export const TOOL_REGISTRY = {
     requiresConfirmation: false,
     isSideEffect: false,
   },
+  findMembers: {
+    name: "findMembers",
+    description: "Typed, bounded member query with composable filters (gender, payment status, expiry window, status). Returns a compact member list with count.",
+    // All params are collected into a single filters object (no positional args).
+    collectAs: "object",
+    params: {
+      gender: {
+        type: "string",
+        required: false,
+        enum: ["Male", "Female", "Transgender"],
+      },
+      paymentStatus: {
+        type: "string",
+        required: false,
+        enum: ["paid", "not_paid"],
+      },
+      expiresWithinDays: {
+        type: "number",
+        required: false,
+        min: 1,
+        max: 90,
+      },
+      inactiveForDays: {
+        type: "number",
+        required: false,
+        min: 1,
+        max: 365,
+      },
+      status: {
+        type: "string",
+        required: false,
+        enum: ["active", "expired"],
+      },
+      limit: {
+        type: "number",
+        required: false,
+        default: 20,
+        min: 1,
+        max: 20,
+      },
+    },
+    requiresConfirmation: false,
+    isSideEffect: false,
+  },
 };
 
 export const isValidTool = (name) => Object.prototype.hasOwnProperty.call(TOOL_REGISTRY, name);

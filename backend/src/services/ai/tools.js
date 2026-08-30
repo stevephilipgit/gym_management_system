@@ -166,3 +166,56 @@ export const getDashboardSummary = async ({ scope }) => {
     enquiries: enquiries,
   };
 };
+
+/**
+ * Typed, bounded, composable member query.
+ *
+ * Supports follow-up filter composition (gender + payment + expiry window +
+ * status) WITHOUT exposing arbitrary MongoDB filters. Every filter is validated
+ * by the executor (enum/number bounds); projection is AI-safe; rows are capped.
+ *
+ * @param {{ scope: string|string[] }} principalCtx
+ * @param {object} filters typed filters
+ * @returns {{ count: number, total: number, truncated: boolean, members: Array }}
+ */
+export const findMembers = async ({ scope }, filters = {}) => {
+  const filter = scopeFilter(scope);
+
+  if (filters.gender) filter.gender = filters.gender;
+  if (filters.paymentStatus) filter.paymentStatus = filters.paymentStatus;
+  if (filters.status) filter.status = filters.status;
+
+  if (filters.expiresWithinDays) {
+    const window = dayWindow(filters.expiresWithinDays, 7, 1, 90);
+    const today = todayStart();
+    const target = new Date(today);
+    target.setDate(target.getDate() + window);
+    target.setHours(23, 59, 59, 999);
+    filter.validityEnd = { $gte: today, $lte: target };
+  }
+
+  if (filters.inactiveForDays) {
+    const window = dayWindow(filters.inactiveForDays, 30, 1, 365);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - window);
+    filter.$or = [{ lastAttendanceDate: null }, { lastAttendanceDate: { $lt: cutoff } }];
+  }
+
+  const results = await Member.find(filter)
+    .select(PUBLIC_MEMBER_FIELDS)
+    .sort({ validityEnd: 1 })
+    .limit(filters.limit || MAX_ROWS)
+    .lean();
+
+  const members = results.map((member) => ({
+    name: member.fullName,
+    phone: member.phone,
+    gender: member.gender,
+    validTill: member.validityEnd,
+    daysLeft: member.validityEnd
+      ? Math.ceil((member.validityEnd.getTime() - todayStart().getTime()) / 86400000)
+      : null,
+  }));
+
+  return { ...boundedResult(members.length, members), members };
+};

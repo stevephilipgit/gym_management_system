@@ -64,6 +64,8 @@ export const executeTool = async (toolName, params = {}, principal = null) => {
   }
 
   const paramDefinitions = TOOL_REGISTRY[toolName].params || {};
+  const collectAsObject = TOOL_REGISTRY[toolName].collectAs === "object";
+  const collected = {};
   const validatedArgs = [];
 
   for (const [paramName, definition] of Object.entries(paramDefinitions)) {
@@ -88,11 +90,23 @@ export const executeTool = async (toolName, params = {}, principal = null) => {
       if (typeof definition.max === "number" && value > definition.max) {
         throw new Error(`Param ${paramName} must be <= ${definition.max}`);
       }
-      validatedArgs.push(value);
+      if (Array.isArray(definition.enum) && !definition.enum.includes(value)) {
+        throw new Error(
+          `Param ${paramName} must be one of: ${definition.enum.join(", ")}`
+        );
+      }
+      if (collectAsObject) {
+        collected[paramName] = value;
+      } else {
+        validatedArgs.push(value);
+      }
     }
   }
 
   const scope = resolveScope(principal);
+  if (collectAsObject) {
+    return toolFn({ scope }, collected);
+  }
   return toolFn({ scope }, ...validatedArgs);
 };
 
