@@ -15,12 +15,45 @@ const matchesType = (value, expectedType) => {
 };
 
 /**
+ * Resolve the scope for a tool call.
+ *
+ * SECURITY: a missing principal is DENIED. There is no implicit "all".
+ *   - User principal (type="user"): scope comes from the authenticated admin.
+ *   - System principal (type="system"): must explicitly carry scope "all".
+ *
+ * @param {object|null} principal
+ * @returns {"all"|string[]}
+ */
+const resolveScope = (principal) => {
+  if (!principal || typeof principal !== "object") {
+    throw new Error("Tool execution requires an explicit principal");
+  }
+
+  if (principal.type === "system") {
+    // Internal/system caller — must explicitly declare its scope.
+    const scope = principal.systemScope || principal.scope;
+    if (Array.isArray(scope) && scope.length > 0) return scope;
+    if (scope === "all") return "all";
+    throw new Error("System principal must declare an explicit scope");
+  }
+
+  if (principal.type === "user") {
+    const scope = principal.scope;
+    if (Array.isArray(scope) && scope.length > 0) return scope;
+    if (scope === "all") return "all";
+    throw new Error("User principal missing a valid scope");
+  }
+
+  throw new Error("Unknown principal type");
+};
+
+/**
  * Execute a whitelisted tool with validated params.
  * @param {string} toolName
  * @param {object} params raw params (may include strings; numbers are coerced)
- * @param {{ scope: string|string[] }} adminContext authenticated admin context (scope enforcement)
+ * @param {object|null} principal explicit caller identity — REQUIRED
  */
-export const executeTool = async (toolName, params = {}, adminContext = {}) => {
+export const executeTool = async (toolName, params = {}, principal = null) => {
   if (!isValidTool(toolName)) {
     throw new Error(`Unknown tool: ${toolName}`);
   }
@@ -59,14 +92,8 @@ export const executeTool = async (toolName, params = {}, adminContext = {}) => {
     }
   }
 
-  // Normalize scope: superadmin "all" and headless/system jobs (no admin
-  // context) see everything; an explicit gender list is honored. Never trusts
-  // the model for scope — only the authenticated admin context.
-  const scope = adminContext?.scope;
-  const normalizedScope =
-    Array.isArray(scope) && scope.length > 0 ? scope : "all";
-
-  return toolFn({ scope: normalizedScope }, ...validatedArgs);
+  const scope = resolveScope(principal);
+  return toolFn({ scope }, ...validatedArgs);
 };
 
 export default executeTool;
