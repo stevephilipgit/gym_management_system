@@ -100,3 +100,18 @@ export const getHistory = async (sessionId, ownerUserId) => {
     parts: [{ text: msg.content }],
   }));
 };
+
+/**
+ * Get raw message documents for a session (frontend rendering).
+ * Ownership enforced — returns null if the admin does not own the session.
+ */
+export const getSessionMessages = async (sessionId, ownerUserId) => {
+  const session = await ChatSession.findOne({ sessionId, ownerUserId });
+  if (!session) return null;
+
+  return ChatMessage.find({ sessionId, ownerUserId })
+    .sort({ createdAt: 1 })
+    .limit(MAX_SCREEN_HISTORY_PAIRS * 2)
+    .select("role content messageType data createdAt")
+    .lean();
+};

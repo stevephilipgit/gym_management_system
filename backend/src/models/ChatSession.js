@@ -28,6 +28,11 @@ const chatSessionSchema = new mongoose.Schema(
       default: Date.now,
       index: true,
     },
+    // Atomic message counter for deterministic ordering.
+    messageSeq: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true }
 );

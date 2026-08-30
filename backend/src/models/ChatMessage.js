@@ -40,6 +40,13 @@ const chatMessageSchema = new mongoose.Schema(
       default: Date.now,
       index: true,
     },
+    // Monotonic per-session ordering; primary sort key so concurrent requests
+    // (Tab A / Tab B) cannot interleave out of order.
+    sequence: {
+      type: Number,
+      default: 0,
+      index: true,
+    },
   },
   { timestamps: true }
 );
