@@ -57,16 +57,23 @@ export const archiveSession = async (sessionId, ownerUserId) => {
 };
 
 /**
- * Update session lastActivityAt timestamp.
- */
-export const touchSession = async (sessionId) => {
-  await ChatSession.updateOne({ sessionId }, { lastActivityAt: new Date() });
-};
-
-/**
  * Add a message to a chat session. Ownership enforced via session lookup.
+ *
+ * Concurrency-safe: allocates the sequence atomically from the owning
+ * ChatSession's messageSeq counter ($inc), so two simultaneous requests for
+ * the same session can never receive the same sequence or interleave out of
+ * order. If the session does not exist (or isn't owned), returns null.
  */
 export const addMessage = async (sessionId, ownerUserId, role, content, messageType = "text", data = null, providerMetadata = null) => {
+  // Atomically allocate the next sequence for THIS session+owner.
+  const session = await ChatSession.findOneAndUpdate(
+    { sessionId, ownerUserId },
+    { $inc: { messageSeq: 1 }, lastActivityAt: new Date() },
+    { new: true }
+  );
+
+  if (!session) return null;
+
   const message = await ChatMessage.create({
     sessionId,
     ownerUserId,
@@ -75,8 +82,8 @@ export const addMessage = async (sessionId, ownerUserId, role, content, messageT
     messageType,
     data,
     providerMetadata,
+    sequence: session.messageSeq,
   });
-  await touchSession(sessionId);
   return message;
 };
 
@@ -89,7 +96,7 @@ export const getHistory = async (sessionId, ownerUserId) => {
   if (!session) return null;
 
   const messages = await ChatMessage.find({ sessionId, ownerUserId })
-    .sort({ createdAt: 1 })
+    .sort({ sequence: 1, createdAt: 1 })
     .lean();
 
   const limit = MAX_SCREEN_HISTORY_PAIRS * 2;
@@ -110,8 +117,93 @@ export const getSessionMessages = async (sessionId, ownerUserId) => {
   if (!session) return null;
 
   return ChatMessage.find({ sessionId, ownerUserId })
-    .sort({ createdAt: 1 })
+    .sort({ sequence: 1, createdAt: 1 })
     .limit(MAX_SCREEN_HISTORY_PAIRS * 2)
     .select("role content messageType data createdAt")
     .lean();
+};
+
+/**
+ * Archive active sessions that have been inactive for `archiveAfterDays`.
+ *
+ * Bounded + restart-safe: processes in batches of `batchSize`, only touching
+ * owner-scoped documents older than the threshold. Running twice is harmless
+ * (already-archived sessions are skipped by the active filter).
+ *
+ * @returns {Promise<number>} number of sessions archived
+ */
+export const archiveInactiveSessions = async ({ archiveAfterDays, batchSize = 50 } = {}) => {
+  if (!archiveAfterDays || archiveAfterDays <= 0) return 0;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - archiveAfterDays);
+
+  let archived = 0;
+  // Repeated bounded batches until none remain (idempotent, crash-safe).
+  for (;;) {
+    const batch = await ChatSession.find({
+      status: "active",
+      lastActivityAt: { $lt: cutoff },
+    })
+      .select("_id")
+      .limit(batchSize)
+      .lean();
+
+    if (batch.length === 0) break;
+
+    const ids = batch.map((s) => s._id);
+    const res = await ChatSession.updateMany(
+      { _id: { $in: ids }, status: "active" },
+      { $set: { status: "archived" } }
+    );
+    archived += res.modifiedCount || 0;
+    if (batch.length < batchSize) break;
+  }
+  return archived;
+};
+
+/**
+ * Permanently delete archived sessions (and their messages) older than
+ * `retentionDays`. Memory (AIUserMemory) is NEVER touched.
+ *
+ * Bounded + restart-safe: batches of `batchSize`; a crash mid-way is resumed
+ * on the next run because deletion is keyed on the same predicate.
+ *
+ * @returns {Promise<number>} number of sessions deleted
+ */
+export const deleteExpiredSessions = async ({ retentionDays, batchSize = 50 } = {}) => {
+  if (!retentionDays || retentionDays <= 0) return 0;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - retentionDays);
+
+  let deleted = 0;
+  for (;;) {
+    const batch = await ChatSession.find({
+      status: "archived",
+      updatedAt: { $lt: cutoff },
+    })
+      .select("sessionId _id")
+      .limit(batchSize)
+      .lean();
+
+    if (batch.length === 0) break;
+
+    const sessionIds = batch.map((s) => s.sessionId);
+    const ids = batch.map((s) => s._id);
+
+    await ChatMessage.deleteMany({ sessionId: { $in: sessionIds } });
+    const res = await ChatSession.deleteMany({ _id: { $in: ids } });
+    deleted += res.deletedCount || 0;
+    if (batch.length < batchSize) break;
+  }
+  return deleted;
+};
+
+/**
+ * Run the full lifecycle: archive stale active sessions, then purge expired
+ * archived sessions. Idempotent and bounded; safe to call from a cron.
+ */
+export const runSessionLifecycle = async ({ archiveAfterDays, retentionDays } = {}) => {
+  const archived = await archiveInactiveSessions({ archiveAfterDays });
+  const deleted = await deleteExpiredSessions({ retentionDays });
+  return { archived, deleted };
 };

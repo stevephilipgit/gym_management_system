@@ -64,6 +64,10 @@ import { cleanupOldEnquiries } from "./controllers/enquiryController.js";
 import cron from "node-cron";
 import { autoCloseJob, startupRecoveryJob, staleAutoCloseJob } from "./jobs/attendanceJobs.js";
 
+// ✅ AI: session retention lifecycle
+import aiConfig from "./config/aiConfig.js";
+import { runSessionLifecycle } from "./services/ai/sessionService.js";
+
 dotenv.config();
 const app = express();
 
@@ -273,6 +277,21 @@ const startServer = async () => {
       }
     });
     logger.info("✅ Enquiry cleanup cron scheduled at 02:00 daily");
+
+    // ✅ AI: daily session lifecycle (archive inactive → purge expired archived).
+    // Idempotent + bounded + restart-safe; never touches AIUserMemory.
+    cron.schedule("0 3 * * *", async () => {
+      try {
+        const result = await runSessionLifecycle({
+          archiveAfterDays: aiConfig.sessionArchiveDays,
+          retentionDays: aiConfig.sessionRetentionDays,
+        });
+        logger.info("[AISessionCleanup] Lifecycle run", result);
+      } catch (err) {
+        logger.error("[AISessionCleanup] Job failed", { error: err.message });
+      }
+    });
+    logger.info("✅ AI session lifecycle cron scheduled at 03:00 daily");
 
     // Start listening
     server = app.listen(config.app.port, () => {
