@@ -1,19 +1,25 @@
 import Member from "../../models/Member.js";
 import Attendance from "../../models/Attendance.js";
 import Enquiry from "../../models/Enquiry.js";
+import aiConfig from "../../config/aiConfig.js";
 
 /**
  * Controlled data-access tools for the AI subsystem.
  *
- * IMPORTANT:
- *  - Every tool enforces the authenticated admin's gender scope (never trusts
- *    the model or client).
- *  - Only minimal projection fields are returned — never Aadhaar, photo,
- *    medical records, or internal identifiers unless required.
+ * SAFETY GUARANTEES:
+ *  - Every tool enforces the authenticated principal's gender scope (never
+ *    trusts the model or client).
+ *  - Only minimal AI-safe projection fields are returned — never Aadhaar,
+ *    photo, medical records, internal identifiers, or secrets.
+ *  - Result rows are bounded by `maxToolResultRows`; a `truncated` flag tells
+ *    the caller the dataset was larger than what was returned.
  *  - The model can never run arbitrary MongoDB queries.
  */
 
 const PUBLIC_MEMBER_FIELDS = "fullName phone validityEnd gender gymPlan status";
+
+// Cap on rows returned to the model/context.
+const MAX_ROWS = aiConfig.maxToolResultRows;
 
 const dayWindow = (value, fallback, min, max) => {
   const n = Number(value);
@@ -27,15 +33,23 @@ const todayStart = () => {
   return d;
 };
 
+const scopeFilter = (scope) => (scope === "all" ? {} : { gender: { $in: scope } });
+
+// Small helper that marks truncated result sets consistently.
+const boundedResult = (count, rows) => ({
+  count,
+  truncated: count > rows.length,
+  total: count,
+});
+
 export const getTotalMembers = async ({ scope }) => {
-  const filter = scope === "all" ? {} : { gender: { $in: scope } };
-  const count = await Member.countDocuments(filter);
+  const count = await Member.countDocuments(scopeFilter(scope));
   return { count };
 };
 
 export const getActiveMembersCount = async ({ scope }) => {
   const filter = {
-    ...(scope === "all" ? {} : { gender: { $in: scope } }),
+    ...scopeFilter(scope),
     status: "active",
     paymentStatus: "paid",
   };
@@ -51,13 +65,14 @@ export const getExpiringMembers = async ({ scope }, days = 7) => {
   target.setHours(23, 59, 59, 999);
 
   const filter = {
-    ...(scope === "all" ? {} : { gender: { $in: scope } }),
+    ...scopeFilter(scope),
     validityEnd: { $gte: today, $lte: target },
   };
 
   const results = await Member.find(filter)
     .select(PUBLIC_MEMBER_FIELDS)
     .sort({ validityEnd: 1 })
+    .limit(MAX_ROWS)
     .lean();
 
   const members = results.map((member) => ({
@@ -68,7 +83,11 @@ export const getExpiringMembers = async ({ scope }, days = 7) => {
     daysLeft: Math.ceil((member.validityEnd.getTime() - today.getTime()) / 86400000),
   }));
 
-  return { count: members.length, members, daysWindow: window };
+  return {
+    ...boundedResult(members.length, members),
+    members,
+    daysWindow: window,
+  };
 };
 
 export const getTodayAttendanceCount = async ({ scope }) => {
@@ -81,7 +100,7 @@ export const getTodayAttendanceCount = async ({ scope }) => {
   };
 
   if (scope !== "all") {
-    const memberIds = await Member.find({ gender: { $in: scope } }).select("_id").lean();
+    const memberIds = await Member.find(scopeFilter(scope)).select("_id").lean();
     query.memberId = { $in: memberIds.map((m) => m._id) };
   }
 
@@ -95,7 +114,7 @@ export const getInactiveMembers = async ({ scope }, days = 30) => {
   cutoff.setDate(cutoff.getDate() - window);
 
   const filter = {
-    ...(scope === "all" ? {} : { gender: { $in: scope } }),
+    ...scopeFilter(scope),
     status: "active",
     $or: [{ lastAttendanceDate: null }, { lastAttendanceDate: { $lt: cutoff } }],
   };
@@ -103,16 +122,17 @@ export const getInactiveMembers = async ({ scope }, days = 30) => {
   const results = await Member.find(filter)
     .select(PUBLIC_MEMBER_FIELDS)
     .sort({ lastAttendanceDate: 1 })
+    .limit(MAX_ROWS)
     .lean();
 
-  const members = results.slice(0, 20).map((member) => ({
+  const members = results.map((member) => ({
     name: member.fullName,
     phone: member.phone,
     gender: member.gender,
     lastAttendance: member.lastAttendanceDate,
   }));
 
-  return { count: results.length, members };
+  return { ...boundedResult(members.length, members), members };
 };
 
 export const getEnquiriesSummary = async () => {
