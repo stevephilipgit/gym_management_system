@@ -45,8 +45,8 @@ export const loadSession = async (req, res) => {
     return res.status(404).json({ success: false, message: "Session not found" });
   }
 
-  const history = await sessionService.getHistory(id, req.admin.id);
-  return res.status(200).json({ success: true, data: { session, history } });
+  const messages = await sessionService.getSessionMessages(id, req.admin.id);
+  return res.status(200).json({ success: true, data: { session, history: messages } });
 };
 
 export const archiveSession = async (req, res) => {

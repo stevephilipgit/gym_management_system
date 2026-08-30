@@ -4,8 +4,11 @@ import { generateWithFallback } from "./providerFactory.js";
 import { buildSystemPrompt } from "./promptTemplates.js";
 import { executeTool } from "./toolExecutor.js";
 import { isValidTool } from "./toolSchemas.js";
+import { fitHistoryToBudget, serializeMemoryBlock } from "./contextBudget.js";
 import * as sessionService from "./sessionService.js";
 import * as memoryService from "./memoryService.js";
+
+let contextTruncationCount = 0;
 
 const injectionPatterns = [
   /ignore (previous|all|above) instructions/i,
@@ -93,33 +96,33 @@ const parseModelResponse = (text) => {
   }
 };
 
-const buildRuleBasedResponse = async (cleanMessage, adminContext) => {
+const buildRuleBasedResponse = async (cleanMessage, principal) => {
   const normalized = cleanMessage.toLowerCase();
 
   if (/(total|how many|count)/.test(normalized)) {
-    const data = await executeTool("getTotalMembers", {}, adminContext);
-    return { text: buildToolText("getTotalMembers", data), data, source: "rule-based" };
+    const data = await executeTool("getTotalMembers", {}, principal);
+    return { text: buildToolText("getTotalMembers", data), data, source: "deterministic" };
   }
 
   if (/(expiring|expire|renewal)/.test(normalized)) {
     const days = Number((normalized.match(/\d+/) || [7])[0]) || 7;
-    const data = await executeTool("getExpiringMembers", { days }, adminContext);
-    return { text: buildToolText("getExpiringMembers", data), data, source: "rule-based" };
+    const data = await executeTool("getExpiringMembers", { days }, principal);
+    return { text: buildToolText("getExpiringMembers", data), data, source: "deterministic" };
   }
 
   if (/(attendance|checked in|check.?in)/.test(normalized)) {
-    const data = await executeTool("getTodayAttendanceCount", {}, adminContext);
-    return { text: buildToolText("getTodayAttendanceCount", data), data, source: "rule-based" };
+    const data = await executeTool("getTodayAttendanceCount", {}, principal);
+    return { text: buildToolText("getTodayAttendanceCount", data), data, source: "deterministic" };
   }
 
   if (/(enquir)/.test(normalized)) {
-    const data = await executeTool("getEnquiriesSummary", {}, adminContext);
-    return { text: buildToolText("getEnquiriesSummary", data), data, source: "rule-based" };
+    const data = await executeTool("getEnquiriesSummary", {}, principal);
+    return { text: buildToolText("getEnquiriesSummary", data), data, source: "deterministic" };
   }
 
   return {
     text: "I can help you with member counts, expiring memberships, attendance, inactivity, and enquiries. Try asking a question about your gym data.",
-    source: "rule-based",
+    source: "deterministic",
   };
 };
 
@@ -182,21 +185,26 @@ export const processMessage = async ({ message, sessionId, currentModule, admin 
       data: null,
       source: "blocked",
     };
-    await sessionService.addMessage(ownerUserId, sessionId, "user", cleanMessage, "text");
-    await sessionService.addMessage(ownerUserId, sessionId, "assistant", blocked.text, "text");
+    await sessionService.addMessage(sessionId, ownerUserId, "user", cleanMessage, "text");
+    await sessionService.addMessage(sessionId, ownerUserId, "assistant", blocked.text, "text");
     return { sessionId, ...blocked };
   }
 
-  // Build admin context for scope-aware tool execution.
-  const adminContext = { scope: admin.scope === "all" ? "all" : admin.scope };
+  // Build the explicit user principal for scope-aware tool execution.
+  // A missing/invalid principal is DENIED — there is no implicit "all".
+  const principal = {
+    type: "user",
+    scope: admin.scope === "all" ? "all" : admin.scope,
+    adminId: ownerUserId,
+  };
 
   // Rule-based fallback when AI is disabled.
   if (!aiConfig.enabled) {
-    const fallback = await buildRuleBasedResponse(cleanMessage, adminContext);
-    await sessionService.addMessage(ownerUserId, sessionId, "user", cleanMessage, "text");
+    const fallback = await buildRuleBasedResponse(cleanMessage, principal);
+    await sessionService.addMessage(sessionId, ownerUserId, "user", cleanMessage, "text");
     await sessionService.addMessage(
-      ownerUserId,
       sessionId,
+      ownerUserId,
       "assistant",
       fallback.text,
       fallback.data ? "data" : "text",
@@ -210,22 +218,48 @@ export const processMessage = async ({ message, sessionId, currentModule, admin 
   const memory = await memoryService.listMemory(ownerUserId);
 
   const systemPrompt = buildSystemPrompt(module, memory);
+  const memoryBlock = serializeMemoryBlock(memory);
 
-  let aiText;
+  // Enforce the hard context budget BEFORE calling the provider. The current
+  // message and system instructions are never truncated; only older history
+  // is dropped (newest kept first, never split mid-message).
+  const budgeted = fitHistoryToBudget({
+    systemPrompt,
+    memoryBlock,
+    currentMessage: cleanMessage,
+    history: history || [],
+    budgetChars: aiConfig.maxContextLength,
+  });
+
+  if (budgeted.truncated) {
+    contextTruncationCount += 1;
+    logger.warn("[AI] context budget truncation", {
+      droppedMessages: budgeted.droppedCount,
+      usedChars: budgeted.usedChars,
+      budgetChars: budgeted.budgetChars,
+      truncationCount: contextTruncationCount,
+    });
+  }
+
+  let aiResult;
   try {
-    aiText = await generateWithFallback({ systemPrompt, history, userMessage: cleanMessage });
+    aiResult = await generateWithFallback({
+      systemPrompt,
+      history: budgeted.history,
+      userMessage: cleanMessage,
+    });
   } catch (error) {
     logger.warn("[AI] provider chain failed", { error: error.message });
-    const fallback = await buildRuleBasedResponse(cleanMessage, adminContext);
+    const fallback = await buildRuleBasedResponse(cleanMessage, principal);
     const userFacing = {
       text: fallback.text,
       data: fallback.data || null,
-      source: "fallback",
+      source: "deterministic",
     };
-    await sessionService.addMessage(ownerUserId, sessionId, "user", cleanMessage, "text");
+    await sessionService.addMessage(sessionId, ownerUserId, "user", cleanMessage, "text");
     await sessionService.addMessage(
-      ownerUserId,
       sessionId,
+      ownerUserId,
       "assistant",
       userFacing.text,
       userFacing.data ? "data" : "text",
@@ -234,6 +268,8 @@ export const processMessage = async ({ message, sessionId, currentModule, admin 
     return { sessionId, ...userFacing };
   }
 
+  const aiText = aiResult.text;
+  const aiSource = aiResult.source === "fallback_ai" ? "fallback_ai" : "ai";
   const { parsed, isJson, text: plainText } = parseModelResponse(aiText);
 
   let userResponse;
@@ -244,7 +280,7 @@ export const processMessage = async ({ message, sessionId, currentModule, admin 
     for (const step of parsed.steps.slice(0, 5)) {
       if (!step?.tool || !isValidTool(step.tool)) continue;
       try {
-        const stepData = await executeTool(step.tool, step.params || {}, adminContext);
+        const stepData = await executeTool(step.tool, step.params || {}, principal);
         data[step.tool] = stepData;
         results.push({ tool: step.tool, params: step.params || {} });
       } catch (error) {
@@ -255,23 +291,23 @@ export const processMessage = async ({ message, sessionId, currentModule, admin 
     userResponse = {
       text,
       data: results.length ? { results, ...data } : null,
-      source: "ai",
+      source: aiSource,
     };
   } else if (isJson && parsed.tool && isValidTool(parsed.tool)) {
-    const toolData = await executeTool(parsed.tool, parsed.params || {}, adminContext);
+    const toolData = await executeTool(parsed.tool, parsed.params || {}, principal);
     userResponse = {
       text: buildToolText(parsed.tool, toolData),
       data: toolData,
-      source: "ai",
+      source: aiSource,
     };
   } else {
-    userResponse = { text: plainText || aiText.trim(), data: null, source: "ai" };
+    userResponse = { text: plainText || aiText.trim(), data: null, source: aiSource };
   }
 
-  await sessionService.addMessage(ownerUserId, sessionId, "user", cleanMessage, "text");
+  await sessionService.addMessage(sessionId, ownerUserId, "user", cleanMessage, "text");
   await sessionService.addMessage(
-    ownerUserId,
     sessionId,
+    ownerUserId,
     "assistant",
     userResponse.text,
     userResponse.data ? "data" : "text",
