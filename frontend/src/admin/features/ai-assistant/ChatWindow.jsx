@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import MessageBubble from "./MessageBubble.jsx";
 
-export const ChatWindow = ({ messages }) => {
+export const ChatWindow = ({ messages, children }) => {
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -13,6 +13,7 @@ export const ChatWindow = ({ messages }) => {
       {messages.map((message) => (
         <MessageBubble key={message.id} message={message} />
       ))}
+      {children}
       <div ref={bottomRef} />
     </div>
   );

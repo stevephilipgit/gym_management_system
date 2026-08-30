@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FiMessageCircle, FiX, FiPlus } from "react-icons/fi";
+import { FiMessageCircle, FiX, FiPlus, FiTrash2 } from "react-icons/fi";
 import { useLocation } from "react-router-dom";
 import apiClient from "../../../utils/apiClient.js";
 import ChatWindow from "./ChatWindow.jsx";
@@ -31,6 +31,9 @@ const createMessage = (role, content, type = "text", data = null) => ({
   timestamp: new Date().toISOString(),
 });
 
+const WELCOME_TEXT =
+  "Hi! I'm Giri Gym Assistant. Ask me about members, expirations, attendance, inactivity, or enquiries — or tap a suggestion below.";
+
 export const FloatingAIAssistant = () => {
   const admin = useAdmin();
   const location = useLocation();
@@ -45,11 +48,15 @@ export const FloatingAIAssistant = () => {
   const [error, setError] = useState(null);
   const [sessionId, setSessionId] = useState(null);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [capabilities, setCapabilities] = useState([]);
+  const [memory, setMemory] = useState(null); // null = not loaded
+  const [showMemory, setShowMemory] = useState(false);
 
   const inputRef = useRef(null);
   const adminIdRef = useRef(admin?.id);
+  const abortRef = useRef(null);
 
-  // Reset the widget when the logged-in admin changes.
+  // ── Admin change → full reset ──────────────────────────────
   useEffect(() => {
     if (adminIdRef.current !== admin?.id) {
       adminIdRef.current = admin?.id;
@@ -58,10 +65,30 @@ export const FloatingAIAssistant = () => {
       setMessages([]);
       setHistoryLoaded(false);
       setError(null);
+      setCapabilities([]);
+      setMemory(null);
+      setShowMemory(false);
     }
   }, [admin?.id]);
 
-  // Restore session id from sessionStorage when the widget becomes available.
+  // ── Load the canonical capability catalog (module-contextual) ──
+  useEffect(() => {
+    if (!shouldRender) return;
+    let cancelled = false;
+    apiClient
+      .get("/ai/capabilities", { params: { module: currentModule || undefined } })
+      .then(({ data }) => {
+        if (!cancelled) setCapabilities(data?.data || []);
+      })
+      .catch(() => {
+        // Capability display is informational; failure is non-fatal.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [shouldRender, currentModule]);
+
+  // ── Restore session id from sessionStorage ─────────────────
   useEffect(() => {
     if (!shouldRender) return;
     if (admin?.id && !sessionId) {
@@ -70,19 +97,30 @@ export const FloatingAIAssistant = () => {
     }
   }, [shouldRender, admin?.id, sessionId]);
 
-  // Focus the input whenever the panel opens.
+  // Focus input whenever panel opens.
   useEffect(() => {
     if (isOpen) inputRef.current?.focus({ preventScroll: true });
   }, [isOpen]);
 
-  // Escape closes the panel.
+  // Escape closes the panel (and aborts an in-flight request).
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === "Escape" && isOpen) setIsOpen(false);
+      if (e.key === "Escape" && isOpen) {
+        abortRef.current?.abort();
+        setIsLoading(false);
+        setIsOpen(false);
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [isOpen]);
+
+  // ── Cleanup on unmount: abort in-flight request, no state leaks ──
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const loadHistory = useCallback(
     async (sid) => {
@@ -90,46 +128,36 @@ export const FloatingAIAssistant = () => {
         const { data } = await apiClient.get(`/ai/sessions/${encodeURIComponent(sid)}`);
         const history = data?.data?.history || [];
         if (history.length === 0) {
-          setMessages([
-            createMessage(
-              "assistant",
-              "Hi! I'm Giri Gym Assistant. Ask me about members, expirations, attendance, inactivity, or enquiries."
-            ),
-          ]);
+          setMessages([createMessage("assistant", WELCOME_TEXT)]);
           return;
         }
         const restored = history.map((msg) =>
           createMessage(msg.role, msg.content, msg.messageType || "text", msg.data || null)
         );
         setMessages(restored);
-      } catch {
-        // Session no longer valid — start a fresh conversation.
-        if (admin?.id) window.sessionStorage.removeItem(sessionKeyFor(admin.id));
-        setSessionId(null);
-        setMessages([
-          createMessage(
-            "assistant",
-            "Hi! I'm Giri Gym Assistant. Ask me about members, expirations, attendance, inactivity, or enquiries."
-          ),
-        ]);
+      } catch (requestError) {
+        // 404 = session gone/expired → safe to start fresh.
+        // Other errors → show an error, don't silently fork history.
+        if (requestError.response?.status === 404) {
+          if (admin?.id) window.sessionStorage.removeItem(sessionKeyFor(admin.id));
+          setSessionId(null);
+          setMessages([createMessage("assistant", WELCOME_TEXT)]);
+        } else {
+          setError("Couldn't restore the conversation. Please try again.");
+        }
       }
     },
     [admin?.id]
   );
 
-  // Load the existing conversation when the panel opens.
+  // Load the existing conversation when the panel opens (only once per session).
   useEffect(() => {
     if (!isOpen || !shouldRender) return;
     if (!historyLoaded) {
       if (sessionId) {
         loadHistory(sessionId);
       } else {
-        setMessages([
-          createMessage(
-            "assistant",
-            "Hi! I'm Giri Gym Assistant. Ask me about members, expirations, attendance, inactivity, or enquiries."
-          ),
-        ]);
+        setMessages([createMessage("assistant", WELCOME_TEXT)]);
       }
       setHistoryLoaded(true);
     }
@@ -143,14 +171,19 @@ export const FloatingAIAssistant = () => {
     [admin?.id]
   );
 
-  const handleSend = async () => {
-    const trimmed = inputText.trim();
+  const handleSend = async (textOverride) => {
+    const trimmed = (textOverride ?? inputText).trim();
     if (!trimmed || isLoading) return;
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setError(null);
+    setShowMemory(false);
     const userMessage = createMessage("user", trimmed);
     setMessages((prev) => [...prev, userMessage]);
-    setInputText("");
+    if (!textOverride) setInputText("");
     setIsLoading(true);
 
     try {
@@ -160,7 +193,8 @@ export const FloatingAIAssistant = () => {
           message: trimmed,
           sessionId: sessionId || undefined,
           currentModule,
-        }
+        },
+        { signal: controller.signal }
       );
 
       const newSessionId = data?.sessionId;
@@ -173,6 +207,7 @@ export const FloatingAIAssistant = () => {
         createMessage("assistant", response.text || "Done.", messageType, response.data || null),
       ]);
     } catch (requestError) {
+      if (requestError.code === "ERR_CANCELED") return; // user closed/navigated away
       if (requestError.response?.status === 429) {
         setError("You're sending requests too quickly. Please try again shortly.");
       } else if (requestError.response?.status === 500 || requestError.response?.status === 502) {
@@ -183,25 +218,72 @@ export const FloatingAIAssistant = () => {
         );
       }
     } finally {
-      setIsLoading(false);
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setIsLoading(false);
+      }
     }
   };
 
-  const handleNewChat = () => {
+  const handleCapabilityClick = (capability) => {
+    // Clickable capability → normal chat pipeline via an example prompt.
+    const prompt = capability?.examplePrompts?.[0] || capability?.displayName;
+    if (prompt) handleSend(prompt);
+  };
+
+  // ── New Chat: archive the current session, then reset transient state ──
+  const handleNewChat = async () => {
+    if (sessionId && admin?.id) {
+      try {
+        await apiClient.post(`/ai/sessions/${encodeURIComponent(sessionId)}/archive`);
+      } catch {
+        // Non-fatal: archiving is best-effort; history remains retrievable.
+      }
+    }
     if (admin?.id) window.sessionStorage.removeItem(sessionKeyFor(admin.id));
     setSessionId(null);
-    setMessages([
-      createMessage(
-        "assistant",
-        "Hi! I'm Giri Gym Assistant. Ask me about members, expirations, attendance, inactivity, or enquiries."
-      ),
-    ]);
+    setMessages([createMessage("assistant", WELCOME_TEXT)]);
     setError(null);
     setHistoryLoaded(true);
+    setShowMemory(false);
     inputRef.current?.focus({ preventScroll: true });
   };
 
+  // ── Close: release transient UI state, keep persisted conversation ──
+  const handleClose = () => {
+    abortRef.current?.abort();
+    setIsLoading(false);
+    setError(null);
+    setShowMemory(false);
+    setIsOpen(false);
+  };
+
+  // ── Memory management (explicit, owner-scoped, separate from close) ──
+  const toggleMemory = async () => {
+    if (!showMemory) {
+      try {
+        const { data } = await apiClient.get("/ai/memory");
+        setMemory(data?.data || []);
+      } catch {
+        setMemory([]);
+      }
+    }
+    setShowMemory((prev) => !prev);
+  };
+
+  const handleClearMemory = async () => {
+    if (!window.confirm("Clear all of your saved AI memory? This cannot be undone.")) return;
+    try {
+      await apiClient.delete("/ai/memory");
+      setMemory([]);
+    } catch {
+      setError("Couldn't clear memory. Please try again.");
+    }
+  };
+
   if (!shouldRender) return null;
+
+  const showSuggestions = messages.length === 0;
 
   return (
     <>
@@ -231,6 +313,15 @@ export const FloatingAIAssistant = () => {
               <button
                 type="button"
                 className="ai-widget-icon-btn"
+                onClick={toggleMemory}
+                aria-label="Memory"
+                title="View / clear AI memory"
+              >
+                <FiTrash2 size={18} />
+              </button>
+              <button
+                type="button"
+                className="ai-widget-icon-btn"
                 onClick={handleNewChat}
                 aria-label="Start new chat"
                 title="New chat"
@@ -240,7 +331,7 @@ export const FloatingAIAssistant = () => {
               <button
                 type="button"
                 className="ai-widget-icon-btn"
-                onClick={() => setIsOpen(false)}
+                onClick={handleClose}
                 aria-label="Close AI Assistant"
                 title="Close"
               >
@@ -249,33 +340,87 @@ export const FloatingAIAssistant = () => {
             </div>
           </div>
 
-          <ChatWindow messages={messages} />
+          {showMemory ? (
+            <div className="ai-memory-panel">
+              <div className="ai-memory-header">
+                <span>Saved memory ({memory?.length || 0})</span>
+                <button
+                  type="button"
+                  className="ai-memory-clear"
+                  onClick={handleClearMemory}
+                  disabled={!memory || memory.length === 0}
+                >
+                  Clear all
+                </button>
+              </div>
+              {!memory || memory.length === 0 ? (
+                <div className="ai-memory-empty">No saved memory.</div>
+              ) : (
+                <ul className="ai-memory-list">
+                  {memory.map((item) => (
+                    <li key={item.key} className="ai-memory-item">
+                      <span className="ai-memory-key">{item.key}</span>
+                      <span className="ai-memory-value">
+                        {typeof item.value === "string"
+                          ? item.value
+                          : JSON.stringify(item.value)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : (
+            <>
+              <ChatWindow messages={messages}>
+                {showSuggestions && capabilities.length > 0 && (
+                  <div className="ai-suggestions">
+                    <span className="ai-suggestions-label">What can I help with?</span>
+                    <div className="ai-suggestions-grid">
+                      {capabilities.map((capability) => (
+                        <button
+                          key={capability.id}
+                          type="button"
+                          className="ai-suggestion-chip"
+                          onClick={() => handleCapabilityClick(capability)}
+                          disabled={isLoading}
+                        >
+                          <span className="ai-suggestion-title">{capability.displayName}</span>
+                          <span className="ai-suggestion-desc">{capability.description}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </ChatWindow>
 
-          <div className="ai-composer">
-            <input
-              ref={inputRef}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder="Ask about members, expirations, attendance…"
-              aria-label="Message Giri Gym Assistant"
-              disabled={isLoading}
-            />
-            <button
-              type="button"
-              className="ai-composer-send"
-              onClick={handleSend}
-              disabled={isLoading || !inputText.trim()}
-              aria-label="Send message"
-            >
-              {isLoading ? "…" : "Send"}
-            </button>
-          </div>
+              <div className="ai-composer">
+                <input
+                  ref={inputRef}
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  placeholder="Ask about members, expirations, attendance…"
+                  aria-label="Message Giri Gym Assistant"
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  className="ai-composer-send"
+                  onClick={() => handleSend()}
+                  disabled={isLoading || !inputText.trim()}
+                  aria-label="Send message"
+                >
+                  {isLoading ? "…" : "Send"}
+                </button>
+              </div>
+            </>
+          )}
 
           {error && <div className="ai-error">{error}</div>}
         </div>

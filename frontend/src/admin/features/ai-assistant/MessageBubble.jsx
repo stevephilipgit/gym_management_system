@@ -37,6 +37,8 @@ export const MessageBubble = ({ message }) => {
   const bubbleClass =
     message.role === "user" ? "ai-bubble-base ai-bubble-user" : "ai-bubble-base ai-bubble-assistant";
 
+  const showTruncation = message.data?.truncated === true;
+
   return (
     <div className="ai-message-block">
       <div className={bubbleClass}>
@@ -48,6 +50,12 @@ export const MessageBubble = ({ message }) => {
               <ReminderTable members={message.data.members} />
             ) : (
               renderDataSummary(message.data)
+            )}
+            {showTruncation && (
+              <div className="ai-truncated-note">
+                Showing the first {message.data.members?.length || message.data.count || 0} of{" "}
+                {message.data.count || message.data.total || "many"} matching records.
+              </div>
             )}
           </div>
         )}

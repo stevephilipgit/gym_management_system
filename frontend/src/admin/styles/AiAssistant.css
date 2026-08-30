@@ -174,6 +174,12 @@
   color: #111;
 }
 
+.ai-truncated-note {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #888;
+}
+
 /* ── Reminder table ──────────────────────────────────────── */
 .ai-reminder-table-wrapper {
   overflow-x: auto;
@@ -261,6 +267,137 @@
   font-size: 12px;
   padding: 4px 16px 12px;
   flex-shrink: 0;
+}
+
+/* ── Capability suggestions (empty conversation) ─────────── */
+.ai-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 8px;
+}
+
+.ai-suggestions-label {
+  font-size: 12px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ai-suggestions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.ai-suggestion-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.ai-suggestion-chip:hover {
+  border-color: var(--accent-color, #ccff00);
+  background: #fafafa;
+}
+
+.ai-suggestion-chip:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ai-suggestion-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111;
+}
+
+.ai-suggestion-desc {
+  font-size: 11px;
+  color: #777;
+  line-height: 1.3;
+}
+
+/* ── Memory panel ────────────────────────────────────────── */
+.ai-memory-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ai-memory-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+
+.ai-memory-clear {
+  border: none;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.ai-memory-clear:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-memory-empty {
+  font-size: 13px;
+  color: #888;
+  padding: 12px 0;
+  text-align: center;
+}
+
+.ai-memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-memory-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 10px;
+}
+
+.ai-memory-key {
+  font-size: 12px;
+  font-weight: 600;
+  color: #111;
+}
+
+.ai-memory-value {
+  font-size: 12px;
+  color: #555;
+  overflow-wrap: anywhere;
 }
 
 /* ── Mobile (full-screen takeover) ───────────────────────── */
