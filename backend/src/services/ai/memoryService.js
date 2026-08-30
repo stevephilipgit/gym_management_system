@@ -11,6 +11,7 @@ export const getMemory = async (ownerUserId, key) => {
 
 /**
  * Set or update a memory value for an admin. Ownership enforced.
+ * Prunes oldest entries after write so AI_MAX_MEMORY_ITEMS stays enforced.
  */
 export const setMemory = async (ownerUserId, key, value, source = "ai") => {
   await AIUserMemory.updateOne(
@@ -18,6 +19,7 @@ export const setMemory = async (ownerUserId, key, value, source = "ai") => {
     { ownerUserId, key, value, source, updatedAt: new Date() },
     { upsert: true }
   );
+  await pruneMemory(ownerUserId);
 };
 
 /**
@@ -25,6 +27,13 @@ export const setMemory = async (ownerUserId, key, value, source = "ai") => {
  */
 export const deleteMemory = async (ownerUserId, key) => {
   await AIUserMemory.deleteOne({ ownerUserId, key });
+};
+
+/**
+ * Delete ALL memory for an admin. Ownership enforced.
+ */
+export const clearAllMemory = async (ownerUserId) => {
+  await AIUserMemory.deleteMany({ ownerUserId });
 };
 
 /**
