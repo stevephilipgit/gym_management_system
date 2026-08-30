@@ -134,7 +134,7 @@ describe('executeTool param validation', () => {
     const original = Member.countDocuments;
     Member.countDocuments = async () => 42;
     try {
-      const result = await executeTool('getTotalMembers', {}, { scope: 'all' });
+      const result = await executeTool('getTotalMembers', {}, { type: 'user', scope: 'all' });
       expect(result).to.have.property('count');
       expect(result.count).to.equal(42);
     } finally {
@@ -145,13 +145,58 @@ describe('executeTool param validation', () => {
   it('uses default param value when not provided', async () => {
     const { default: Member } = await import('../models/Member.js');
     const original = Member.find;
-    Member.find = () => ({ select: () => ({ sort: () => ({ lean: async () => [] }) }) });
+    Member.find = () => ({
+      select: () => ({ sort: () => ({ limit: () => ({ lean: async () => [] }) }) }),
+    });
     try {
-      const result = await executeTool('getExpiringMembers', {});
+      const result = await executeTool('getExpiringMembers', {}, { type: 'user', scope: 'all' });
       expect(result).to.have.property('count');
       expect(result.daysWindow).to.equal(7);
     } finally {
       Member.find = original;
+    }
+  });
+
+  it('DENIES execution when no principal is provided', async () => {
+    try {
+      await executeTool('getTotalMembers', {});
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err.message).to.include('explicit principal');
+    }
+  });
+
+  it('DENIES execution for unknown principal type', async () => {
+    try {
+      await executeTool('getTotalMembers', {}, { type: 'robot', scope: 'all' });
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err.message).to.include('Unknown principal type');
+    }
+  });
+
+  it('DENIES execution for a system principal without explicit scope', async () => {
+    try {
+      await executeTool('getTotalMembers', {}, { type: 'system', name: 'job' });
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err.message).to.include('must declare an explicit scope');
+    }
+  });
+
+  it('ALLOWS an explicit system principal with scope all', async () => {
+    const { default: Member } = await import('../models/Member.js');
+    const original = Member.countDocuments;
+    Member.countDocuments = async () => 7;
+    try {
+      const result = await executeTool(
+        'getTotalMembers',
+        {},
+        { type: 'system', name: 'reminderAgent', systemScope: 'all' }
+      );
+      expect(result.count).to.equal(7);
+    } finally {
+      Member.countDocuments = original;
     }
   });
 });

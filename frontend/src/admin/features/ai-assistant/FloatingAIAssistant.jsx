@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FiMessageCircle, FiX, FiPlus } from "react-icons/fi";
 import { useLocation } from "react-router-dom";
 import apiClient from "../../../utils/apiClient.js";
@@ -59,7 +59,6 @@ export const FloatingAIAssistant = () => {
       setHistoryLoaded(false);
       setError(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [admin?.id]);
 
   // Restore session id from sessionStorage when the widget becomes available.
