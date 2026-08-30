@@ -470,8 +470,12 @@ Two distinct concepts, deliberately separated:
     (`findOne({ ownerUserId, key })`).
   - `listMemory(ownerUserId)` — sorted by `updatedAt`, capped at
     `AI_MAX_MEMORY_ITEMS` (50).
-  - `pruneMemory(ownerUserId)` — deletes oldest beyond the cap (available but
-    not auto-scheduled).
+  - `setMemory` now calls `pruneMemory` **on-write**, so the cap is always
+    enforced (no unbounded growth; pruning deletes only the owner's oldest
+    entries — never another admin's memory).
+  - `clearAllMemory(ownerUserId)` — explicit owner-scoped reset, exposed via
+    `DELETE /api/ai/memory`. Closing a chat / starting a new chat never
+    touches memory.
 - Injected into the system prompt as "Known admin preferences/facts (use only
   as helpful context)" — small, explicit, structured. **No automatic
   everything-forever memory.**
@@ -495,19 +499,108 @@ AIUserMemory.findOne({ ownerUserId, key })
 
 1. Role: "You are Giri Gym Assistant… insights about members, attendance,
    inactivity, enquiries, and the dashboard."
-2. **FORMAT A** — structured tool call (single `{"tool":…}` or
+2. **Capability list** — human-facing capabilities derived from the canonical
+   catalog (`capabilityCatalog.js`), not duplicated.
+3. **FORMAT A** — structured tool call (single `{"tool":…}` or
    `{"steps":[…]}`).
-3. **FORMAT B** — plain conversational text.
-4. Rules: no prose around JSON, no code fences, day-phrase extraction
-   ("2 weeks"=14, "1 month"=30, "soon"=7), never fabricate data, never ask
+4. **FORMAT B** — plain conversational text.
+5. Rules: no prose around JSON, no code fences, day-phrase extraction
+   ("2 weeks"=14, "1 month"=30, "soon"=7), **understand common typos /
+   broken English and map intent**, **ask a clarifying question when the
+   request is ambiguous (never guess)**, never fabricate data, never ask
    for permissions.
-5. Injected tool list (rendered from `TOOL_REGISTRY`).
-6. Optional module hint: "The admin is currently viewing: dashboard."
-7. Optional memory facts.
+6. Injected tool list (rendered from `TOOL_REGISTRY`).
+7. Optional module hint: "The admin is currently viewing: dashboard."
+8. Optional memory facts.
 
 The provider output is parsed by `chatService.parseModelResponse`: strips code
 fences → `JSON.parse` → only `tool`/`steps` objects are treated as tool calls;
 anything else is treated as plain conversational text.
+
+---
+
+## 10a. Capability Catalog (`capabilityCatalog.js`)
+
+Single source of truth describing what the assistant can do in human terms:
+
+- 6 capabilities: Members, Expiring memberships, Attendance, Inactive members,
+  Customer enquiries, Dashboard insights.
+- Each: `id, displayName, description, supportedModules, examplePrompts,
+  underlyingTools, enabled`.
+- Validated at load time against `TOOL_REGISTRY` (a typo'd tool name fails
+  fast).
+- **Frontend never duplicates tools**: `GET /api/ai/capabilities?module=…`
+  returns safe metadata (id/displayName/description/examplePrompts/
+  supportedModules) — internal tool names are never exposed.
+- Prompt layer and frontend both derive from this one catalog.
+
+---
+
+## 10b. Semantic Intent Resolver (`intentResolver.js`)
+
+The LLM is the primary interpreter; this is the **deterministic fallback +
+typo-tolerant secondary signal**:
+
+- `resolveIntent(message, currentModule)` → `{ resolved, tool, params,
+  capabilityId, confidence, ambiguous }`.
+- Typo-tolerant keyword scoring (normalized tokens + bounded edit distance,
+  e.g. "membars"→"members", "epxiry"→"expiry") — not a giant regex
+  dictionary.
+- `extractDays()` — documented temporal semantics: next week/this week/soon=7,
+  2 weeks=14, 1 month=30, tomorrow/today=1.
+- **Ambiguity detection**: if the top two intents nearly tie, returns
+  `ambiguous` so the orchestrator asks for clarification instead of guessing.
+- Never executes tools; returns intent only. The backend validates and
+  executes via the tool executor (principal-scoped).
+
+---
+
+## 10c. Conversational Intelligence / Follow-up Intent
+
+Multi-turn support on top of the single-turn pipeline (see
+`conversationContext.js`, `followUpResolver.js`):
+
+### Conversation context model
+- Bounded, session-scoped, owner-scoped orchestration state stored compactly
+  in `ChatSession.metadata.conversationContext`: `activeIntent`,
+  `activeTool`, `activeFilters` (max 4), `lastResultType`, `lastResultCount`,
+  `lastResultTruncated`, `currentModule`, `lastTurnAt`.
+- Stores **only compact references/summaries — never full tool results**.
+  ChatSession is never an embedded cache.
+- Strictly separated from long-term `AIUserMemory`; never an authorization
+  mechanism.
+
+### Follow-up resolution (`followUpResolver.js`)
+- Classifies each new message: `new`, `modify`, `reference`, `presentation`,
+  `explanation`, `clarify`, `conversation`.
+- Handles "them/those/their", "only unpaid", "what about female?", "how
+  many?", "show their names", "first 5", "why?".
+- Ambiguous references (multiple plausible result sets) ask for clarification
+  instead of guessing.
+- Gender/payment/status signals are typo-tolerant; order ensures "unpaid" is
+  not read as "paid" (substring).
+
+### Fresh data strategy
+- Follow-ups that need live gym data **re-query through the validated tool
+  layer** (`findMembers` / original tool) — old tool results are references,
+  not authoritative database truth.
+
+### Typed composable tool: `findMembers`
+- `{ gender?, paymentStatus?, expiresWithinDays?, inactiveForDays?, status?,
+  limit? }` — enum/number-bounded, AI-safe projection, DB-level row limit +
+  `truncated` flag. No generic MongoDB filter tool.
+
+### Session retention / lifecycle
+- `archiveInactiveSessions` (inactive > `AI_SESSION_ARCHIVE_DAYS` → archived)
+  and `deleteExpiredSessions` (> `AI_SESSION_RETENTION_DAYS` → delete session
+  + messages) — **bounded batches, idempotent, restart-safe**. Never touches
+  `AIUserMemory`.
+- Scheduled daily at 03:00 via `node-cron` in `server.js`.
+
+### AI audit events
+- `AI_CHAT`, `AI_TOOL_QUERY`, `AI_SESSION_ARCHIVE`, `AI_MEMORY_CLEAR` written
+  via the existing `auditLog` (adminId, sessionId, module, tool, status,
+  latency). Full prompts/conversations/keys never logged.
 
 ---
 
@@ -552,9 +645,11 @@ anything else is treated as plain conversational text.
 
 1. primary success → respond.
 2. primary retryable failure → fallback provider.
-3. fallback failure (or AI disabled / not configured) → **rule-based fallback**
-   (`buildRuleBasedResponse`) that can still answer total / expiring /
-   attendance / enquiry questions using the tool layer.
+3. fallback failure (or AI disabled / not configured) → **deterministic
+   fallback** (`buildRuleBasedResponse` → `resolveIntent`) that can still
+   answer total / expiring / attendance / enquiry / inactive / dashboard
+   questions — with typo tolerance — using the tool layer. Ambiguous requests
+   ask for clarification instead of guessing.
 4. Only truly unexpected application errors bubble to the route → 5xx.
 
 ### Frontend error mapping
@@ -652,15 +747,15 @@ AI_MAX_MEMORY_ITEMS
 1. **No live provider test performed** — Gemini/OpenAI paths are unit-tested
    for logic but not executed against a real endpoint or a running MongoDB
    during development.
-2. **`maxContextLength` is defined but not yet enforced** as a hard truncation
-   budget — history is bounded by pairs, but a 10-pair × long-content session
-   could still grow; enforcing the char budget is the natural next step.
-3. **`pruneMemory` is available but not scheduled** — a daily job or
-   on-write check would enforce `AI_MAX_MEMORY_ITEMS` over time.
+2. **`maxContextLength` is now enforced** as a hard truncation budget via
+   `fitHistoryToBudget` (never truncates current message or system prompt;
+   records `droppedCount`/`truncated`).
+3. **`pruneMemory` runs on-write** — `AI_MAX_MEMORY_ITEMS` is enforced at
+   `setMemory` time, so memory cannot grow unbounded.
 4. **No audit trail for AI chat/tool actions** (existing gap carried over) —
    chat messages are stored, but no `auditLog` entries are written.
-5. **Rule-based fallback** answers a fixed keyword set; provider outage yields
-   narrower answers for arbitrary questions.
+5. **Deterministic fallback** is typo-tolerant but not equal to the LLM; for
+   arbitrary phrasings a provider outage yields narrower answers.
 6. **Per-process limiter storage** (`express-rate-limit` in-memory) is
    single-instance; multi-instance deploys need a shared store
    (`rate-limiter-flexible` with Redis is already a dependency).
@@ -668,3 +763,8 @@ AI_MAX_MEMORY_ITEMS
    automatic expiration; an archival cron would bound collection growth.
 8. **Widget has no unread-indicator/badge** on the launcher (deliberately
    minimal per requirements).
+9. **Memory UI is minimal** — per-item delete is available via API but the
+   widget currently offers list + clear-all only.
+10. **`getSessionMessages` / history are pair-bounded** (10 pairs) — the
+    frontend does not paginate older history; long past conversations are not
+    viewable inside the widget once the recent window is exceeded.
