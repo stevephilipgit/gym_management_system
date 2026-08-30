@@ -11,6 +11,10 @@ import { prepareRemindersWithMessages } from "../services/ai/reminderService.js"
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Explicit trusted system principal. The reminder job is a headless internal
+// cron; it declares its own scope rather than relying on "no identity = all".
+const SYSTEM_PRINCIPAL = { type: "system", name: "reminderAgent", systemScope: "all" };
+
 export const REMINDER_JOB_CONFIG = {
   enabled: false,
   daysAhead: 3,
@@ -31,7 +35,11 @@ export const runReminderJob = async () => {
   }
 
   logLine("INFO", "Reminder job started");
-  const result = await executeTool("getExpiringMembers", { days: REMINDER_JOB_CONFIG.daysAhead });
+  const result = await executeTool(
+    "getExpiringMembers",
+    { days: REMINDER_JOB_CONFIG.daysAhead },
+    SYSTEM_PRINCIPAL
+  );
 
   if (!result.members?.length) {
     logLine("INFO", "No expiring members found");
