@@ -2858,6 +2858,14 @@
     margin: 0;
   }
 
+  .kiosk-success {
+    font-size: 14px;
+    font-weight: 700;
+    color: #4ade80;
+    text-align: left;
+    margin: 0;
+  }
+
   .kiosk-punch {
     min-height: 56px;
     border-radius: 999px;
@@ -2871,6 +2879,72 @@
 
   .kiosk-punch:disabled {
     opacity: 0.65;
+  }
+
+  /* ── Disambiguation picker ─────────────────────────────────── */
+  .kiosk-picker-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #f5f3ef;
+    margin: 0;
+  }
+
+  .kiosk-candidates {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 4px;
+  }
+
+  .kiosk-candidate {
+    width: 100%;
+    padding: 14px 18px;
+    border-radius: 14px;
+    border: 1px solid rgba(201, 161, 70, 0.28);
+    background: rgba(255, 255, 255, 0.04);
+    color: #f5f3ef;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    gap: 3px;
+  }
+
+  .kiosk-candidate:hover {
+    border-color: rgba(201, 161, 70, 0.62);
+    background: rgba(201, 161, 70, 0.06);
+  }
+
+  .kiosk-candidate:disabled {
+    opacity: 0.5;
+  }
+
+  .kiosk-candidate-name {
+    font-weight: 700;
+    font-size: 15px;
+  }
+
+  .kiosk-candidate-code {
+    font-size: 12px;
+    font-weight: 600;
+    color: #a1a1aa;
+  }
+
+  .kiosk-cancel {
+    min-height: 44px;
+    border-radius: 999px;
+    border: 1px solid rgba(201, 161, 70, 0.28);
+    color: #a1a1aa;
+    background: transparent;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  .kiosk-cancel:disabled {
+    opacity: 0.5;
   }
 
 }
@@ -3504,6 +3578,109 @@
     box-shadow: 0 0 6px rgba(212, 175, 55, 0.6);
   }
 
+  .admin-notif-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .admin-notif-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: #e11d48;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+  }
+
+  .admin-notif-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 320px;
+    max-height: 380px;
+    overflow-y: auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+    z-index: 60;
+  }
+
+  .admin-notif-head {
+    padding: 12px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    background: var(--bg-secondary);
+  }
+
+  .admin-notif-empty {
+    padding: 18px 14px;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+  }
+
+  .admin-notif-list {
+    list-style: none;
+    margin: 0;
+    padding: 4px;
+  }
+
+  .admin-notif-item {
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 140ms ease;
+  }
+
+  .admin-notif-item:hover {
+    background: var(--surface-soft);
+  }
+
+  .admin-notif-item.is-read {
+    opacity: 0.62;
+  }
+
+  .admin-notif-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .admin-notif-msg {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .admin-notif-download {
+    margin-top: 8px;
+    padding: 5px 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--accent);
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 140ms ease;
+  }
+
+  .admin-notif-download:hover {
+    background: var(--ghost-fill);
+  }
+
   .admin-avatar-chip {
     display: flex;
     align-items: center;
@@ -3554,7 +3731,6 @@
   @media (max-width: 639px) {
       .admin-topbar-inner { padding: 0 14px; height: 64px; }
       .admin-avatar-info { display: none; }
-      .admin-notif-btn { display: none; }
     }
 
 
@@ -5256,4 +5432,185 @@ body {
 
 @media (max-width: 375px) {
   .members-cards { grid-template-columns: 1fr; }
+}
+
+/* ── Attendance Devices (trainer portal) ───────────────────── */
+
+.admin-device-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.admin-device-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  transition: border-color 140ms ease;
+}
+
+.admin-device-card.device-active {
+  border-color: var(--accent);
+}
+
+.admin-device-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.admin-device-scope {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+.admin-device-badge {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.badge-active {
+  background: rgba(74, 222, 128, 0.15);
+  color: #4ade80;
+}
+
+.badge-pending {
+  background: rgba(255, 200, 50, 0.15);
+  color: #ffc832;
+}
+
+.badge-rejected {
+  background: rgba(255, 100, 100, 0.15);
+  color: #ff7f7f;
+}
+
+.badge-muted {
+  background: rgba(150, 150, 150, 0.15);
+  color: #aaa;
+}
+
+.admin-device-status {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ── Device page shared primitives (UI normalization) ─────────── */
+.section-subtitle {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 16px 0 8px;
+}
+
+.device-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.reject-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.qr-box {
+  display: inline-block;
+  background: #ffffff;
+  padding: 14px;
+  border-radius: 12px;
+  margin: 6px 0 4px;
+}
+
+.url-copy-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.url-copy-row .kiosk-input {
+  flex: 1;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.modal-button-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.recent-token-list {
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recent-token-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  font-size: 12px;
+}
+
+.recent-token-row .token-id {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.recent-token-row .token-date {
+  flex: 1;
+  font-size: 11px;
+}
+
+.text-green { color: #4ade80; }
+.text-muted { color: var(--text-muted); }
+
+/* ── Alerts (generic, reused by multiple admin pages) ───────── */
+
+.alert {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.alert-error {
+  background: rgba(255, 100, 100, 0.1);
+  color: #ff7f7f;
+  border: 1px solid rgba(255, 100, 100, 0.2);
+}
+
+.alert-success {
+  background: rgba(74, 222, 128, 0.1);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.2);
 }

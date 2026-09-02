@@ -84,6 +84,9 @@ pids/
 uploads/
 temp-uploads/
 
+# Daily attendance export files (generated reports — never committed)
+exports/
+
 # Private files and config
 config/private/
 secrets/

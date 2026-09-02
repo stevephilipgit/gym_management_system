@@ -14,6 +14,18 @@ const config = {
     refreshSecret: process.env.JWT_REFRESH_SECRET || process.env.JWT_ACCESS_SECRET,
     accessExpires: process.env.JWT_ACCESS_EXPIRES || '15m',
     refreshExpires: process.env.JWT_REFRESH_EXPIRES || '7d',
+    // Dedicated secret for the short-lived Super Admin scoped-attendance token
+    // (MODE 2). Falls back to the access secret ONLY for compatibility; in that
+    // case strict issuer/audience/algorithm validation keeps it distinct from a
+    // normal login token. Prefer a dedicated secret in production.
+    adminAttendanceSecret: process.env.JWT_ADMIN_ATTENDANCE_SECRET || process.env.JWT_ACCESS_SECRET,
+    adminAttendanceExpires: process.env.JWT_ADMIN_ATTENDANCE_EXPIRES || '2m',
+    adminAttendanceIssuer: 'giri-gym:admin-attendance',
+    adminAttendanceAudience: 'kiosk-punch',
+  },
+  activation: {
+    // DeviceActivation TTL in seconds (MODE 1). Default 120s (short-lived).
+    ttlSeconds: Number.parseInt(process.env.ACTIVATION_TTL_SECONDS || '120', 10),
   },
   db: {
     url: process.env.DATABASE_URL || process.env.MONGO_URI || process.env.MONGO_URL,

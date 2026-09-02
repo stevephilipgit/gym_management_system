@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import logger from '../core/logger.js';
 import scopeResolver from '../core/scopeResolver.js';
+import { toCsv, toCsvLine } from '../utils/csvSafety.js';
 
 const Member = mongoose.model('Member');
 const Attendance = mongoose.model('Attendance');
@@ -263,95 +264,86 @@ export const exportInactiveReport = async (req, res) => {
 };
 
 /**
- * Helper: Generate attendance CSV
+ * Helper: Generate attendance CSV (admin on-demand export).
+ * Uses the shared safe CSV writer (RFC-4180 + injection protection).
+ * Keeps the historical admin schema (includes Phone — admin-only context).
  */
 function generateAttendanceCSV(records) {
-  if (!records || records.length === 0) {
-    return 'Date,Member ID,Name,Phone,Check-in,Check-out,Duration (min),State\n';
-  }
+  const header = [
+    'Date',
+    'Member ID',
+    'Name',
+    'Phone',
+    'Check-in',
+    'Check-out',
+    'Duration (min)',
+    'State',
+  ];
 
-  const header =
-    'Date,Member ID,Name,Phone,Check-in,Check-out,Duration (min),State\n';
+  const rows = (records || []).map((r) => [
+    r.date ? r.date.toLocaleDateString() : '',
+    r.memberId?.gymId || '',
+    r.memberId?.fullName || '',
+    r.memberId?.phone || '',
+    r.checkInTime
+      ? r.checkInTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+      : '',
+    r.checkOutTime
+      ? r.checkOutTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+      : '',
+    r.durationMin || '',
+    r.state || '',
+  ]);
 
-  const rows = records
-    .map((r) => {
-      const date = r.date ? r.date.toLocaleDateString() : '';
-      const memberId = r.memberId?.gymId || '';
-      const name = r.memberId?.fullName || '';
-      const phone = r.memberId?.phone || '';
-      const checkIn = r.checkInTime
-        ? r.checkInTime.toLocaleTimeString('en-GB', {
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-        : '';
-      const checkOut = r.checkOutTime
-        ? r.checkOutTime.toLocaleTimeString('en-GB', {
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-        : '';
-      const duration = r.durationMin || '';
-      const state = r.state || '';
-
-      return `"${date}","${memberId}","${name}","${phone}","${checkIn}","${checkOut}","${duration}","${state}"`;
-    })
-    .join('\n');
-
-  return header + rows;
+  return toCsv(header, rows);
 }
 
 /**
- * Helper: Generate members CSV
+ * Helper: Generate members CSV (admin on-demand export).
+ * Uses the shared safe CSV writer.
  */
 function generateMembersCSV(members) {
-  if (!members || members.length === 0) {
-    return 'Gym ID,Name,Phone,Plan,Days Left,Status,Last Visit\n';
-  }
+  const header = ['Gym ID', 'Name', 'Phone', 'Plan', 'Days Left', 'Status', 'Last Visit'];
 
-  const header = 'Gym ID,Name,Phone,Plan,Days Left,Status,Last Visit\n';
+  const rows = (members || []).map((m) => [
+    m.gymId || '',
+    m.fullName || '',
+    m.phone || '',
+    m.gymPlan || '',
+    m.daysLeft !== undefined ? m.daysLeft : '',
+    m.status || '',
+    m.lastAttendanceDate
+      ? new Date(m.lastAttendanceDate).toLocaleDateString('en-GB')
+      : 'Never',
+  ]);
 
-  const rows = members
-    .map((m) => {
-      const gymId = m.gymId || '';
-      const name = m.fullName || '';
-      const phone = m.phone || '';
-      const plan = m.gymPlan || '';
-      const daysLeft = m.daysLeft !== undefined ? m.daysLeft : '';
-      const status = m.status || '';
-      const lastVisit = m.lastAttendanceDate
-        ? new Date(m.lastAttendanceDate).toLocaleDateString('en-GB')
-        : 'Never';
-
-      return `"${gymId}","${name}","${phone}","${plan}","${daysLeft}","${status}","${lastVisit}"`;
-    })
-    .join('\n');
-
-  return header + rows;
+  return toCsv(header, rows);
 }
 
 /**
- * Helper: Generate inactive members CSV
+ * Helper: Generate inactive members CSV (admin on-demand export).
+ * Uses the shared safe CSV writer.
  */
 function generateInactiveCSV(members, days) {
-  if (!members || members.length === 0) {
-    return `Inactive Members (Not visited in ${days} days)\nGym ID,Name,Phone,Plan,Days Since Visit,Days Left\n`;
-  }
+  const header = [
+    `Inactive Members (Not visited in ${days} days)`,
+    'Gym ID',
+    'Name',
+    'Phone',
+    'Plan',
+    'Days Since Visit',
+    'Days Left',
+  ];
 
-  const header = `Inactive Members (Not visited in ${days} days)\nGym ID,Name,Phone,Plan,Days Since Visit,Days Left\n`;
+  const rows = (members || []).map((m) => [
+    '',
+    m.gymId || '',
+    m.fullName || '',
+    m.phone || '',
+    m.gymPlan || '',
+    m.daysSinceVisit || 'Never',
+    m.daysLeft !== undefined ? m.daysLeft : '',
+  ]);
 
-  const rows = members
-    .map((m) => {
-      const gymId = m.gymId || '';
-      const name = m.fullName || '';
-      const phone = m.phone || '';
-      const plan = m.gymPlan || '';
-      const daysSinceVisit = m.daysSinceVisit || 'Never';
-      const daysLeft = m.daysLeft !== undefined ? m.daysLeft : '';
-
-      return `"${gymId}","${name}","${phone}","${plan}","${daysSinceVisit}","${daysLeft}"`;
-    })
-    .join('\n');
-
-  return header + rows;
+  return toCsv(header, rows);
 }

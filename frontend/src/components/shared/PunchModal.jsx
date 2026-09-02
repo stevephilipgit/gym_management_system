@@ -204,10 +204,6 @@ export default function PunchModal({
                   <div style={{ fontSize: '14px', fontWeight: 700, color: '#3b82f6', marginTop: '2px' }}>#{modalData.member?.gymId}</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Phone</div>
-                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#374151', marginTop: '2px' }}>{modalData.member?.phone}</div>
-                </div>
-                <div>
                   <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Plan</div>
                   <div style={{ fontSize: '14px', fontWeight: 600, color: '#374151', marginTop: '2px' }}>{modalData.member?.plan}</div>
                 </div>

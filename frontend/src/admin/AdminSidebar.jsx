@@ -48,6 +48,8 @@ const NAV_GROUPS = [
     label: "Operations",
     items: [
       { label: "Attendance",  icon: <FiClock />,     path: "/admin/attendance-front-desk" },
+      { label: "Kiosk Control", icon: <FiSliders />, path: "/admin/devices", roles: ["superadmin"] },
+      { label: "My Attendance Devices", icon: <FiSliders />, path: "/admin/my-devices", roles: ["trainer"], exact: true },
       { label: "Inactive Members",     icon: <FiBarChart2 />, path: "/admin/inactivity-reports" },
     ],
   },
@@ -72,7 +74,7 @@ export default function AdminSidebar({ closeSidebar, collapsed, setCollapsed, ad
   const visibleGroups = NAV_GROUPS
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => canAccess(admin?.role, item.roles)),
+      items: group.items.filter((item) => canAccess(admin?.role, item.roles, { exact: item.exact })),
     }))
     .filter((group) => group.items.length > 0);
 

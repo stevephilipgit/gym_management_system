@@ -1,6 +1,16 @@
-# 11 — Attendance
+# 11 — Attendance (DEPRECATED — superseded by 30-attendance-kiosk.md)
 
-## Architecture
+> **This document describes the pre-refactoring attendance architecture** where
+> the kiosk page required an admin session (`adminAuth`). The current system
+> uses a dedicated kiosk trust boundary (`kioskAuth`) with one shared customer
+> page for Male, Female and Transgender customers, signed selection tokens,
+> and a full daily export pipeline. See `30-attendance-kiosk.md` for the
+> authoritative design.
+>
+> The content below is retained for historical reference only and should not be
+> used as implementation guidance.
+
+## Architecture (historic)
 
 - Model: `models/Attendance.js` — `memberId` (ref Member), `date`, `checkInTime`,
   `checkOutTime`, `durationMin`, `state` (inside/completed/auto_closed/late),

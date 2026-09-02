@@ -48,6 +48,40 @@ export const collectionIndexes = [
     ],
   },
   {
+    collection: "kiosks",
+    indexes: [
+      // kioskId unique index is created by the schema field `unique: true`.
+      { key: { enabled: 1 }, options: { name: "idx_kiosks_enabled" } },
+    ],
+  },
+  {
+    collection: "deviceregistrations",
+    indexes: [
+      // INVARIANT A — one active attendance device per Trainer.
+      { key: { trainerId: 1 }, options: { unique: true, partialFilterExpression: { active: true }, name: "idx_devicereg_trainer_active_unique" } },
+      // INVARIANT B — one active Trainer owner per browserDeviceId/Kiosk.
+      { key: { kioskId: 1 }, options: { unique: true, partialFilterExpression: { active: true }, name: "idx_devicereg_kiosk_active_unique" } },
+      // INVARIANT C — O(1) credential lookup for kioskAuth.
+      { key: { kioskId: 1, keyFingerprint: 1 }, options: { unique: true, partialFilterExpression: { keyFingerprint: { $type: "string" } }, name: "idx_devicereg_keyfp_unique" } },
+      // Query: list registrations by Trainer.
+      { key: { trainerId: 1, createdAt: -1 }, options: { name: "idx_devicereg_trainer_created" } },
+    ],
+  },
+  {
+    collection: "attendanceexports",
+    indexes: [
+      // One export per business day + export type (idempotency / multi-instance).
+      { key: { attendanceDate: 1, exportType: 1 }, options: { unique: true, name: "idx_attendanceexports_date_type_unique" } },
+    ],
+  },
+  {
+    collection: "notifications",
+    indexes: [
+      { key: { recipientRole: 1, createdAt: -1 }, options: { name: "idx_notifications_role_created" } },
+      { key: { read: 1, createdAt: -1 }, options: { name: "idx_notifications_read_created" } },
+    ],
+  },
+  {
     collection: "auditlogs",
     indexes: [
       { key: { userId: 1, timestamp: -1 }, options: { name: "idx_auditlogs_user_time" } },

@@ -445,6 +445,28 @@ export const authController = {
     if (scope && ["all", "male", "female_plus_transgender"].includes(scope) && scope !== admin.scope) {
       admin.scope = scope;
       lifecycleChanged = true;
+      // SCOPE CHANGE (MODE 1): revoke the Trainer's active attendance devices
+      // and unused activations so no stale scope authority remains active.
+      // The Trainer must generate + redeem a fresh activation under the new
+      // scope. This must run before saving so device revocation reflects the
+      // new scope state atomically with the session invalidation.
+      if (admin.role === "trainer") {
+        const { revokeTrainerRegistrations } = await import("../services/deviceRegistrationService.js");
+        const DeviceActivation = (await import("../models/DeviceActivation.js")).default;
+        await revokeTrainerRegistrations({ trainerId: admin._id });
+        await DeviceActivation.updateMany(
+          { trainerId: admin._id, usedAt: null, revokedAt: null },
+          { $set: { revokedAt: new Date() } }
+        );
+        const { auditLog } = await import("../utils/auditLog.js");
+        await auditLog(req, {
+          action: (await import("../core/constants.js")).ACTION_TYPES.SCOPE_CHANGED,
+          status: "SUCCESS",
+          resourceType: "Admin",
+          resourceId: String(admin._id),
+          changes: { scope },
+        });
+      }
     }
     if (status && ["active", "disabled"].includes(status) && status !== admin.status) {
       admin.status = status;

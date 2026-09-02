@@ -3,7 +3,7 @@ import aiConfig from "../config/aiConfig.js";
 
 const keyByAdmin = (req) => {
   if (req.admin?.id) return `admin:${req.admin.id}`;
-  return ipKeyGenerator()(req);
+  return ipKeyGenerator(String(req.ip || ""));
 };
 
 /**
