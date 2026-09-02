@@ -27,6 +27,8 @@ const AttendanceFrontDesk = lazy(() => import("./admin/AttendanceFrontDesk"));
 const InactiveReportsPage = lazy(() => import("./admin/InactiveReportsPage"));
 const SettingsPage = lazy(() => import("./admin/SettingsPage"));
 const AdminEnquiries = lazy(() => import("./admin/AdminEnquiries"));
+const AttendanceDevices = lazy(() => import("./admin/AttendanceDevices"));
+const AttendanceMyDevices = lazy(() => import("./admin/AttendanceMyDevices"));
 
 function App() {
   return (
@@ -69,6 +71,10 @@ function App() {
               <Route path="fields" element={<RoleGuard roles={["superadmin"]}><AdminManageFields /></RoleGuard>} />
               <Route path="diet-manager" element={<AdminDietManager />} />
               <Route path="attendance-front-desk" element={<AttendanceFrontDesk />} />
+              {/* Super Admin: global Device Management (RoleGuard enforced) */}
+              <Route path="devices" element={<RoleGuard roles={["superadmin"]}><AttendanceDevices /></RoleGuard>} />
+              {/* Trainer: My Attendance Devices (TRAINER-ONLY — exact role, no superadmin superset) */}
+              <Route path="my-devices" element={<RoleGuard roles={["trainer"]} exact><AttendanceMyDevices /></RoleGuard>} />
               <Route path="inactivity-reports" element={<InactiveReportsPage />} />
               <Route path="settings" element={<RoleGuard roles={["superadmin"]}><SettingsPage /></RoleGuard>} />
               <Route path="admins" element={<RoleGuard roles={["superadmin"]}><AdminManageAdmins /></RoleGuard>} />
