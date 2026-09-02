@@ -57,10 +57,12 @@ Classification vocabulary:
 
 | Finding | Classification | Evidence |
 |---|---|---|
-| Legacy provisioning/request/claim removal | DONE (code) / docs pending | provisioning files removed in earlier phase |
+| Legacy provisioning/request/claim removal | DONE | code removed; orphaned `provisioningtokens` cleanup procedure documented |
 | Legacy constants/index cleanup | DONE | `constants.js`, `dbIndexes.js` updated |
-| Final architecture/security/test docs | NOT DONE (pending) | Phase 6 |
-| Final release gate | NOT DONE (pending) | Phase 6 |
+| Dead code removal (`notifyDeviceRequest`, `requestStatus` projection) | DONE | `notificationService.js`, `deviceRegistrationService.js` |
+| Regression runner updated (current suites + replSet) | DONE | `runFullDeviceRegression.mjs` |
+| Final architecture/security/test docs | DONE | 6 docs created in Phase 6 |
+| Final release gate | DONE | `GIRI_GYM_DEVICE_ATTENDANCE_FINAL_REPORT.md` — READY WITH DOCUMENTED NON-CRITICAL ISSUES |
 
 ## Known Non-Critical Issues (documented, do not block release)
 
