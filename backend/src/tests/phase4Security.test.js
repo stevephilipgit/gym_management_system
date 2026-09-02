@@ -28,6 +28,7 @@ import config from "../config/index.js";
 
 const DB_URI = process.env.MONGO_URI || "mongodb://localhost:27017/gym_test";
 const TRAINER_PASSWORD = "pass";
+const IN_HOURS = new Date("2026-08-30T10:00:00");
 
 const Member = mongoose.model("Member");
 const Attendance = mongoose.model("Attendance");
@@ -806,11 +807,13 @@ describe("Phase 4 — Security + Concurrency + Integrity (integration)", functio
     const maleRes = await performKioskPunch({
       input: "192", scope: "male",
       principal: { type: "superadmin", adminId: String(superAdmin) },
+      now: IN_HOURS,
     });
     expect(maleRes.member._id.toString()).to.equal(male._id.toString());
     const femaleRes = await performKioskPunch({
       input: "192", scope: "female_plus_transgender",
       principal: { type: "superadmin", adminId: String(superAdmin) },
+      now: IN_HOURS,
     });
     expect(femaleRes.member._id.toString()).to.equal(female._id.toString());
     const maleAtt = await Attendance.countDocuments({ memberId: male._id });
@@ -828,6 +831,7 @@ describe("Phase 4 — Security + Concurrency + Integrity (integration)", functio
       await performKioskPunch({
         input: "500", scope: "female_plus_transgender",
         principal: { type: "superadmin", adminId: String(superAdmin) },
+        now: IN_HOURS,
       });
     } catch (err) { error = err; }
     expect(error).to.exist;

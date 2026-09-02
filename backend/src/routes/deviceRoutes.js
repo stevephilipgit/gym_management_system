@@ -23,10 +23,12 @@ router.get("/my", adminAuth, requireRole("trainer"), activationController.listMy
 router.get("/all", adminAuth, requireRole("superadmin"), activationController.listAllRegistrations);
 
 // Dedicated rate limiter for activation redemption (6-digit code → low entropy).
-// 5 attempts/min per IP+Trainer key.
+// 5 attempts/min per IP+Trainer key. `ACTIVATION_REDEEM_MAX` may raise this in
+// automated E2E environments; production default remains 5.
+const activationRedeemMax = Number.parseInt(process.env.ACTIVATION_REDEEM_MAX || "5", 10);
 const activationRedeemLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 5,
+  max: activationRedeemMax,
   message: { success: false, message: "Too many attempts. Please wait before trying again." },
   standardHeaders: true,
   legacyHeaders: false,

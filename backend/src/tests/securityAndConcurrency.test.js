@@ -238,8 +238,8 @@ describe("Phase 5 — Security + Concurrency + Regression (integration)", functi
 
   /* ── 10: forged trainerId ────────────────────────────────────── */
   it("10. forged trainerId: device activation rejects client-supplied trainerId (trainerId from session)", async () => {
-    // The Phase 2 activation controller read req.admin.id/scope/role via
-    // asAdmin(req) and NEVER req.body.trainerId. The claim flow below takes
+    // The activation controller reads req.admin.id/scope/role via
+    // asAdmin(req) and NEVER req.body.trainerId. The activation below takes
     // trainerId as an explicit session-derived parameter (never parsed from the
     // client body), preserving the same server-authoritative ownership rule.
     const forgedTrainerId = "507f1f77bcf86cd799439011";
@@ -258,7 +258,7 @@ describe("Phase 5 — Security + Concurrency + Regression (integration)", functi
 
   /* ── 11: trainer → another trainer's registration ────────────── */
   it("11. trainer → another trainer's registration: deactivation denied (403)", async () => {
-    // Trainer A activates a device via the claim flow.
+    // Trainer A activates a device via the direct activation flow.
     const resA = await makeActive({ browserDeviceId: "browser-11", trainerId: trainerIdA, password: TRAINER_TEST_PASSWORD });
     // Trainer B tries to deactivate A's registration.
     let error = null;

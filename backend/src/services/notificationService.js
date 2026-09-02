@@ -72,29 +72,3 @@ export async function getReadyExportsWithoutNotification(limit = 10) {
     .limit(limit)
     .lean();
 }
-
-/**
- * Notify a trainer that their device request was approved or rejected.
- * Never carries credential material or member PII — only the kioskId and the
- * outcome. Returns the created notification (or null if creation failed).
- */
-export async function notifyDeviceRequest({ trainerId, kioskId, status, reason = "" }) {
-  if (!trainerId || !kioskId) return null;
-  try {
-    const approved = status === "approved";
-    const notification = await Notification.create({
-      type: "device_request",
-      title: approved ? "Device request approved" : "Device request rejected",
-      message: approved
-        ? `Your request for device ${kioskId} was approved.`
-        : `Your request for device ${kioskId} was rejected${reason ? `: ${reason}` : "."}`,
-      recipientRole: "trainer",
-      recipientId: trainerId,
-    });
-    logger.info(`Device-request notification created for trainer ${trainerId} (${status})`);
-    return notification;
-  } catch (error) {
-    logger.error("Failed to create device-request notification", { error: error.message });
-    return null;
-  }
-}
