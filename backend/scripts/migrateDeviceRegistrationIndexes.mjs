@@ -37,6 +37,7 @@ const REQUIRED_INDEXES = [
 const LEGACY_INDEXES = [
   "idx_devicereg_act_uniq",                 // DIRECT BLOCKER (non-partial unique on kiosk/trainer/browser)
   "idx_devicereg_active_browser_unique",    // old partial unique (removed)
+  "idx_devicereg_keyfp_unique",             // old non-partial version (will be recreated with partial filter)
   "idx_devicereg_live_workflow_unique",     // requestStatus partial (removed)
   "idx_devicereg_requests",                 // requestStatus query (removed)
   "idx_devicereg_trainer_requests",         // requestStatus query (removed)
@@ -79,6 +80,9 @@ async function run() {
   console.log("Data safety: OK (no active duplicate / fingerprint violations).\n");
 
   // ── 3. Drop ONLY the legacy indexes ─────────────────────────────────
+  // NOTE: idx_devicereg_keyfp_unique is included in LEGACY_INDEXES so the
+  // legacy non-partial variant is dropped here, then recreated below with the
+  // correct partial filter (step 4). Do NOT add other names to this list.
   for (const name of LEGACY_INDEXES) {
     const exists = idx.find(i => i.name === name);
     if (exists) {
@@ -90,7 +94,7 @@ async function run() {
   }
 
   // ── 4. Recreate keyFingerprint index with the correct partial filter ─
-  // (drop-index above removed the legacy non-partial one; create the current one)
+  // (the drop above removed the legacy non-partial one; create the current one)
   await coll.createIndex(
     { kioskId: 1, keyFingerprint: 1 },
     { unique: true, partialFilterExpression: { keyFingerprint: { $type: "string" } }, name: "idx_devicereg_keyfp_unique" }
