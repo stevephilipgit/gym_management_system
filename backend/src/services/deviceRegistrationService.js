@@ -45,7 +45,6 @@ function toPublicRegistration(reg) {
     trainerId: reg.trainerId,
     browserDeviceId: reg.browserDeviceId,
     deviceLabel: reg.deviceLabel || "",
-    requestStatus: reg.requestStatus || null,
     active: reg.active,
     activatedAt: reg.activatedAt,
     deactivatedAt: reg.deactivatedAt,

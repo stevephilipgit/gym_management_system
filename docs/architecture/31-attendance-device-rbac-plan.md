@@ -1,4 +1,12 @@
-# PHASE 5.5 — DEVICE REQUEST CORRECTION (REVISED PLAN)
+# 31 — Device Request Correction (Revised Plan — SUPERSEDED)
+
+> **SUPERSEDED (historical)**: This was a plan for adding a request/approval
+> workflow to the original activation flow. The project took a different
+> direction: the old provisioning/request/approval/claim architecture was
+> **removed** and replaced by the direct-activation architecture described in
+> [`ATTENDANCE_DEVICE_ARCHITECTURE.md`](ATTENDANCE_DEVICE_ARCHITECTURE.md).
+> No code from this plan was ever written. This file is retained for audit
+> trail only.
 
 > **Status: APPROVAL PENDING — No code written.**
 

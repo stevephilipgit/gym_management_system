@@ -1,5 +1,13 @@
 # 30 — Customer-Facing Attendance (Kiosk + Daily Report)
 
+> **SUPERSEDED (historical)**: The pre-refactor description below ("admins and
+> trainers do not punch attendance") is no longer accurate. The current,
+> authoritative documentation is
+> [`ATTENDANCE_DEVICE_ARCHITECTURE.md`](ATTENDANCE_DEVICE_ARCHITECTURE.md).
+> Trainers (MODE 1) and Super Admins (MODE 2) now perform scoped attendance;
+> the customer kiosk page still exists for the Trainer device flow. This file
+> is retained for audit trail only.
+
 ## What Attendance Is For
 
 Attendance is a **customer** feature. Customers use one public page

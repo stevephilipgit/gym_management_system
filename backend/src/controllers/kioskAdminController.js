@@ -25,7 +25,7 @@ const toPublicKiosk = (k) => ({
 
 /**
  * POST /api/admin/kiosks  — create a kiosk. No credential is generated here;
- * device authentication is handled by DeviceRegistration (claim flow).
+ * device authentication is handled by DeviceRegistration (direct activation).
  * Body: { kioskId, name?, scope? }
  */
 export const createKiosk = async (req, res) => {
@@ -53,7 +53,7 @@ export const createKiosk = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Kiosk created. A trainer must claim a device registration through the request → approval → claim flow to enable the customer attendance page.",
+      message: "Kiosk created. A trainer activates this device from the Trainer Portal (My Attendance Devices) using a one-time activation code to enable the customer attendance page.",
       kiosk: toPublicKiosk(kiosk.toObject()),
     });
   } catch (err) {
