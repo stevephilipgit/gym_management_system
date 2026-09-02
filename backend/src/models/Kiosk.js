@@ -59,9 +59,8 @@ const kioskSchema = new mongoose.Schema(
     },
 
     // Number of ACTIVE DeviceRegistrations currently bound to this device.
-    // The atomic cap (Database Invariant Gate #3) is enforced against this
-    // counter via findOneAndUpdate({ $lt: MAX }, { $inc: 1 }) inside the
-    // claim transaction — never "count → insert".
+    // Informational only — never used for authorization or capacity decisions.
+    // Incremented/decremented inside the activation/deactivate transactions.
     activeRegistrationCount: {
       type: Number,
       default: 0,
