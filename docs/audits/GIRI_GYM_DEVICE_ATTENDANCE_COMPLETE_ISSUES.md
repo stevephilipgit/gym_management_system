@@ -84,6 +84,15 @@ Classification vocabulary:
    ceiling was raised to 64 KB (`--max-http-header-size`) to give the design
    room; production should set the header limit appropriately or rely on
    session logout/hygiene. `CODE-REVIEW ONLY` / documented.
+5. **Production `deviceregistrations` index mismatch — reactivation blocked.** The
+   production DB still contains the legacy non-partial unique index
+   `idx_devicereg_act_uniq` on `{kioskId, trainerId, browserDeviceId}`. A new
+   registration with the same triple as a historical (inactive/revoked) row is
+   rejected with E11000 → mapped to "Attendance device ownership conflict".
+   The current code requires only partial-unique indexes. Clean E2E/test DBs
+   were created fresh so the issue did not reproduce there. Operator-run
+   migration required: `backend/scripts/migrateDeviceRegistrationIndexes.mjs`.
+   `MEDIUM` — data is not corrupt; a controlled index migration unblocks it.
 
 ## Residual Risks
 

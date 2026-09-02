@@ -66,6 +66,7 @@ Full backend regression: 201 pass, 0 fail.
 2. **E2E-013 (stale Trainer credentials in Super Admin browser)**: MANUAL VERIFICATION REQUIRED — operator must run the browser checklist.
 3. **Bearer credential replayability**: accepted (opaque credential, not hardware attestation).
 4. **Production MongoDB must be a replica set** for transaction atomicity; standalone is BLOCKED.
+5. **Production `deviceregistrations` index mismatch (reactivation blocked until migrated).** Verified: the production DB `giri_gym` still has 8 legacy indexes from the old provisioning/request/claim architecture, including the non-partial unique `idx_devicereg_act_uniq` on `{kioskId, trainerId, browserDeviceId}` which rejects a new registration whose triple matches a historical inactive/revoked row (E11000 → "Attendance device ownership conflict"). Current code needs only partial-unique indexes; clean E2E DBs are created fresh so the issue only appears against the accumulated production index set. Operator-run migration: `backend/scripts/migrateDeviceRegistrationIndexes.mjs` (guarded; refuses unless `MIGRATE_DEVICE_INDEXES=1` and target is `giri_gym`).
 
 ## Blockers
 
