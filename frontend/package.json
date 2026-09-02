@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "vite",
-    "dev": "vite",
+    "dev": "node --max-http-header-size=65536 node_modules/vite/bin/vite.js",
     "build": "vite build && node scripts/replace-domain.js",
     "lint": "eslint .",
     "preview": "vite preview"

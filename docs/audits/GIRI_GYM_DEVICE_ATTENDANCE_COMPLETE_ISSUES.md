@@ -45,7 +45,13 @@ Classification vocabulary:
 
 | Finding | Classification | Evidence |
 |---|---|---|
-| Real 3-profile browser E2E | NOT DONE (pending) | Phase 5 |
+| HTTP-stack E2E suite (real backend + dedicated `gym_e2e_test` DB) | DONE | `backend/scripts/e2e/phase5E2E.mjs` |
+| E2E-001..015 (14 automated scenarios) | DONE | 14 PASS / 0 FAIL — `docs/testing/PHASE_5_E2E_RESULTS.md` |
+| E2E-013 stale Trainer credentials (browser-only) | MANUAL VERIFICATION REQUIRED | `docs/testing/PHASE_5_MANUAL_BROWSER_E2E_CHECKLIST.md` |
+| Full backend regression after Phase 5 | DONE | 201 passing, 0 failing |
+| Frontend build after Phase 5 | DONE | PASS (1355 modules) |
+| Production-DB safety guard in E2E runner | DONE | runner exits FATAL if `E2E_MONGO_URI` targets `giri_gym` |
+| E2E DB teardown in `finally` | DONE | dedicated test DB dropped after run; production untouched |
 
 ## Phase 6 — Cleanup / Docs
 
@@ -65,6 +71,17 @@ Classification vocabulary:
 3. **Bearer credential is replayable if copied from another browser** —
    documented accepted property (opaque credential, not hardware attestation);
    mitigations: random 256-bit key, single-active-device invariant, revoke/disable.
+4. **Per-session cookies can accumulate in a long-lived browser profile** —
+   each login adds `gym_admin_token_<sid>` (15-min access, path `/`) and
+   `gym_admin_refresh_<sid>` (7-day refresh, path `/api/admin`). Over many
+   logins this can grow the `Cookie` header large enough to hit the HTTP header
+   size ceiling (observed as Vite/Node `431`). This is an accepted property of
+   the per-session (multi-device) design, not a defect: old access cookies
+   expire in 15 minutes and refresh cookies are cleared on logout of that
+   session; a refresh rotation also overwrites its own pair. The dev header
+   ceiling was raised to 64 KB (`--max-http-header-size`) to give the design
+   room; production should set the header limit appropriately or rely on
+   session logout/hygiene. `CODE-REVIEW ONLY` / documented.
 
 ## Residual Risks
 
