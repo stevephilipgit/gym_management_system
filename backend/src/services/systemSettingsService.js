@@ -60,6 +60,9 @@ class SystemSettingsService {
       sheets_email: '',
       sheets_default_name: 'Giri Gym Enquiries',
       email_notifications_enabled: true,
+      // Export retention (days). 0 = keep forever. Deleting audit artifacts is
+      // disabled until this is explicitly configured by the business owner.
+      export_retention_days: 0,
     };
   }
 

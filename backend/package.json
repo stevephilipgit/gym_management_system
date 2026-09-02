@@ -7,6 +7,7 @@
     "dev": "node server.js",
     "seed": "node scripts/seed.js",
     "create-admin": "node scripts/createAdmin.js",
+    "create-kiosk": "node scripts/createKiosk.js",
     "create-indexes": "node scripts/createIndexes.js",
     "test": "mocha \"src/tests/**/*.test.js\" --timeout 30000"
   },
@@ -44,6 +45,7 @@
   },
   "devDependencies": {
     "chai": "^6.2.2",
-    "mocha": "^11.8.0"
+    "mocha": "^11.8.0",
+    "mongodb-memory-server": "^11.2.0"
   }
 }

@@ -25,6 +25,8 @@ const ALLOWED_FIELDS = [
   'social_instagram', 'social_facebook', 'social_youtube', 'social_google_reviews',
   // Integrations
   'sheets_enabled', 'sheets_email', 'sheets_default_name', 'email_notifications_enabled',
+  // Export
+  'export_retention_days',
 ];
 
 // GET /api/settings

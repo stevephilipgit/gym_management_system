@@ -5,70 +5,149 @@ const Attendance = mongoose.model('Attendance');
 const Member = mongoose.model('Member');
 
 /**
+ * Business-level attendance state error.
+ * Carries an HTTP status so controllers can return a clean response for
+ * expected race outcomes (already checked in / already checked out) instead of
+ * a generic 500 caused by an E11000 duplicate-key race.
+ */
+export class AttendanceStateError extends Error {
+  constructor(message, status = 409) {
+    super(message);
+    this.name = 'AttendanceStateError';
+    this.status = status;
+  }
+}
+
+const isDuplicateKeyError = (error) =>
+  error?.code === 11000 || error?.name === 'MongoServerError' && error?.code === 11000;
+
+/**
  * Core attendance business logic
  */
 class AttendanceService {
   /**
-   * Mark attendance: check-in if no record, check-out if already checked-in
+   * Atomic check-in.
+   *
+   * Concurrency-safe: MongoDB's unique index { memberId, date } is the final
+   * guard. When two requests race to create the same member+day record, exactly
+   * one insert wins; the loser receives E11000 and is re-read as an existing
+   * record, then surfaced as a clean "already checked in" business response.
+   *
+   * @returns {{ attendance, isCheckOut: boolean }}
+   * @throws {AttendanceStateError} when the record already exists (race or
+   *         duplicate action)
+   */
+  async punchIn(memberId, date = new Date(), { state = 'inside', source = 'counter' } = {}) {
+    const normalizedDate = new Date(date);
+    normalizedDate.setHours(0, 0, 0, 0);
+    const now = new Date();
+
+    try {
+      const attendance = await Attendance.create({
+        memberId,
+        date: normalizedDate,
+        checkInTime: now,
+        state,
+        source,
+      });
+
+      // Update member's lastAttendanceDate
+      await Member.updateOne({ _id: memberId }, { lastAttendanceDate: now });
+      logger.info(`Check-in recorded for member ${memberId}`, {
+        attendanceId: attendance._id,
+        date: normalizedDate,
+      });
+
+      return { attendance, isCheckOut: false };
+    } catch (error) {
+      if (isDuplicateKeyError(error)) {
+        // Expected race: another request already created today's record.
+        logger.warn(`Concurrent check-in detected for member ${memberId}`);
+        throw new AttendanceStateError('Already checked in for today', 409);
+      }
+      logger.error('Error during check-in', { memberId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Atomic check-out.
+   *
+   * Concurrency-safe: only updates a record that still has checkOutTime === null.
+   * The first concurrent request wins; the second matches nothing and receives a
+   * clean "already checked out" business response. Never overwrites a meaningful
+   * checkout timestamp, never creates a second record.
+   *
+   * The state transition is computed inside a single atomic update:
+   *   late → stays late; inside → completed.
+   *
+   * @returns {{ attendance, isCheckOut: boolean }}
+   * @throws {AttendanceStateError} when there is no open record to check out
+   */
+  async punchOut(memberId, date = new Date()) {
+    const normalizedDate = new Date(date);
+    normalizedDate.setHours(0, 0, 0, 0);
+    const now = new Date();
+
+    const updated = await Attendance.findOneAndUpdate(
+      {
+        memberId,
+        date: normalizedDate,
+        checkInTime: { $ne: null },
+        checkOutTime: null,
+      },
+      [
+        {
+          $set: {
+            checkOutTime: now,
+            durationMin: {
+              $floor: {
+                $divide: [{ $subtract: [now, '$checkInTime'] }, 60000],
+              },
+            },
+            state: { $cond: [{ $eq: ['$state', 'late'] }, 'late', 'completed'] },
+          },
+        },
+      ],
+      { new: true }
+    );
+
+    if (!updated) {
+      throw new AttendanceStateError('Attendance already checked out', 409);
+    }
+
+    logger.info(`Check-out recorded for member ${memberId}`, {
+      attendanceId: updated._id,
+      durationMin: updated.durationMin,
+    });
+
+    return { attendance: updated, isCheckOut: true };
+  }
+
+  /**
+   * Mark attendance: check-in if no record, check-out if already checked-in.
+   * Uses the atomic primitives so concurrent requests cannot duplicate records
+   * or corrupt state.
    */
   async markAttendance(memberId, date = new Date()) {
     try {
       const normalizedDate = new Date(date);
       normalizedDate.setHours(0, 0, 0, 0);
 
-      // Get today's record if exists
-      let attendance = await Attendance.findOne({
+      const existing = await Attendance.findOne({
         memberId,
         date: normalizedDate,
       });
 
-      const now = new Date();
-
-      if (!attendance) {
-        // Create new check-in record
-        attendance = new Attendance({
-          memberId,
-          date: normalizedDate,
-          checkInTime: now,
-          state: 'inside',
-          source: 'counter',
-        });
-        await attendance.save();
-
-        // Update member's lastAttendanceDate
-        await Member.updateOne(
-          { _id: memberId },
-          { lastAttendanceDate: now }
-        );
-
-        logger.info(`Check-in recorded for member ${memberId}`, {
-          attendanceId: attendance._id,
-          date: normalizedDate,
-        });
-
-        return { attendance, isCheckOut: false };
+      if (!existing) {
+        return await this.punchIn(memberId, normalizedDate, { state: 'inside', source: 'counter' });
       }
 
-      // If attendance exists but no checkout, mark as checkout
-      if (attendance.checkInTime && !attendance.checkOutTime) {
-        const durationMin = Math.floor(
-          (now - attendance.checkInTime) / (1000 * 60)
-        );
-        attendance.checkOutTime = now;
-        attendance.durationMin = durationMin;
-        attendance.state = 'completed';
-        await attendance.save();
-
-        logger.info(`Check-out recorded for member ${memberId}`, {
-          attendanceId: attendance._id,
-          durationMin,
-        });
-
-        return { attendance, isCheckOut: true };
+      if (existing.checkInTime && !existing.checkOutTime) {
+        return await this.punchOut(memberId, normalizedDate);
       }
 
-      // Already has both checkin and checkout, treat as new checkin (error case)
-      throw new Error('Attendance already completed today');
+      throw new AttendanceStateError('Attendance already completed today', 409);
     } catch (error) {
       logger.error('Error marking attendance', { memberId, error });
       throw error;
