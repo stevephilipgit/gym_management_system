@@ -144,3 +144,6 @@ DEPLOYMENT_*.md
 
 # Kilo tooling state (agent worktrees, plans, internal deps)
 .kilo/
+
+# Local dev database URI
+backend/mongo_uri.txt
