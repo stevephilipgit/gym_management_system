@@ -1,5 +1,11 @@
 # Gym Project Device Attendance — Verified Issues & Fixes
 
+> **SUPERSEDED**: The provisioning / request / approve / claim workflow described
+> in this file was **replaced** by the direct-activation architecture. The
+> canonical, current issues register is
+> [`docs/audits/GIRI_GYM_DEVICE_ATTENDANCE_COMPLETE_ISSUES.md`](audits/GIRI_GYM_DEVICE_ATTENDANCE_COMPLETE_ISSUES.md).
+> This historical entry is retained for audit trail only.
+
 ## GYM-DEV-LEGACY-FALLBACK-001
 
 ### Issue Title
