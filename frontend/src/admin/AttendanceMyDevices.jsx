@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { FiLock, FiPlus, FiRefreshCcw } from "react-icons/fi";
+import { FiAlertTriangle, FiPlus, FiRefreshCcw, FiTrash2 } from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
 import {
   getOrCreateBrowserDeviceId,
@@ -99,19 +99,21 @@ export default function AttendanceMyDevices() {
     await fetchData();
   };
 
-  const lockDevice = async (registrationId) => {
+  const [confirmDeactivate, setConfirmDeactivate] = useState(null);
+
+  const deactivateDevice = async (registrationId) => {
     if (busyAction) return;
-    setBusyAction(`lock-${registrationId}`);
+    setBusyAction(`deactivate-${registrationId}`);
     setError("");
     setSuccess("");
     try {
       await apiClient.post(`/admin/devices/${registrationId}/deactivate`);
-      // This browser's attendance credential is no longer valid.
       clearKioskIdentity();
-      setSuccess("Device locked. The customer attendance page is disabled on this browser.");
+      setConfirmDeactivate(null);
+      setSuccess("Device deactivated. The customer attendance page is disabled on this browser.");
       await fetchData();
     } catch (err) {
-      setError(err?.response?.data?.message || "Failed to lock the device.");
+      setError(err?.response?.data?.message || "Failed to deactivate the device.");
     } finally {
       setBusyAction(null);
     }
@@ -155,93 +157,156 @@ export default function AttendanceMyDevices() {
       {error ? <div className="alert alert-error">{error}</div> : null}
       {success ? <div className="alert alert-success">{success}</div> : null}
 
-      <SectionHeader title="Current Device" />
-      {activeDevice ? (
-        <div className="device-stack-row" style={{ marginBottom: 16 }}>
-          <div className="device-stack-top">
-            <span className="device-stack-name">
-              {activeDevice.deviceLabel || "This browser"}
-            </span>
-            <StatusBadge label="Active" cls="badge-active" />
-          </div>
-          <div className="device-stack-meta" title={activeDevice.browserDeviceId || ""}>
-            {scopeLabel(scope)} · Activated {fmtShort(activeDevice.activatedAt)} · {shortDeviceId(activeDevice.browserDeviceId)}
-          </div>
-          <div className="device-stack-actions">
-            <button
-              type="button"
-              className="btn-ghost min-h-0 px-2 py-1 text-xs"
-              disabled={busyAction === `lock-${activeDevice.registrationId}`}
-              onClick={() => lockDevice(activeDevice.registrationId)}
-              title="Lock this device and disable customer attendance on it"
-            >
-              <FiLock size={12} aria-hidden="true" />
-              {busyAction === `lock-${activeDevice.registrationId}` ? "Locking…" : "Lock"}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="device-stack-row" style={{ marginBottom: 16 }}>
-          <div className="device-stack-top">
-            <span className="device-stack-name">No active attendance device</span>
-          </div>
-          <div className="device-stack-meta">
-            Ask the administrator for a one-time activation code, then use Activate Device.
-          </div>
-        </div>
-      )}
-
-      <SectionHeader title="Device History" sub="Locked or replaced devices." />
-      {inactiveDevices.length === 0 ? (
-        <p className="muted-copy" style={{ fontSize: 13, margin: "0 0 16px" }}>No previous devices.</p>
-      ) : (
-        <>
-          {/* Desktop / tablet — compact table */}
-          <div className="saas-table-container device-table" style={{ marginBottom: 16 }}>
-            <table className="saas-table">
-              <thead>
-                <tr>
-                  <th scope="col">Device</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Activated</th>
-                  <th scope="col">Ended</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inactiveDevices.map((d) => (
-                  <tr key={d.registrationId}>
-                    <td className="device-col-device" title={d.browserDeviceId || ""}>
-                      {d.deviceLabel || shortDeviceId(d.browserDeviceId)}
-                    </td>
-                    <td>
-                      <StatusBadge label={d.revokedAt ? "Revoked" : "Locked"} cls="badge-muted" />
-                    </td>
-                    <td className="device-col-date">{fmtShort(d.activatedAt)}</td>
-                    <td className="device-col-date">{fmtShort(d.deactivatedAt || d.revokedAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile — compact stacked rows */}
-          <div className="device-stack">
+      <SectionHeader title="My Devices" sub="Your current and previous attendance devices." />
+      <div className="saas-table-container device-table" style={{ marginBottom: 16 }}>
+        <table className="saas-table">
+          <thead>
+            <tr>
+              <th scope="col">Device</th>
+              <th scope="col">Status</th>
+              <th scope="col">Activated</th>
+              <th scope="col">Ended</th>
+              <th scope="col" className="device-col-actions">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {activeDevice ? (
+              <tr key={activeDevice.registrationId} style={{ background: "var(--accent-soft, rgba(212,175,55,0.06))" }}>
+                <td className="device-col-device" title={activeDevice.browserDeviceId || ""}>
+                  {activeDevice.deviceLabel || "This browser"}
+                </td>
+                <td>
+                  <StatusBadge label="Active" cls="badge-active" />
+                </td>
+                <td className="device-col-date">{fmtShort(activeDevice.activatedAt)}</td>
+                <td className="device-col-date">—</td>
+                <td className="device-col-actions">
+                  <button
+                    type="button"
+                    className="btn-ghost min-h-0 px-2 py-1 text-xs"
+                    onClick={() => setConfirmDeactivate(activeDevice.registrationId)}
+                    title="Deactivate this device"
+                  >
+                    <FiTrash2 size={12} aria-hidden="true" />
+                    Deactivate
+                  </button>
+                </td>
+              </tr>
+            ) : (
+              <tr>
+                <td colSpan="5" style={{ padding: "14px 16px", color: "var(--text-muted)" }}>
+                  No active attendance device. Use <strong>Activate Device</strong> above to begin.
+                </td>
+              </tr>
+            )}
             {inactiveDevices.map((d) => (
-              <div key={d.registrationId} className="device-stack-row">
-                <div className="device-stack-top">
-                  <span className="device-stack-name">
-                    {d.deviceLabel || shortDeviceId(d.browserDeviceId)}
-                  </span>
-                  <StatusBadge label={d.revokedAt ? "Revoked" : "Locked"} cls="badge-muted" />
-                </div>
-                <div className="device-stack-meta">
-                  Activated {fmtShort(d.activatedAt)} · Ended {fmtShort(d.deactivatedAt || d.revokedAt)}
+              <tr key={d.registrationId}>
+                <td className="device-col-device" title={d.browserDeviceId || ""}>
+                  {d.deviceLabel || shortDeviceId(d.browserDeviceId)}
+                </td>
+                <td>
+                  <StatusBadge label={d.revokedAt ? "Revoked" : "Deactivated"} cls="badge-muted" />
+                </td>
+                <td className="device-col-date">{fmtShort(d.activatedAt)}</td>
+                <td className="device-col-date">{fmtShort(d.deactivatedAt || d.revokedAt)}</td>
+                <td className="device-col-actions">—</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile — compact stacked rows */}
+      <div className="device-stack">
+        {activeDevice ? (
+          <div key={activeDevice.registrationId} className="device-stack-row" style={{ borderColor: "var(--accent)" }}>
+            <div className="device-stack-top">
+              <span className="device-stack-name">
+                {activeDevice.deviceLabel || "This browser"}
+              </span>
+              <StatusBadge label="Active" cls="badge-active" />
+            </div>
+            <div className="device-stack-meta">
+              {scopeLabel(scope)} · Activated {fmtShort(activeDevice.activatedAt)}
+            </div>
+            <div className="device-stack-actions">
+              <button
+                type="button"
+                className="btn-ghost min-h-0 px-2 py-1 text-xs"
+                onClick={() => setConfirmDeactivate(activeDevice.registrationId)}
+                title="Deactivate this device"
+              >
+                <FiTrash2 size={12} aria-hidden="true" />
+                Deactivate
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="device-stack-row" style={{ marginBottom: 8 }}>
+            <div className="device-stack-top">
+              <span className="device-stack-name">No active attendance device</span>
+            </div>
+            <div className="device-stack-meta">
+              Ask the administrator for a one-time activation code, then use Activate Device.
+            </div>
+          </div>
+        )}
+        {inactiveDevices.map((d) => (
+          <div key={d.registrationId} className="device-stack-row">
+            <div className="device-stack-top">
+              <span className="device-stack-name">
+                {d.deviceLabel || shortDeviceId(d.browserDeviceId)}
+              </span>
+              <StatusBadge label={d.revokedAt ? "Revoked" : "Deactivated"} cls="badge-muted" />
+            </div>
+            <div className="device-stack-meta">
+              Activated {fmtShort(d.activatedAt)} · Ended {fmtShort(d.deactivatedAt || d.revokedAt)}
+            </div>
+          </div>
+        ))}
+      </div>
+      {confirmDeactivate ? (
+        <div className="modal-shell" onClick={() => setConfirmDeactivate(null)}>
+          <div className="modal-card" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Deactivate device?</h2>
+              </div>
+              <button type="button" className="icon-close-btn" onClick={() => setConfirmDeactivate(null)} aria-label="Close">
+                ×
+              </button>
+            </div>
+            <div className="modal-content">
+              <div className="adm-activate-modal__notice" style={{ marginBottom: 16 }}>
+                <FiAlertTriangle aria-hidden="true" className="adm-activate-modal__notice-icon" />
+                <div>
+                  <div className="adm-activate-modal__notice-title">This action is permanent</div>
+                  <p className="adm-activate-modal__notice-body">
+                    Deactivating will invalidate this device's credentials. The customer attendance page will be disabled on this browser. A new activation code from the administrator will be required to use attendance again.
+                  </p>
                 </div>
               </div>
-            ))}
+              <div className="modal-button-row" style={{ justifyContent: "flex-end", gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => setConfirmDeactivate(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  disabled={busyAction === `deactivate-${confirmDeactivate}`}
+                  onClick={() => deactivateDevice(confirmDeactivate)}
+                >
+                  {busyAction === `deactivate-${confirmDeactivate}` ? "Deactivating…" : "Deactivate"}
+                </button>
+              </div>
+            </div>
           </div>
-        </>
-      )}
+        </div>
+      ) : null}
 
       <ActivateDeviceModal
         key={activationOpen ? "open" : "closed"}
