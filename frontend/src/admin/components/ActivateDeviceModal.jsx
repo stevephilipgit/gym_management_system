@@ -230,9 +230,9 @@ export default function ActivateDeviceModal({
     }
   };
 
-  const ready =
-    (mode === "code" ? code.length === 6 : qrSecret.length > 0) &&
-    password.length > 0;
+  const codeComplete = mode === "code" && code.length === 6 && /^\d{6}$/.test(code);
+  const qrComplete = mode === "qr" && qrSecret.length > 0;
+  const ready = (codeComplete || qrComplete) && password.length > 0;
 
   const submit = async () => {
     if (step === "activating") return;
@@ -342,7 +342,7 @@ export default function ActivateDeviceModal({
               </div>
             )}
 
-            {(mode === "qr" || step !== "code") ? (
+            {(codeComplete || qrComplete) ? (
               <div className="adm-activate-modal__password">
                 <PasswordField
                   value={password}
@@ -367,15 +367,7 @@ export default function ActivateDeviceModal({
           <div className="modal-button-row adm-activate-modal__actions">
             <button
               type="button"
-              className="btn btn-outline btn-sm"
-              onClick={onClose}
-              disabled={activating}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary"
               onClick={submit}
               disabled={activating || !ready}
               aria-busy={activating}

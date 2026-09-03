@@ -5776,15 +5776,15 @@ body {
 /* ── Activate Attendance Device modal (Trainer) ──────────────── */
 
 .adm-activate-modal {
-  width: min(100%, 560px);
-  max-height: min(90vh, 640px);
+  width: min(100%, 440px);
+  max-height: min(90vh, 560px);
   padding: 0;
   display: flex;
   flex-direction: column;
 }
 
 .adm-activate-modal__header {
-  padding: 18px 20px;
+  padding: 14px 16px;
   align-items: center;
   border-bottom: 1px solid var(--border-color);
 }
@@ -5827,17 +5827,23 @@ body {
 }
 
 .adm-activate-modal__content {
-  padding: 18px 20px 20px;
+  padding: 14px 16px 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  max-height: calc(90vh - 110px);
+  gap: 10px;
+  max-height: calc(90vh - 90px);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.adm-activate-modal__content::-webkit-scrollbar {
+  display: none;
 }
 
 .adm-activate-modal__body {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 
 /* Segmented control for code/QR switcher */
@@ -6023,7 +6029,7 @@ body {
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--border-color);
   background: var(--surface-soft, rgba(255, 255, 255, 0.03));
@@ -6071,14 +6077,14 @@ body {
   }
 
   .adm-activate-modal {
-    width: calc(100vw - 24px);
+    width: min(calc(100vw - 24px), 440px);
     max-height: 92vh;
   }
 
   .adm-activate-modal__header,
   .adm-activate-modal__content {
-    padding-left: 16px;
-    padding-right: 16px;
+    padding-left: 14px;
+    padding-right: 14px;
   }
 
   .adm-activate-modal__actions {
