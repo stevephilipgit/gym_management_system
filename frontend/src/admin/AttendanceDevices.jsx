@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { FiPlus, FiRefreshCcw } from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
@@ -28,6 +29,12 @@ function scopeLabel(scope) {
     : scope || "—";
 }
 
+function getTrainerScope(trainerId, trainers) {
+  if (!trainerId || !trainers) return null;
+  const t = trainers.find((x) => String(x._id) === String(trainerId));
+  return t?.scope || null;
+}
+
 function shortDeviceId(id) {
   if (!id) return "—";
   if (id.length <= 18) return id;
@@ -53,36 +60,62 @@ function fmtCountdown(expiresAt) {
  */
 function DeviceOverflowMenu({ onRevoke, busy }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef(null);
+
+  const toggle = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: r.right - 120 });
+    }
+    setOpen((v) => !v);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   return (
-    <div className="device-overflow-wrap">
+    <>
       <IconButton
+        ref={btnRef}
         type="more"
         title="Device actions"
         ariaLabel="Device actions"
         ariaExpanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
       />
-      {open ? (
-        <>
-          <div className="device-overflow-backdrop" onClick={() => setOpen(false)} />
-          <div className="device-overflow-menu" role="menu" aria-label="Device actions">
-            <button
-              type="button"
-              role="menuitem"
-              className="device-overflow-item device-overflow-item-danger"
-              disabled={busy}
-              onClick={() => {
-                setOpen(false);
-                onRevoke();
-              }}
-            >
-              {busy ? "Revoking…" : "Revoke"}
-            </button>
-          </div>
-        </>
-      ) : null}
-    </div>
+      {open
+        ? createPortal(
+            <>
+              <div className="device-overflow-backdrop" onClick={() => setOpen(false)} />
+              <div
+                className="device-overflow-menu"
+                role="menu"
+                aria-label="Device actions"
+                style={{ position: "fixed", top: pos.top, left: pos.left }}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="device-overflow-item device-overflow-item-danger"
+                  disabled={busy}
+                  onClick={() => {
+                    setOpen(false);
+                    onRevoke();
+                  }}
+                >
+                  {busy ? "Revoking…" : "Revoke"}
+                </button>
+              </div>
+            </>,
+            document.body
+          )
+        : null}
+    </>
   );
 }
 
@@ -221,7 +254,7 @@ export default function AttendanceDevices() {
                 {activeRegistrations.map((r) => (
                   <tr key={r.registrationId}>
                     <td className="pk-name">{r.trainerName || "Trainer"}</td>
-                    <td className="device-col-scope">{scopeLabel(r.scope)}</td>
+                    <td className="device-col-scope">{scopeLabel(getTrainerScope(r.trainerId, trainers))}</td>
                     <td className="device-col-device" title={r.browserDeviceId || ""}>
                       {r.deviceLabel || shortDeviceId(r.browserDeviceId)}
                     </td>
@@ -250,7 +283,7 @@ export default function AttendanceDevices() {
                   <StatusBadge label="Active" cls="badge-active" />
                 </div>
                 <div className="device-stack-meta">
-                  {scopeLabel(r.scope)} · {r.deviceLabel || shortDeviceId(r.browserDeviceId)} · {fmtShort(r.activatedAt)}
+                  {scopeLabel(getTrainerScope(r.trainerId, trainers))} · {r.deviceLabel || shortDeviceId(r.browserDeviceId)} · {fmtShort(r.activatedAt)}
                 </div>
                 <div className="device-stack-actions">
                   <DeviceOverflowMenu

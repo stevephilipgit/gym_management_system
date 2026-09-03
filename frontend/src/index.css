@@ -3944,6 +3944,12 @@ body {
   max-width: 100%;
 }
 
+.page-content {
+  padding: 24px;
+  width: 100%;
+  max-width: 100%;
+}
+
 /* Management page layout — fixed header/filters/table-header, scrollable records */
 .management-page {
   display: flex;
@@ -5510,6 +5516,10 @@ body {
 }
 
 /* ── Trainer Attendance Devices — compact tables ──────────────── */
+.saas-table-container.device-table {
+  overflow-x: visible;
+}
+
 .device-table .saas-table th,
 .device-table .saas-table td {
   padding: 10px 12px;
@@ -5552,22 +5562,15 @@ body {
 }
 
 /* Compact overflow menu (destructive row actions) */
-.device-overflow-wrap {
-  position: relative;
-  display: inline-block;
-}
-
 .device-overflow-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 19;
+  z-index: 9998;
 }
 
 .device-overflow-menu {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  z-index: 20;
+  position: fixed;
+  z-index: 9999;
   min-width: 120px;
   padding: 4px;
   background: var(--surface-soft);
