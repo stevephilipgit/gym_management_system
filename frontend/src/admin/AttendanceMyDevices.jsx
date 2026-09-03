@@ -118,7 +118,7 @@ export default function AttendanceMyDevices() {
   };
 
   if (loading) {
-    return <div className="page-content"><p className="muted-copy">Loading your devices...</p></div>;
+    return <div className="saas-container"><p className="muted-copy">Loading your devices...</p></div>;
   }
 
   const activeDevice = devices.find((d) => d.active);
@@ -126,7 +126,7 @@ export default function AttendanceMyDevices() {
   const scope = activeDevice?.scope || admin?.scope;
 
   return (
-    <div className="page-content">
+    <div className="saas-container">
       <PageHeader
         title="My Attendance Device"
         description="Manage the device you use for customer attendance."

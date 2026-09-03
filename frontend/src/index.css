@@ -5985,12 +5985,6 @@ body {
 }
 
 /* QR helpers */
-.adm-qr-manual {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
 .adm-qr-scan {
   display: flex;
   flex-direction: column;

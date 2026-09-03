@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { FiCamera, FiCheckCircle, FiCopy, FiEye, FiEyeOff, FiHash, FiInfo, FiLock, FiSmartphone, FiX } from "react-icons/fi";
+import { FiCamera, FiCheckCircle, FiEye, FiEyeOff, FiHash, FiInfo, FiLock, FiSmartphone, FiX } from "react-icons/fi";
 
 // Polished, compact modal for activating a Trainer attendance device.
 // UI-only refactor of the inline modal in AttendanceMyDevices.jsx.
@@ -35,13 +35,16 @@ function SegmentedTabs({ value, onChange, disabled, options }) {
 }
 
 function QrScanInput({ onSecret, disabled }) {
-  const [mode, setMode] = useState("manual"); // "manual" | "scan"
-  const [secret, setSecret] = useState("");
+  const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState("");
-  const [copied, setCopied] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const scannerRef = useRef(null);
+
+  // Native BarcodeDetector — Chromium-only. Safari/iOS/Firefox fall back to
+  // the 6-Digit Code tab (same activation, same lifecycle).
+  const detectorSupported =
+    typeof window !== "undefined" && typeof window.BarcodeDetector !== "undefined";
 
   const stopScan = useCallback(() => {
     if (scannerRef.current) {
@@ -52,17 +55,13 @@ function QrScanInput({ onSecret, disabled }) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
-    setMode("manual");
+    setScanning(false);
   }, []);
 
   useEffect(() => () => stopScan(), [stopScan]);
 
   const startScan = async () => {
     setScanError("");
-    if (typeof window.BarcodeDetector === "undefined") {
-      setScanError("QR scanning is not supported on this browser. Paste the QR value below instead.");
-      return;
-    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
       streamRef.current = stream;
@@ -77,36 +76,40 @@ function QrScanInput({ onSecret, disabled }) {
           const codes = await detector.detect(videoRef.current);
           if (codes.length > 0 && codes[0].rawValue) {
             const value = String(codes[0].rawValue).trim();
-            setSecret(value);
             onSecret(value);
             stopScan();
           }
         } catch {
-          setScanError("Could not read QR. Ensure the QR is clearly visible.");
+          setScanError("Could not read the QR. Hold it steady and try again.");
         }
       }, 500);
-      setMode("scan");
+      setScanning(true);
     } catch {
-      setScanError("Camera access denied. Paste the QR value below instead.");
+      setScanError("Camera unavailable or permission denied. Use the 6-Digit Code tab instead.");
+      setScanning(false);
     }
   };
 
-  const copySecret = async () => {
-    if (!secret) return;
-    try {
-      await navigator.clipboard.writeText(secret);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard unavailable */
-    }
-  };
+  if (!detectorSupported) {
+    return (
+      <div className="adm-activate-modal__notice" role="note">
+        <FiInfo aria-hidden="true" className="adm-activate-modal__notice-icon" />
+        <div>
+          <div className="adm-activate-modal__notice-title">Scanner unavailable</div>
+          <p className="adm-activate-modal__notice-body">
+            QR scanning isn&apos;t supported in this browser. Switch to the 6-Digit
+            Code tab — it activates the same device through the same secure flow.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
-  if (mode === "scan") {
+  if (scanning) {
     return (
       <div className="adm-qr-scan">
         <video ref={videoRef} className="adm-qr-video" muted playsInline />
-        {scanError ? <div className="modal-error">{scanError}</div> : null}
+        {scanError ? <div className="modal-error" role="alert">{scanError}</div> : null}
         <div className="adm-qr-actions">
           <button
             type="button"
@@ -122,38 +125,12 @@ function QrScanInput({ onSecret, disabled }) {
   }
 
   return (
-    <div className="adm-qr-manual">
-      <div className="adm-field">
-        <label htmlFor="adm-qr-secret" className="adm-label">QR Activation Value</label>
-        <div className="adm-input-wrap">
-          <input
-            id="adm-qr-secret"
-            type="text"
-            autoComplete="off"
-            spellCheck="false"
-            className="kiosk-input"
-            value={secret}
-            onChange={(e) => {
-              setSecret(e.target.value);
-              onSecret(e.target.value.trim());
-            }}
-            disabled={disabled}
-            placeholder="Paste the QR value from your administrator"
-          />
-          <button
-            type="button"
-            className="adm-input-icon-btn"
-            onClick={copySecret}
-            disabled={!secret || disabled}
-            aria-label="Copy QR value"
-            title={copied ? "Copied" : "Copy"}
-          >
-            {copied ? <FiCheckCircle /> : <FiCopy />}
-          </button>
-        </div>
-      </div>
-      {scanError ? <div className="modal-error adm-qr-error">{scanError}</div> : null}
-      <div className="adm-qr-actions adm-qr-actions--inline">
+    <div className="adm-qr-scan">
+      <p className="adm-helper">
+        Point this device&apos;s camera at the QR code your administrator shared.
+      </p>
+      {scanError ? <div className="modal-error" role="alert">{scanError}</div> : null}
+      <div className="adm-qr-actions">
         <button
           type="button"
           className="btn btn-outline btn-sm"
@@ -355,12 +332,17 @@ export default function ActivateDeviceModal({
                 <p className="adm-helper">Type the 6-digit code your administrator gave you.</p>
               </div>
             ) : (
-              <div role="tabpanel" id="adm-panel-qr" aria-labelledby="tab-qr">
+              <div role="tabpanel" id="adm-panel-qr" aria-labelledby="tab-qr" className="adm-field">
                 <QrScanInput onSecret={(v) => { setQrSecret(v); setError(""); }} disabled={activating} />
+                {qrSecret ? (
+                  <p className="adm-helper" style={{ margin: 0, color: "var(--success)" }}>
+                    QR captured. Confirm your password below to activate.
+                  </p>
+                ) : null}
               </div>
             )}
 
-            {step !== "code" ? (
+            {(mode === "qr" || step !== "code") ? (
               <div className="adm-activate-modal__password">
                 <PasswordField
                   value={password}
