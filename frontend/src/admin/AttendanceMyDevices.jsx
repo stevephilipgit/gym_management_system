@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import apiClient from "../utils/apiClient.js";
 import {
   getOrCreateBrowserDeviceId,
@@ -11,6 +11,7 @@ import {
   StatusBadge,
   EmptyState,
 } from "./components/ui/DeviceComponents.jsx";
+import ActivateDeviceModal from "./components/ActivateDeviceModal.jsx";
 
 function fmt(dt) {
   if (!dt) return "—";
@@ -25,106 +26,7 @@ function scopeLabel(scope) {
     : scope || "—";
 }
 
-// Simple, dependency-free QR scan using the native Barcode Detection API
-// (Chromium on secure contexts). Falls back gracefully to manual paste.
-function QrScanInput({ onSecret, disabled }) {
-  const [mode, setMode] = useState("manual"); // "manual" | "scan"
-  const [secret, setSecret] = useState("");
-  const [scanError, setScanError] = useState("");
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
-  const scannerRef = useRef(null);
-
-  const stopScan = useCallback(() => {
-    if (scannerRef.current) {
-      try { scannerRef.current.stop(); } catch { /* noop */ }
-      scannerRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    setMode("manual");
-  }, []);
-
-  useEffect(() => () => stopScan(), [stopScan]);
-
-  const startScan = async () => {
-    setScanError("");
-    if (typeof BarcodeDetector === "undefined") {
-      setScanError("QR scanning is not supported on this browser. Paste the QR value below instead.");
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      const detector = new BarcodeDetector({ formats: ["qr_code"] });
-      scannerRef.current = setInterval(async () => {
-        if (!videoRef.current) return;
-        try {
-          const codes = await detector.detect(videoRef.current);
-          if (codes.length > 0 && codes[0].rawValue) {
-            const value = String(codes[0].rawValue).trim();
-            setSecret(value);
-            onSecret(value);
-            stopScan();
-          }
-        } catch (err) {
-          setScanError("Could not read QR. Ensure the QR is clearly visible.");
-        }
-      }, 500);
-      setMode("scan");
-    } catch (err) {
-      setScanError("Camera access denied. Paste the QR value below instead.");
-    }
-  };
-
-  if (mode === "scan") {
-    return (
-      <div style={{ marginTop: 4 }}>
-        <video ref={videoRef} style={{ width: "100%", borderRadius: 8, maxHeight: 220, objectFit: "cover" }} muted playsInline />
-        {scanError ? <div className="modal-error">{scanError}</div> : null}
-        <div className="modal-button-row" style={{ marginTop: 8 }}>
-          <button type="button" className="btn btn-outline btn-sm" onClick={stopScan} disabled={disabled}>
-            Cancel Scan
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ marginTop: 4 }}>
-      <label style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-        QR Activation Value
-      </label>
-      <input
-        type="text"
-        autoComplete="off"
-        className="kiosk-input"
-        style={{ marginTop: 4 }}
-        value={secret}
-        onChange={(e) => {
-          setSecret(e.target.value);
-          onSecret(e.target.value.trim());
-        }}
-        disabled={disabled}
-        placeholder="Paste the QR value from your administrator"
-        aria-label="QR activation value"
-      />
-      {scanError ? <div className="modal-error">{scanError}</div> : null}
-      <div className="modal-button-row" style={{ marginTop: 8 }}>
-        <button type="button" className="btn btn-outline btn-sm" onClick={startScan} disabled={disabled}>
-          Scan QR
-        </button>
-      </div>
-    </div>
-  );
-}
+// QR scan input is encapsulated inside ActivateDeviceModal.
 
 export default function AttendanceMyDevices() {
   const [devices, setDevices] = useState([]);
@@ -133,17 +35,10 @@ export default function AttendanceMyDevices() {
   const [success, setSuccess] = useState("");
   const [busyAction, setBusyAction] = useState(null);
 
-  // Activation modal state
+  // Activation modal visibility
   const [activationOpen, setActivationOpen] = useState(false);
-  const [mode, setMode] = useState("code"); // "code" | "qr"
-  const [step, setStep] = useState("code"); // code | password | activating
-  const [code, setCode] = useState("");
-  const [qrSecret, setQrSecret] = useState("");
-  const [password, setPassword] = useState("");
-  const [activationError, setActivationError] = useState("");
 
   const browserDeviceId = getOrCreateBrowserDeviceId();
-  const codeInputRef = useRef(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -164,82 +59,28 @@ export default function AttendanceMyDevices() {
 
   const openActivation = () => {
     setActivationOpen(true);
-    setMode("code");
-    setStep("code");
-    setCode("");
-    setQrSecret("");
-    setPassword("");
-    setActivationError("");
     setError("");
     setSuccess("");
-    setTimeout(() => codeInputRef.current?.focus(), 100);
   };
 
   const closeActivation = () => {
     setActivationOpen(false);
-    setMode("code");
-    setStep("code");
-    setCode("");
-    setQrSecret("");
-    setPassword("");
-    setActivationError("");
   };
 
-  const handleCodeChange = (e) => {
-    const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
-    setCode(digits);
-    if (digits.length === 6 && step === "code") {
-      setStep("password");
+  const handleActivate = async ({ mode, code, qrSecret, password }) => {
+    const res = await apiClient.post("/admin/devices/activate", {
+      code: mode === "code" ? code : undefined,
+      qrSecret: mode === "qr" ? qrSecret : undefined,
+      password,
+      browserDeviceId,
+    });
+    const { registration, apiKey } = res.data || {};
+    if (registration?.kioskId && apiKey) {
+      setKioskIdentity(registration.kioskId, apiKey);
     }
-  };
-
-  const selectMode = (nextMode) => {
-    setMode(nextMode);
-    setCode("");
-    setQrSecret("");
-    setActivationError("");
-    if (nextMode === "code") {
-      setTimeout(() => codeInputRef.current?.focus(), 50);
-    }
-  };
-
-  const activate = async () => {
-    const hasCode = mode === "code" && code && code.length === 6;
-    const hasQr = mode === "qr" && qrSecret && qrSecret.length > 0;
-    if (!hasCode && !hasQr) {
-      setActivationError(
-        mode === "code"
-          ? "Enter the 6-digit code and your password."
-          : "Enter or scan the QR value and your password."
-      );
-      return;
-    }
-    if (!password) {
-      setActivationError("Confirm with your password.");
-      return;
-    }
-    setStep("activating");
-    setActivationError("");
-    try {
-      const res = await apiClient.post("/admin/devices/activate", {
-        code: mode === "code" ? code : undefined,
-        qrSecret: mode === "qr" ? qrSecret : undefined,
-        password,
-        browserDeviceId,
-      });
-      const { registration, apiKey } = res.data || {};
-      if (registration?.kioskId && apiKey) {
-        setKioskIdentity(registration.kioskId, apiKey);
-      }
-      closeActivation();
-      setSuccess("Device activated. The customer attendance page is now ready.");
-      await fetchData();
-    } catch (err) {
-      setStep("password");
-      setActivationError(
-        err?.response?.data?.message || "Activation failed. Check the code and try again."
-      );
-    }
+    closeActivation();
+    setSuccess("Device activated. The customer attendance page is now ready.");
+    await fetchData();
   };
 
   const lockDevice = async (registrationId) => {
@@ -346,120 +187,12 @@ export default function AttendanceMyDevices() {
         </div>
       ) : null}
 
-      {activationOpen ? (
-        <div className="modal-shell" onClick={closeActivation}>
-          <div className="modal-card" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Activate Attendance Device</h2>
-                <p className="muted-copy" style={{ margin: "2px 0 0", fontSize: 13 }}>
-                  Use the one-time code from your administrator.
-                </p>
-              </div>
-              <button type="button" className="icon-close-btn" onClick={closeActivation} aria-label="Close">
-                ×
-              </button>
-            </div>
-
-            <div className="modal-content">
-              {activationError ? <div className="modal-error">{activationError}</div> : null}
-
-              {/* Mode tabs: 6-digit code OR QR */}
-              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                <button
-                  type="button"
-                  className={mode === "code" ? "btn btn-primary btn-sm" : "btn btn-outline btn-sm"}
-                  onClick={() => selectMode("code")}
-                  disabled={step === "activating"}
-                >
-                  6-Digit Code
-                </button>
-                <button
-                  type="button"
-                  className={mode === "qr" ? "btn btn-primary btn-sm" : "btn btn-outline btn-sm"}
-                  onClick={() => selectMode("qr")}
-                  disabled={step === "activating"}
-                >
-                  QR Code
-                </button>
-              </div>
-
-              {mode === "code" ? (
-                <>
-                  <label style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                    6-Digit Code
-                  </label>
-                  <input
-                    ref={codeInputRef}
-                    type="text"
-                    inputMode="numeric"
-                    pattern="\d{6}"
-                    maxLength={6}
-                    autoComplete="one-time-code"
-                    className="kiosk-input"
-                    style={{ fontSize: 22, letterSpacing: "0.4em", textAlign: "center", marginTop: 4 }}
-                    value={code}
-                    onChange={handleCodeChange}
-                    disabled={step === "activating"}
-                    placeholder="••••••"
-                    aria-label="6-digit activation code"
-                  />
-                </>
-              ) : (
-                <QrScanInput onSecret={(v) => setQrSecret(v)} disabled={step === "activating"} />
-              )}
-
-              {(step === "password" || step === "activating") ? (
-                <>
-                  <label
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      letterSpacing: "0.06em",
-                      textTransform: "uppercase",
-                      marginTop: 14,
-                      display: "block",
-                    }}
-                  >
-                    Confirm with your password
-                  </label>
-                  <input
-                    type="password"
-                    autoComplete="current-password"
-                    className="kiosk-input"
-                    style={{ marginTop: 4 }}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={step === "activating"}
-                    placeholder="Your login password"
-                    aria-label="Password"
-                  />
-                </>
-              ) : null}
-
-              <p className="muted-copy" style={{ fontSize: 11, marginTop: 10 }}>
-                Activating a new device will deactivate your previous attendance device.
-              </p>
-
-              <div className="modal-button-row">
-                <button type="button" className="btn btn-outline btn-sm" onClick={closeActivation} disabled={step === "activating"}>
-                  Cancel
-                </button>
-                {(step === "password" || step === "activating") ? (
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={activate}
-                    disabled={step === "activating" || !password || (mode === "code" ? !code || code.length !== 6 : !qrSecret)}
-                  >
-                    {step === "activating" ? "Activating..." : "Activate"}
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ActivateDeviceModal
+        key={activationOpen ? "open" : "closed"}
+        open={activationOpen}
+        onClose={closeActivation}
+        onActivate={handleActivate}
+      />
     </div>
   );
 }

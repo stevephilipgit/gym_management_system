@@ -5772,3 +5772,346 @@ body {
   color: #4ade80;
   border: 1px solid rgba(74, 222, 128, 0.2);
 }
+
+/* ── Activate Attendance Device modal (Trainer) ──────────────── */
+
+.adm-activate-modal {
+  width: min(100%, 560px);
+  max-height: min(90vh, 640px);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.adm-activate-modal__header {
+  padding: 18px 20px;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.adm-activate-modal__title-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.adm-activate-modal__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(201, 161, 70, 0.14);
+  color: var(--accent);
+  font-size: 18px;
+  flex: 0 0 auto;
+}
+
+.adm-activate-modal__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+
+.adm-activate-modal__subtitle {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.adm-activate-modal__content {
+  padding: 18px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(90vh - 110px);
+}
+
+.adm-activate-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Segmented control for code/QR switcher */
+.adm-segmented {
+  display: inline-flex;
+  padding: 4px;
+  gap: 4px;
+  border-radius: 10px;
+  background: var(--surface-muted, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-color);
+  align-self: stretch;
+}
+
+.adm-segmented__btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 7px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.adm-segmented__btn:hover:not(:disabled):not(.is-active) {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.adm-segmented__btn.is-active {
+  background: var(--accent);
+  color: #121212;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.adm-segmented__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.adm-segmented__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.adm-segmented__icon {
+  display: inline-flex;
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* Field */
+.adm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.adm-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.adm-helper {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* Input wrapper for icon-button add-on (eye, copy) */
+.adm-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+}
+
+.adm-input-wrap .kiosk-input {
+  padding-right: 44px;
+}
+
+.adm-input-icon-btn {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+  font-size: 15px;
+}
+
+.adm-input-icon-btn:hover:not(:disabled) {
+  background: rgba(201, 161, 70, 0.12);
+  color: var(--accent);
+}
+
+.adm-input-icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.adm-input-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Code input — strong contrast, monospaced, centered */
+.adm-code-input {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.45em;
+  text-align: center;
+  color: var(--text-primary);
+  caret-color: var(--accent);
+  padding-left: 16px;
+  padding-right: 16px;
+  min-height: 56px;
+}
+
+.adm-code-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+  letter-spacing: 0.45em;
+}
+
+/* QR helpers */
+.adm-qr-manual {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.adm-qr-scan {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.adm-qr-video {
+  width: 100%;
+  max-height: 220px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  object-fit: cover;
+  background: #000;
+}
+
+.adm-qr-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.adm-qr-actions--inline {
+  margin-top: 2px;
+}
+
+.adm-qr-error {
+  margin: 0;
+}
+
+/* Password section spacing */
+.adm-activate-modal__password {
+  margin-top: 2px;
+}
+
+/* Info notice */
+.adm-activate-modal__notice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-soft, rgba(255, 255, 255, 0.03));
+}
+
+.adm-activate-modal__notice-icon {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 16px;
+  line-height: 1.2;
+  margin-top: 1px;
+}
+
+.adm-activate-modal__notice-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+}
+
+.adm-activate-modal__notice-body {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+/* Action row */
+.adm-activate-modal__actions {
+  justify-content: flex-end;
+  margin-top: 6px;
+  gap: 8px;
+}
+
+.adm-activate-modal__actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 640px) {
+  .modal-shell {
+    padding: 12px;
+    align-items: flex-end;
+  }
+
+  .adm-activate-modal {
+    width: calc(100vw - 24px);
+    max-height: 92vh;
+  }
+
+  .adm-activate-modal__header,
+  .adm-activate-modal__content {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .adm-activate-modal__actions {
+    flex-direction: column-reverse;
+    justify-content: stretch;
+  }
+
+  .adm-activate-modal__actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 380px) {
+  .adm-code-input {
+    font-size: 19px;
+    letter-spacing: 0.35em;
+    min-height: 52px;
+  }
+
+  .adm-activate-modal__title {
+    font-size: 15px;
+  }
+
+  .adm-activate-modal__icon {
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
+  }
+}
