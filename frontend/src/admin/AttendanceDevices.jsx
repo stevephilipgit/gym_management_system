@@ -1,17 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { FiPlus, FiRefreshCcw } from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
+import IconButton from "./components/ui/IconButton.jsx";
 import {
   PageHeader,
   SectionHeader,
   StatusBadge,
   EmptyState,
-  InfoRow,
 } from "./components/ui/DeviceComponents.jsx";
 
-function fmt(dt) {
+function fmtShort(dt) {
   if (!dt) return "—";
-  return new Date(dt).toLocaleString();
+  return new Date(dt).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function scopeLabel(scope) {
@@ -20,6 +26,12 @@ function scopeLabel(scope) {
     : scope === "female_plus_transgender"
     ? "Female + Transgender"
     : scope || "—";
+}
+
+function shortDeviceId(id) {
+  if (!id) return "—";
+  if (id.length <= 18) return id;
+  return `${id.slice(0, 10)}…${id.slice(-4)}`;
 }
 
 function fmtCountdown(expiresAt) {
@@ -33,6 +45,45 @@ function fmtCountdown(expiresAt) {
   } catch {
     return "—";
   }
+}
+
+/**
+ * Compact overflow menu for destructive row actions (Revoke).
+ * Uses the existing IconButton "more" trigger + design tokens.
+ */
+function DeviceOverflowMenu({ onRevoke, busy }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="device-overflow-wrap">
+      <IconButton
+        type="more"
+        title="Device actions"
+        ariaLabel="Device actions"
+        ariaExpanded={open}
+        onClick={() => setOpen((v) => !v)}
+      />
+      {open ? (
+        <>
+          <div className="device-overflow-backdrop" onClick={() => setOpen(false)} />
+          <div className="device-overflow-menu" role="menu" aria-label="Device actions">
+            <button
+              type="button"
+              role="menuitem"
+              className="device-overflow-item device-overflow-item-danger"
+              disabled={busy}
+              onClick={() => {
+                setOpen(false);
+                onRevoke();
+              }}
+            >
+              {busy ? "Revoking…" : "Revoke"}
+            </button>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
 }
 
 export default function AttendanceDevices() {
@@ -142,7 +193,7 @@ export default function AttendanceDevices() {
     <div className="page-content">
       <PageHeader
         title="Trainer Attendance Devices"
-        description="Generate one-time activation codes for trainers. The trainer redeems the code on the device they want to use for customer attendance."
+        description="Manage trainer attendance devices and activation access."
       />
 
       {error ? <div className="alert alert-error">{error}</div> : null}
@@ -152,67 +203,182 @@ export default function AttendanceDevices() {
       {activeRegistrations.length === 0 ? (
         <EmptyState title="No active devices" description="Generate an activation code below and share it with the trainer." />
       ) : (
-        <div className="admin-device-grid">
-          {activeRegistrations.map((r) => (
-            <div key={r.registrationId} className="admin-device-card device-active">
-              <div className="admin-device-info">
-                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
-                  {r.trainerName || "Trainer"}
-                </h3>
-                <StatusBadge label="Active" cls="badge-active" />
-                <InfoRow label="Scope" value={scopeLabel(r.scope)} />
-                <InfoRow label="Activated" value={fmt(r.activatedAt)} />
+        <>
+          {/* Desktop / tablet — compact table */}
+          <div className="saas-table-container device-table">
+            <table className="saas-table">
+              <thead>
+                <tr>
+                  <th scope="col">Trainer</th>
+                  <th scope="col">Scope</th>
+                  <th scope="col">Device</th>
+                  <th scope="col">Activated</th>
+                  <th scope="col">Status</th>
+                  <th className="device-col-actions" scope="col">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeRegistrations.map((r) => (
+                  <tr key={r.registrationId}>
+                    <td className="pk-name">{r.trainerName || "Trainer"}</td>
+                    <td className="device-col-scope">{scopeLabel(r.scope)}</td>
+                    <td className="device-col-device" title={r.browserDeviceId || ""}>
+                      {r.deviceLabel || shortDeviceId(r.browserDeviceId)}
+                    </td>
+                    <td className="device-col-date">{fmtShort(r.activatedAt)}</td>
+                    <td>
+                      <StatusBadge label="Active" cls="badge-active" />
+                    </td>
+                    <td className="device-col-actions">
+                      <DeviceOverflowMenu
+                        busy={busyAction === `revoke-${r.registrationId}`}
+                        onRevoke={() => revokeRegistration(r.registrationId)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile — compact stacked rows */}
+          <div className="device-stack">
+            {activeRegistrations.map((r) => (
+              <div key={r.registrationId} className="device-stack-row">
+                <div className="device-stack-top">
+                  <span className="device-stack-name">{r.trainerName || "Trainer"}</span>
+                  <StatusBadge label="Active" cls="badge-active" />
+                </div>
+                <div className="device-stack-meta">
+                  {scopeLabel(r.scope)} · {r.deviceLabel || shortDeviceId(r.browserDeviceId)} · {fmtShort(r.activatedAt)}
+                </div>
+                <div className="device-stack-actions">
+                  <DeviceOverflowMenu
+                    busy={busyAction === `revoke-${r.registrationId}`}
+                    onRevoke={() => revokeRegistration(r.registrationId)}
+                  />
+                </div>
               </div>
-              <div className="device-card-actions">
-                <button
-                  type="button"
-                  className="btn btn-danger btn-sm"
-                  disabled={busyAction === `revoke-${r.registrationId}`}
-                  onClick={() => revokeRegistration(r.registrationId)}
-                >
-                  {busyAction === `revoke-${r.registrationId}` ? "Revoking..." : "Revoke Device"}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </>
       )}
 
       <SectionHeader title="Trainers" sub="Select a trainer to generate a one-time activation." style={{ marginTop: 24 }} />
       {trainers.length === 0 ? (
         <EmptyState title="No trainers" description="Create a trainer account first." />
       ) : (
-        <div className="admin-device-grid">
-          {trainers.map((t) => {
-            const trainerActive = activeRegistrations.find(
-              (r) => String(r.trainerId) === String(t._id)
-            );
-            return (
-              <div key={t._id} className="admin-device-card">
-                <div className="admin-device-info">
-                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{t.fullName || t.username}</h3>
-                  <InfoRow label="Scope" value={scopeLabel(t.scope)} />
-                  <InfoRow label="Status" value={t.status === "active" ? "Active" : t.status || "—"} />
-                  {trainerActive ? (
-                    <StatusBadge label="Device active" cls="badge-active" />
-                  ) : (
-                    <StatusBadge label="No active device" cls="badge-muted" />
-                  )}
+        <>
+          {/* Desktop / tablet — compact table */}
+          <div className="saas-table-container device-table">
+            <table className="saas-table">
+              <thead>
+                <tr>
+                  <th scope="col">Trainer</th>
+                  <th scope="col">Scope</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Device</th>
+                  <th className="device-col-actions" scope="col">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trainers.map((t) => {
+                  const trainerActive = activeRegistrations.find(
+                    (r) => String(r.trainerId) === String(t._id)
+                  );
+                  const disabled = !t.status || t.status !== "active";
+                  return (
+                    <tr key={t._id}>
+                      <td className="pk-name">{t.fullName || t.username}</td>
+                      <td className="device-col-scope">{scopeLabel(t.scope)}</td>
+                      <td>
+                        {t.status === "active" ? (
+                          <StatusBadge label="Active" cls="badge-active" />
+                        ) : (
+                          <StatusBadge label={t.status || "—"} cls="badge-muted" />
+                        )}
+                      </td>
+                      <td className="device-col-device" title={trainerActive?.browserDeviceId || ""}>
+                        {trainerActive
+                          ? trainerActive.deviceLabel || shortDeviceId(trainerActive.browserDeviceId)
+                          : <span className="device-col-none">No device</span>}
+                      </td>
+                      <td className="device-col-actions">
+                        <button
+                          type="button"
+                          className="btn-ghost min-h-0 px-2 py-1 text-xs"
+                          onClick={() => openActivationModal(t)}
+                          disabled={disabled}
+                          title={disabled ? "Trainer account is not active" : trainerActive ? "Replace the trainer's attendance device" : "Activate a device for this trainer"}
+                        >
+                          {trainerActive ? (
+                            <>
+                              <FiRefreshCcw size={13} aria-hidden="true" />
+                              Replace
+                            </>
+                          ) : (
+                            <>
+                              <FiPlus size={13} aria-hidden="true" />
+                              Activate
+                            </>
+                          )}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile — compact stacked rows */}
+          <div className="device-stack">
+            {trainers.map((t) => {
+              const trainerActive = activeRegistrations.find(
+                (r) => String(r.trainerId) === String(t._id)
+              );
+              const disabled = !t.status || t.status !== "active";
+              return (
+                <div key={t._id} className="device-stack-row">
+                  <div className="device-stack-top">
+                    <span className="device-stack-name">{t.fullName || t.username}</span>
+                    {t.status === "active" ? (
+                      <StatusBadge label="Active" cls="badge-active" />
+                    ) : (
+                      <StatusBadge label={t.status || "—"} cls="badge-muted" />
+                    )}
+                  </div>
+                  <div className="device-stack-meta">
+                    {scopeLabel(t.scope)} · {trainerActive
+                      ? trainerActive.deviceLabel || shortDeviceId(trainerActive.browserDeviceId)
+                      : "No device"}
+                  </div>
+                  <div className="device-stack-actions">
+                    <button
+                      type="button"
+                      className="btn-ghost min-h-0 px-2 py-1 text-xs"
+                      onClick={() => openActivationModal(t)}
+                      disabled={disabled}
+                      title={disabled ? "Trainer account is not active" : trainerActive ? "Replace the trainer's attendance device" : "Activate a device for this trainer"}
+                    >
+                      {trainerActive ? (
+                        <>
+                          <FiRefreshCcw size={13} aria-hidden="true" />
+                          Replace
+                        </>
+                      ) : (
+                        <>
+                          <FiPlus size={13} aria-hidden="true" />
+                          Activate
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-                <div className="device-card-actions">
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={() => openActivationModal(t)}
-                    disabled={!t.status || t.status !== "active"}
-                  >
-                    Generate Activation
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {modalTrainer ? (

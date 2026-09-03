@@ -5509,6 +5509,164 @@ body {
   font-weight: 600;
 }
 
+/* ── Trainer Attendance Devices — compact tables ──────────────── */
+.device-table .saas-table th,
+.device-table .saas-table td {
+  padding: 10px 12px;
+}
+
+.device-table .saas-table th {
+  font-size: 11px;
+}
+
+.device-table .saas-table td {
+  font-size: 13px;
+}
+
+.device-col-scope {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.device-col-device {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.device-col-none {
+  color: var(--text-muted);
+}
+
+.device-col-date {
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.device-col-actions {
+  width: 120px;
+  white-space: nowrap;
+}
+
+/* Compact overflow menu (destructive row actions) */
+.device-overflow-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.device-overflow-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+}
+
+.device-overflow-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 20;
+  min-width: 120px;
+  padding: 4px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.device-overflow-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.device-overflow-item:hover {
+  background: var(--row-hover);
+  color: var(--text-primary);
+}
+
+.device-overflow-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.device-overflow-item-danger {
+  color: var(--danger);
+}
+
+.device-overflow-item-danger:hover {
+  background: rgba(255, 93, 93, 0.1);
+  color: var(--danger);
+}
+
+.device-overflow-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Mobile stacked rows (≤767px — mirrors members-cards pattern) */
+.device-stack {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .device-table {
+    display: none;
+  }
+
+  .device-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+}
+
+.device-stack-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.device-stack-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.device-stack-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.device-stack-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.device-stack-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
 /* ── Device page shared primitives (UI normalization) ─────────── */
 .section-subtitle {
   font-size: 12px;
