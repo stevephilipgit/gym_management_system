@@ -1,25 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { FiPlus, FiRefreshCcw } from "react-icons/fi";
+
 import apiClient from "../utils/apiClient.js";
 import IconButton from "./components/ui/IconButton.jsx";
 import {
   PageHeader,
-  SectionHeader,
   StatusBadge,
   EmptyState,
 } from "./components/ui/DeviceComponents.jsx";
-
-function fmtShort(dt) {
-  if (!dt) return "—";
-  return new Date(dt).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 function scopeLabel(scope) {
   return scope === "male"
@@ -27,12 +16,6 @@ function scopeLabel(scope) {
     : scope === "female_plus_transgender"
     ? "Female + Transgender"
     : scope || "—";
-}
-
-function getTrainerScope(trainerId, trainers) {
-  if (!trainerId || !trainers) return null;
-  const t = trainers.find((x) => String(x._id) === String(trainerId));
-  return t?.scope || null;
 }
 
 function shortDeviceId(id) {
@@ -55,18 +38,20 @@ function fmtCountdown(expiresAt) {
 }
 
 /**
- * Compact overflow menu for destructive row actions (Revoke).
- * Uses the existing IconButton "more" trigger + design tokens.
+ * State-aware action menu for a trainer row.
+ * No device → [Activate]
+ * Has device → [Replace device] [Revoke device]
  */
-function DeviceOverflowMenu({ onRevoke, busy }) {
+function DeviceDeviceMenu({ trainer, activeRegistration, onActivate, onRevoke, busy }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
-  const btnRef = useRef(null);
+  const wrapRef = useRef(null);
+  const hasDevice = !!activeRegistration;
 
   const toggle = () => {
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, left: r.right - 120 });
+    if (!open && wrapRef.current) {
+      const r = wrapRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: Math.max(8, r.right - 140) });
     }
     setOpen((v) => !v);
   };
@@ -80,14 +65,15 @@ function DeviceOverflowMenu({ onRevoke, busy }) {
 
   return (
     <>
-      <IconButton
-        ref={btnRef}
-        type="more"
-        title="Device actions"
-        ariaLabel="Device actions"
-        ariaExpanded={open}
-        onClick={toggle}
-      />
+      <span ref={wrapRef} style={{ display: "inline-flex" }}>
+        <IconButton
+          type="more"
+          title="Device actions"
+          ariaLabel={`Device actions for ${trainer.fullName || trainer.username}`}
+          ariaExpanded={open}
+          onClick={toggle}
+        />
+      </span>
       {open
         ? createPortal(
             <>
@@ -95,21 +81,28 @@ function DeviceOverflowMenu({ onRevoke, busy }) {
               <div
                 className="device-overflow-menu"
                 role="menu"
-                aria-label="Device actions"
+                aria-label={`Device actions for ${trainer.fullName || trainer.username}`}
                 style={{ position: "fixed", top: pos.top, left: pos.left }}
               >
                 <button
                   type="button"
                   role="menuitem"
-                  className="device-overflow-item device-overflow-item-danger"
-                  disabled={busy}
-                  onClick={() => {
-                    setOpen(false);
-                    onRevoke();
-                  }}
+                  className="device-overflow-item"
+                  onClick={() => { setOpen(false); onActivate(trainer); }}
                 >
-                  {busy ? "Revoking…" : "Revoke"}
+                  {hasDevice ? "Replace device" : "Activate"}
                 </button>
+                {hasDevice ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="device-overflow-item device-overflow-item-danger"
+                    disabled={busy}
+                    onClick={() => { setOpen(false); onRevoke(activeRegistration.registrationId); }}
+                  >
+                    {busy ? "Revoking…" : "Revoke device"}
+                  </button>
+                ) : null}
               </div>
             </>,
             document.body
@@ -222,6 +215,9 @@ export default function AttendanceDevices() {
 
   const activeRegistrations = registrations.filter((r) => r.active);
 
+  const getTrainerActive = (trainerId) =>
+    activeRegistrations.find((r) => String(r.trainerId) === String(trainerId));
+
   return (
     <div className="page-content">
       <PageHeader
@@ -231,73 +227,6 @@ export default function AttendanceDevices() {
 
       {error ? <div className="alert alert-error">{error}</div> : null}
       {success ? <div className="alert alert-success">{success}</div> : null}
-
-      <SectionHeader title="Active Devices" sub="Trainers currently running customer attendance." />
-      {activeRegistrations.length === 0 ? (
-        <EmptyState title="No active devices" description="Generate an activation code below and share it with the trainer." />
-      ) : (
-        <>
-          {/* Desktop / tablet — compact table */}
-          <div className="saas-table-container device-table">
-            <table className="saas-table">
-              <thead>
-                <tr>
-                  <th scope="col">Trainer</th>
-                  <th scope="col">Scope</th>
-                  <th scope="col">Device</th>
-                  <th scope="col">Activated</th>
-                  <th scope="col">Status</th>
-                  <th className="device-col-actions" scope="col">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activeRegistrations.map((r) => (
-                  <tr key={r.registrationId}>
-                    <td className="pk-name">{r.trainerName || "Trainer"}</td>
-                    <td className="device-col-scope">{scopeLabel(getTrainerScope(r.trainerId, trainers))}</td>
-                    <td className="device-col-device" title={r.browserDeviceId || ""}>
-                      {r.deviceLabel || shortDeviceId(r.browserDeviceId)}
-                    </td>
-                    <td className="device-col-date">{fmtShort(r.activatedAt)}</td>
-                    <td>
-                      <StatusBadge label="Active" cls="badge-active" />
-                    </td>
-                    <td className="device-col-actions">
-                      <DeviceOverflowMenu
-                        busy={busyAction === `revoke-${r.registrationId}`}
-                        onRevoke={() => revokeRegistration(r.registrationId)}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile — compact stacked rows */}
-          <div className="device-stack">
-            {activeRegistrations.map((r) => (
-              <div key={r.registrationId} className="device-stack-row">
-                <div className="device-stack-top">
-                  <span className="device-stack-name">{r.trainerName || "Trainer"}</span>
-                  <StatusBadge label="Active" cls="badge-active" />
-                </div>
-                <div className="device-stack-meta">
-                  {scopeLabel(getTrainerScope(r.trainerId, trainers))} · {r.deviceLabel || shortDeviceId(r.browserDeviceId)} · {fmtShort(r.activatedAt)}
-                </div>
-                <div className="device-stack-actions">
-                  <DeviceOverflowMenu
-                    busy={busyAction === `revoke-${r.registrationId}`}
-                    onRevoke={() => revokeRegistration(r.registrationId)}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      <SectionHeader title="Trainers" sub="Select a trainer to generate a one-time activation." style={{ marginTop: 24 }} />
       {trainers.length === 0 ? (
         <EmptyState title="No trainers" description="Create a trainer account first." />
       ) : (
@@ -316,10 +245,7 @@ export default function AttendanceDevices() {
               </thead>
               <tbody>
                 {trainers.map((t) => {
-                  const trainerActive = activeRegistrations.find(
-                    (r) => String(r.trainerId) === String(t._id)
-                  );
-                  const disabled = !t.status || t.status !== "active";
+                  const trainerActive = getTrainerActive(t._id);
                   return (
                     <tr key={t._id}>
                       <td className="pk-name">{t.fullName || t.username}</td>
@@ -337,25 +263,13 @@ export default function AttendanceDevices() {
                           : <span className="device-col-none">No device</span>}
                       </td>
                       <td className="device-col-actions">
-                        <button
-                          type="button"
-                          className="btn-ghost min-h-0 px-2 py-1 text-xs"
-                          onClick={() => openActivationModal(t)}
-                          disabled={disabled}
-                          title={disabled ? "Trainer account is not active" : trainerActive ? "Replace the trainer's attendance device" : "Activate a device for this trainer"}
-                        >
-                          {trainerActive ? (
-                            <>
-                              <FiRefreshCcw size={13} aria-hidden="true" />
-                              Replace
-                            </>
-                          ) : (
-                            <>
-                              <FiPlus size={13} aria-hidden="true" />
-                              Activate
-                            </>
-                          )}
-                        </button>
+                        <DeviceDeviceMenu
+                          trainer={t}
+                          activeRegistration={trainerActive}
+                          onActivate={openActivationModal}
+                          onRevoke={revokeRegistration}
+                          busy={trainerActive ? busyAction === `revoke-${trainerActive.registrationId}` : false}
+                        />
                       </td>
                     </tr>
                   );
@@ -367,10 +281,7 @@ export default function AttendanceDevices() {
           {/* Mobile — compact stacked rows */}
           <div className="device-stack">
             {trainers.map((t) => {
-              const trainerActive = activeRegistrations.find(
-                (r) => String(r.trainerId) === String(t._id)
-              );
-              const disabled = !t.status || t.status !== "active";
+              const trainerActive = getTrainerActive(t._id);
               return (
                 <div key={t._id} className="device-stack-row">
                   <div className="device-stack-top">
@@ -387,25 +298,13 @@ export default function AttendanceDevices() {
                       : "No device"}
                   </div>
                   <div className="device-stack-actions">
-                    <button
-                      type="button"
-                      className="btn-ghost min-h-0 px-2 py-1 text-xs"
-                      onClick={() => openActivationModal(t)}
-                      disabled={disabled}
-                      title={disabled ? "Trainer account is not active" : trainerActive ? "Replace the trainer's attendance device" : "Activate a device for this trainer"}
-                    >
-                      {trainerActive ? (
-                        <>
-                          <FiRefreshCcw size={13} aria-hidden="true" />
-                          Replace
-                        </>
-                      ) : (
-                        <>
-                          <FiPlus size={13} aria-hidden="true" />
-                          Activate
-                        </>
-                      )}
-                    </button>
+                    <DeviceDeviceMenu
+                      trainer={t}
+                      activeRegistration={trainerActive}
+                      onActivate={openActivationModal}
+                      onRevoke={revokeRegistration}
+                      busy={trainerActive ? busyAction === `revoke-${trainerActive.registrationId}` : false}
+                    />
                   </div>
                 </div>
               );
