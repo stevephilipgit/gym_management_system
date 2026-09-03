@@ -4,10 +4,32 @@
 // styling framework — just clean HTML + existing CSS classes.
 
 /**
- * Page-level heading with optional description.
- * Usage: <PageHeader title="Device Management" description="..." />
+ * Page-level heading with optional description and optional right-side actions.
+ * Usage: <PageHeader title="Device Management" description="..." actions={<button .../>} />
+ * When `actions` is provided the header becomes a wrapping flex row with the
+ * action slot at the top-right (wraps below the title on narrow widths).
  */
-export function PageHeader({ title, description }) {
+export function PageHeader({ title, description, actions }) {
+  if (actions) {
+    return (
+      <div
+        style={{
+          marginBottom: 16,
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "8px 16px",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <h1 className="page-title" style={{ margin: 0, fontSize: 22 }}>{title}</h1>
+          {description ? <p className="muted-copy" style={{ margin: "4px 0 0" }}>{description}</p> : null}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>{actions}</div>
+      </div>
+    );
+  }
   return (
     <div style={{ marginBottom: 24 }}>
       <h1 className="page-title" style={{ margin: 0, fontSize: 22 }}>{title}</h1>

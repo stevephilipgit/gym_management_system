@@ -1,21 +1,27 @@
 import { useCallback, useEffect, useState } from "react";
+import { FiLock, FiPlus, FiRefreshCcw } from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
 import {
   getOrCreateBrowserDeviceId,
   setKioskIdentity,
   clearKioskIdentity,
 } from "../utils/kioskIdentity.js";
+import { useAdmin } from "./authContext.js";
 import {
   PageHeader,
   SectionHeader,
   StatusBadge,
-  EmptyState,
 } from "./components/ui/DeviceComponents.jsx";
 import ActivateDeviceModal from "./components/ActivateDeviceModal.jsx";
 
-function fmt(dt) {
+function fmtShort(dt) {
   if (!dt) return "—";
-  return new Date(dt).toLocaleString();
+  return new Date(dt).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function scopeLabel(scope) {
@@ -23,10 +29,16 @@ function scopeLabel(scope) {
     ? "Male"
     : scope === "female_plus_transgender"
     ? "Female + Transgender"
+    : scope === "all"
+    ? "All"
     : scope || "—";
 }
 
-// QR scan input is encapsulated inside ActivateDeviceModal.
+function shortDeviceId(id) {
+  if (!id) return "—";
+  if (id.length <= 18) return id;
+  return `${id.slice(0, 10)}…${id.slice(-4)}`;
+}
 
 export default function AttendanceMyDevices() {
   const [devices, setDevices] = useState([]);
@@ -37,6 +49,10 @@ export default function AttendanceMyDevices() {
 
   // Activation modal visibility
   const [activationOpen, setActivationOpen] = useState(false);
+
+  // Authenticated trainer profile — source of the attendance scope (the
+  // /admin/devices/my payload does not include it).
+  const admin = useAdmin();
 
   const browserDeviceId = getOrCreateBrowserDeviceId();
 
@@ -107,12 +123,33 @@ export default function AttendanceMyDevices() {
 
   const activeDevice = devices.find((d) => d.active);
   const inactiveDevices = devices.filter((d) => !d.active);
+  const scope = activeDevice?.scope || admin?.scope;
 
   return (
     <div className="page-content">
       <PageHeader
         title="My Attendance Device"
         description="Manage the device you use for customer attendance."
+        actions={
+          <button
+            type="button"
+            className="btn-primary min-h-9 gap-1.5 px-3.5 text-[13.5px] font-semibold"
+            onClick={openActivation}
+            title={activeDevice ? "Replace your attendance device" : "Activate an attendance device"}
+          >
+            {activeDevice ? (
+              <>
+                <FiRefreshCcw size={14} aria-hidden="true" />
+                Replace Device
+              </>
+            ) : (
+              <>
+                <FiPlus size={14} aria-hidden="true" />
+                Activate Device
+              </>
+            )}
+          </button>
+        }
       />
 
       {error ? <div className="alert alert-error">{error}</div> : null}
@@ -120,72 +157,91 @@ export default function AttendanceMyDevices() {
 
       <SectionHeader title="Current Device" />
       {activeDevice ? (
-        <div className="admin-device-card device-active">
-          <div className="admin-device-info">
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
-              This browser is your active attendance device
-            </h3>
+        <div className="device-stack-row" style={{ marginBottom: 16 }}>
+          <div className="device-stack-top">
+            <span className="device-stack-name">
+              {activeDevice.deviceLabel || "This browser"}
+            </span>
             <StatusBadge label="Active" cls="badge-active" />
-            <span className="muted-copy" style={{ fontSize: 12 }}>
-              Scope: {scopeLabel(activeDevice.scope)}
-            </span>
-            <span className="muted-copy" style={{ fontSize: 12 }}>
-              Activated {fmt(activeDevice.activatedAt)}
-            </span>
           </div>
-          <div className="device-card-actions">
+          <div className="device-stack-meta" title={activeDevice.browserDeviceId || ""}>
+            {scopeLabel(scope)} · Activated {fmtShort(activeDevice.activatedAt)} · {shortDeviceId(activeDevice.browserDeviceId)}
+          </div>
+          <div className="device-stack-actions">
             <button
               type="button"
-              className="btn btn-danger btn-sm"
+              className="btn-ghost min-h-0 px-2 py-1 text-xs"
               disabled={busyAction === `lock-${activeDevice.registrationId}`}
               onClick={() => lockDevice(activeDevice.registrationId)}
+              title="Lock this device and disable customer attendance on it"
             >
-              {busyAction === `lock-${activeDevice.registrationId}` ? "Locking..." : "Lock / Deactivate"}
+              <FiLock size={12} aria-hidden="true" />
+              {busyAction === `lock-${activeDevice.registrationId}` ? "Locking…" : "Lock"}
             </button>
           </div>
         </div>
       ) : (
-        <EmptyState
-          title="No active device"
-          description="Ask the gym administrator to generate an activation code, then enter it below."
-        >
-          <div style={{ marginTop: 12 }}>
-            <button type="button" className="btn btn-primary" onClick={openActivation}>
-              Activate Attendance Device
-            </button>
+        <div className="device-stack-row" style={{ marginBottom: 16 }}>
+          <div className="device-stack-top">
+            <span className="device-stack-name">No active attendance device</span>
           </div>
-        </EmptyState>
+          <div className="device-stack-meta">
+            Ask the administrator for a one-time activation code, then use Activate Device.
+          </div>
+        </div>
       )}
 
-      {inactiveDevices.length > 0 ? (
+      <SectionHeader title="Device History" sub="Locked or replaced devices." />
+      {inactiveDevices.length === 0 ? (
+        <p className="muted-copy" style={{ fontSize: 13, margin: "0 0 16px" }}>No previous devices.</p>
+      ) : (
         <>
-          <SectionHeader title="Previous Devices" sub="Locked or replaced devices." style={{ marginTop: 24 }} />
-          <div className="admin-device-grid">
-            {inactiveDevices.slice(0, 5).map((d) => (
-              <div key={d.registrationId} className="admin-device-card">
-                <div className="admin-device-info">
-                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Previous device</h3>
-                  <StatusBadge label="Locked" cls="badge-muted" />
-                  <span className="muted-copy" style={{ fontSize: 12 }}>
-                    {fmt(d.deactivatedAt || d.revokedAt)}
+          {/* Desktop / tablet — compact table */}
+          <div className="saas-table-container device-table" style={{ marginBottom: 16 }}>
+            <table className="saas-table">
+              <thead>
+                <tr>
+                  <th scope="col">Device</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Activated</th>
+                  <th scope="col">Ended</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inactiveDevices.map((d) => (
+                  <tr key={d.registrationId}>
+                    <td className="device-col-device" title={d.browserDeviceId || ""}>
+                      {d.deviceLabel || shortDeviceId(d.browserDeviceId)}
+                    </td>
+                    <td>
+                      <StatusBadge label={d.revokedAt ? "Revoked" : "Locked"} cls="badge-muted" />
+                    </td>
+                    <td className="device-col-date">{fmtShort(d.activatedAt)}</td>
+                    <td className="device-col-date">{fmtShort(d.deactivatedAt || d.revokedAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile — compact stacked rows */}
+          <div className="device-stack">
+            {inactiveDevices.map((d) => (
+              <div key={d.registrationId} className="device-stack-row">
+                <div className="device-stack-top">
+                  <span className="device-stack-name">
+                    {d.deviceLabel || shortDeviceId(d.browserDeviceId)}
                   </span>
+                  <StatusBadge label={d.revokedAt ? "Revoked" : "Locked"} cls="badge-muted" />
+                </div>
+                <div className="device-stack-meta">
+                  Activated {fmtShort(d.activatedAt)} · Ended {fmtShort(d.deactivatedAt || d.revokedAt)}
                 </div>
               </div>
             ))}
           </div>
         </>
-      ) : null}
-
-      {activeDevice ? (
-        <div style={{ marginTop: 24 }}>
-          <button type="button" className="btn btn-outline btn-sm" onClick={openActivation}>
-            Replace Device
-          </button>
-          <p className="muted-copy" style={{ fontSize: 11, marginTop: 6 }}>
-            Activating a new device will deactivate your previous attendance device.
-          </p>
-        </div>
-      ) : null}
+      )}
 
       <ActivateDeviceModal
         key={activationOpen ? "open" : "closed"}
