@@ -125,6 +125,7 @@ export default function AdminHeader({ admin, toggleSidebar }) {
             className="btn-ghost md:hidden"
             onClick={toggleSidebar}
             aria-label="Toggle sidebar"
+            title="Open navigation"
           >
             <FiMenu />
           </button>
@@ -143,6 +144,7 @@ export default function AdminHeader({ admin, toggleSidebar }) {
             <button
               className="admin-notif-btn"
               aria-label="Notifications"
+              title="Notifications"
               aria-expanded={notifOpen}
               onClick={() => setNotifOpen((o) => !o)}
             >

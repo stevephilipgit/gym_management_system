@@ -4,10 +4,11 @@ import {
   FiActivity,
   FiBarChart2,
   FiClock,
+  FiChevronLeft,
+  FiChevronRight,
   FiHome,
   FiInbox,
   FiLogOut,
-  FiMenu,
   FiPackage,
   FiSettings,
   FiSliders,
@@ -97,13 +98,15 @@ export default function AdminSidebar({ closeSidebar, collapsed, setCollapsed, ad
             className="btn-ghost hidden md:inline-flex"
             onClick={() => setCollapsed(!collapsed)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {collapsed ? <FiMenu /> : <IoClose />}
+            {collapsed ? <FiChevronRight /> : <FiChevronLeft />}
           </button>
           <button
             className="btn-ghost md:hidden"
             onClick={closeSidebar}
             aria-label="Close sidebar"
+            title="Close sidebar"
           >
             <IoClose />
           </button>
