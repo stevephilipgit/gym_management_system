@@ -46,19 +46,36 @@ function DeviceDeviceMenu({ trainer, activeRegistration, onActivate, onRevoke, b
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const wrapRef = useRef(null);
+  const menuItemRefs = useRef([]);
   const hasDevice = !!activeRegistration;
 
   const toggle = () => {
     if (!open && wrapRef.current) {
       const r = wrapRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, left: Math.max(8, r.right - 140) });
+      const menuHeight = hasDevice ? 88 : 48;
+      const top = r.bottom + menuHeight > window.innerHeight
+        ? Math.max(8, r.top - menuHeight - 4)
+        : r.bottom + 4;
+      setPos({ top, left: Math.max(8, Math.min(r.right - 140, window.innerWidth - 148)) });
     }
     setOpen((v) => !v);
   };
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setOpen(false);
+        return;
+      }
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.preventDefault();
+      const currentIndex = menuItemRefs.current.indexOf(document.activeElement);
+      const direction = e.key === "ArrowDown" ? 1 : -1;
+      const nextIndex = (currentIndex + direction + menuItemRefs.current.length) % menuItemRefs.current.length;
+      menuItemRefs.current[nextIndex]?.focus();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
@@ -84,25 +101,39 @@ function DeviceDeviceMenu({ trainer, activeRegistration, onActivate, onRevoke, b
                 aria-label={`Device actions for ${trainer.fullName || trainer.username}`}
                 style={{ position: "fixed", top: pos.top, left: pos.left }}
               >
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="device-overflow-item"
-                  onClick={() => { setOpen(false); onActivate(trainer); }}
-                >
-                  {hasDevice ? "Replace device" : "Activate"}
-                </button>
                 {hasDevice ? (
+                  <>
+                    <button
+                      ref={(node) => { menuItemRefs.current[0] = node; }}
+                      type="button"
+                      role="menuitem"
+                      className="device-overflow-item"
+                      onClick={() => { setOpen(false); onActivate(trainer); }}
+                    >
+                      Replace Device
+                    </button>
+                    <button
+                      ref={(node) => { menuItemRefs.current[1] = node; }}
+                      type="button"
+                      role="menuitem"
+                      className="device-overflow-item device-overflow-item-danger"
+                      disabled={busy}
+                      onClick={() => { setOpen(false); onRevoke(activeRegistration.registrationId); }}
+                    >
+                      {busy ? "Revoking…" : "Revoke Device"}
+                    </button>
+                  </>
+                ) : (
                   <button
+                    ref={(node) => { menuItemRefs.current[0] = node; }}
                     type="button"
                     role="menuitem"
                     className="device-overflow-item device-overflow-item-danger"
-                    disabled={busy}
-                    onClick={() => { setOpen(false); onRevoke(activeRegistration.registrationId); }}
+                    onClick={() => { setOpen(false); onActivate(trainer); }}
                   >
-                    {busy ? "Revoking…" : "Revoke device"}
+                    Activate
                   </button>
-                ) : null}
+                )}
               </div>
             </>,
             document.body
@@ -238,8 +269,9 @@ export default function AttendanceDevices() {
                 <tr>
                   <th scope="col">Trainer</th>
                   <th scope="col">Scope</th>
-                  <th scope="col">Status</th>
                   <th scope="col">Device</th>
+                  <th scope="col">Activated</th>
+                  <th scope="col">Status</th>
                   <th className="device-col-actions" scope="col">Action</th>
                 </tr>
               </thead>
@@ -250,17 +282,18 @@ export default function AttendanceDevices() {
                     <tr key={t._id}>
                       <td className="pk-name">{t.fullName || t.username}</td>
                       <td className="device-col-scope">{scopeLabel(t.scope)}</td>
-                      <td>
-                        {t.status === "active" ? (
-                          <StatusBadge label="Active" cls="badge-active" />
-                        ) : (
-                          <StatusBadge label={t.status || "—"} cls="badge-muted" />
-                        )}
-                      </td>
                       <td className="device-col-device" title={trainerActive?.browserDeviceId || ""}>
                         {trainerActive
                           ? trainerActive.deviceLabel || shortDeviceId(trainerActive.browserDeviceId)
                           : <span className="device-col-none">No device</span>}
+                      </td>
+                      <td className="device-col-date">{fmtActivatedAt(trainerActive?.activatedAt)}</td>
+                      <td>
+                        {trainerActive ? (
+                          <StatusBadge label={t.status || "Active"} cls={t.status === "active" ? "badge-active" : "badge-muted"} />
+                        ) : (
+                          <StatusBadge label="Not Activated" cls="badge-muted" />
+                        )}
                       </td>
                       <td className="device-col-actions">
                         <DeviceDeviceMenu
@@ -286,10 +319,10 @@ export default function AttendanceDevices() {
                 <div key={t._id} className="device-stack-row">
                   <div className="device-stack-top">
                     <span className="device-stack-name">{t.fullName || t.username}</span>
-                    {t.status === "active" ? (
-                      <StatusBadge label="Active" cls="badge-active" />
+                    {trainerActive ? (
+                      <StatusBadge label={t.status || "Active"} cls={t.status === "active" ? "badge-active" : "badge-muted"} />
                     ) : (
-                      <StatusBadge label={t.status || "—"} cls="badge-muted" />
+                      <StatusBadge label="Not Activated" cls="badge-muted" />
                     )}
                   </div>
                   <div className="device-stack-meta">
@@ -297,6 +330,7 @@ export default function AttendanceDevices() {
                       ? trainerActive.deviceLabel || shortDeviceId(trainerActive.browserDeviceId)
                       : "No device"}
                   </div>
+                  <div className="device-stack-date">Activated: {fmtActivatedAt(trainerActive?.activatedAt)}</div>
                   <div className="device-stack-actions">
                     <DeviceDeviceMenu
                       trainer={t}
@@ -392,4 +426,17 @@ export default function AttendanceDevices() {
       ) : null}
     </div>
   );
+}
+
+function fmtActivatedAt(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
