@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
 import { FiUpload, FiUserPlus } from "react-icons/fi";
 import { DietSelector } from "./components/DietSelector";
 import apiClient from "../utils/apiClient.js";
@@ -41,6 +42,133 @@ const daysLeftBadgeClass = (days) => {
   if (days < 7) return "saas-badge-warning";
   return "saas-badge-success";
 };
+
+const MEMBER_COLUMN_DEFAULTS = [100, 220, 130, 110, 100, 120, 120, 58];
+const MEMBER_COLUMN_MINIMUMS = [86, 150, 108, 96, 88, 96, 104, 52];
+
+function MembersOverflowMenu({ member, isSuperadmin, renewBusy, editBusy, onRenew, onEdit, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef(null);
+  const firstItemRef = useRef(null);
+
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const menuHeight = isSuperadmin ? 132 : 88;
+    setPosition({
+      top: rect.bottom + menuHeight > window.innerHeight ? Math.max(8, rect.top - menuHeight - 4) : rect.bottom + 4,
+      left: Math.max(8, Math.min(rect.right - 140, window.innerWidth - 148)),
+    });
+  }, [isSuperadmin]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    updatePosition();
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    const focusTimer = window.setTimeout(() => firstItemRef.current?.focus(), 0);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open, updatePosition]);
+
+  const runAction = (action) => {
+    setOpen(false);
+    action();
+  };
+
+  return (
+    <>
+      <span ref={triggerRef} className="members-action-trigger">
+        <IconButton
+          type="more"
+          title="Member actions"
+          ariaLabel={`Actions for ${member.name || member.fullName || "member"}`}
+          ariaExpanded={open}
+          onClick={() => {
+            if (!open) updatePosition();
+            setOpen((current) => !current);
+          }}
+        />
+      </span>
+      {open && createPortal(
+        <>
+          <div className="device-overflow-backdrop" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div
+            className="device-overflow-menu members-overflow-menu"
+            role="menu"
+            aria-label={`Actions for ${member.name || member.fullName || "member"}`}
+            style={{ top: position.top, left: position.left }}
+          >
+            <button
+              ref={firstItemRef}
+              type="button"
+              role="menuitem"
+              className="device-overflow-item"
+              disabled={renewBusy}
+              onClick={() => runAction(onRenew)}
+            >
+              {renewBusy ? "Renewing…" : "Renew"}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="device-overflow-item"
+              disabled={editBusy}
+              onClick={() => runAction(onEdit)}
+            >
+              {editBusy ? "Opening…" : "Edit"}
+            </button>
+            {isSuperadmin ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="device-overflow-item device-overflow-item-danger"
+                onClick={() => runAction(onDelete)}
+              >
+                Delete
+              </button>
+            ) : null}
+          </div>
+        </>,
+        document.body
+      )}
+    </>
+  );
+}
+
+function ColumnResizeHandle({ index, label, width, onStart, onAdjust }) {
+  return (
+    <span
+      className="members-column-resize"
+      role="separator"
+      tabIndex="0"
+      aria-label={`Resize ${label} column`}
+      aria-valuemin={MEMBER_COLUMN_MINIMUMS[index]}
+      aria-valuenow={Math.round(width)}
+      onPointerDown={(event) => onStart(index, event)}
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          onAdjust(index, -12);
+        }
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          onAdjust(index, 12);
+        }
+      }}
+    />
+  );
+}
 
 export default function AdminMembers() {
   const admin = useAdmin();
@@ -95,6 +223,8 @@ export default function AdminMembers() {
   });
   const searchTimerRef = useRef(null);
   const abortRef = useRef(null);
+  const resizeRef = useRef(null);
+  const [columnWidths, setColumnWidths] = useState(MEMBER_COLUMN_DEFAULTS);
 
   // Server-driven fetch: filters, sort + pagination are resolved by the backend.
   // Serves a recent cache entry immediately (no blank/"0 members" flash when
@@ -232,11 +362,57 @@ export default function AdminMembers() {
     setPage(1);
   };
 
+  const handleSortKeyDown = (event, sortKey) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggleSort(sortKey);
+    }
+  };
+
   // Neutral ⇅ on inactive sortable columns; ↑/↓ on the active one — makes it
   // obvious which columns can be sorted by clicking.
   const sortIndicator = (sb) => {
     if (sortBy === sb) return sortOrder === "asc" ? "↑" : "↓";
     return "⇅";
+  };
+
+  const startColumnResize = (index, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    resizeRef.current = {
+      index,
+      startX: event.clientX,
+      startWidth: columnWidths[index],
+    };
+  };
+
+  useEffect(() => {
+    const onPointerMove = (event) => {
+      if (!resizeRef.current) return;
+      const { index, startX, startWidth } = resizeRef.current;
+      const nextWidth = Math.max(MEMBER_COLUMN_MINIMUMS[index], startWidth + event.clientX - startX);
+      setColumnWidths((current) => {
+        if (current[index] === nextWidth) return current;
+        const next = [...current];
+        next[index] = nextWidth;
+        return next;
+      });
+    };
+    const stopColumnResize = () => { resizeRef.current = null; };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", stopColumnResize);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", stopColumnResize);
+    };
+  }, []);
+
+  const adjustColumnWidth = (index, delta) => {
+    setColumnWidths((current) => {
+      const next = [...current];
+      next[index] = Math.max(MEMBER_COLUMN_MINIMUMS[index], current[index] + delta);
+      return next;
+    });
   };
 
   const clearFilters = () => {
@@ -665,19 +841,6 @@ export default function AdminMembers() {
 
       <div className="members-toolbar">
         <div className="members-toolbar-filters">
-          <select className="saas-input" value={filterStatus} onChange={(e) => changeStatus(e.target.value)} aria-label="Payment status">
-            <option value="all">View All Statuses</option>
-            <option value="paid">Paid</option>
-            <option value="not_paid">Not Paid</option>
-          </select>
-          {admin?.scope === "all" && (
-            <select className="saas-input" value={filterGender} onChange={(e) => changeGender(e.target.value)} aria-label="Gender">
-              <option value="all">View All Genders</option>
-              <option value="Male">Male</option>
-              <option value="Female">Female</option>
-              <option value="Transgender">Transgender</option>
-            </select>
-          )}
           <div className="members-search">
             <svg className="members-search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
               <circle cx="11" cy="11" r="7" />
@@ -691,6 +854,19 @@ export default function AdminMembers() {
               aria-label="Search members"
             />
           </div>
+          <select className="saas-input" value={filterStatus} onChange={(e) => changeStatus(e.target.value)} aria-label="Payment status">
+            <option value="all">View All Statuses</option>
+            <option value="paid">Paid</option>
+            <option value="not_paid">Not Paid</option>
+          </select>
+          {admin?.scope === "all" && (
+            <select className="saas-input" value={filterGender} onChange={(e) => changeGender(e.target.value)} aria-label="Gender">
+              <option value="all">View All Genders</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Transgender">Transgender</option>
+            </select>
+          )}
           {hasActiveFilters && (
             <button type="button" className="members-clear-filters" onClick={clearFilters}>
               Clear filters
@@ -699,43 +875,75 @@ export default function AdminMembers() {
         </div>
       </div>
 
-      <div className="management-table-scroll">
+      <div className="management-table-scroll members-table-scrollbar">
       <div className="saas-table-container members-table">
         <table className="saas-table">
+          <caption className="sr-only">All registered members</caption>
+          <colgroup>
+            {columnWidths.map((width, index) => <col key={index} style={{ width }} />)}
+          </colgroup>
           <thead>
             <tr>
-              <th>MEMBER REF</th>
+              <th scope="col">
+                MEMBER REF
+                <ColumnResizeHandle index={0} label="member reference" width={columnWidths[0]} onStart={startColumnResize} onAdjust={adjustColumnWidth} />
+              </th>
               <th
+                scope="col"
                 className="members-sortable"
+                tabIndex="0"
                 onClick={() => toggleSort("name")}
+                onKeyDown={(event) => handleSortKeyDown(event, "name")}
                 aria-sort={sortBy === "name" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
               >
-                Member <span className="members-sort-icon">{sortIndicator("name")}</span>
+                <span>Member <span className="members-sort-icon">{sortIndicator("name")}</span></span>
+                <ColumnResizeHandle index={1} label="member" width={columnWidths[1]} onStart={startColumnResize} onAdjust={adjustColumnWidth} />
               </th>
-              <th>Phone</th>
+              <th scope="col">
+                Phone
+                <ColumnResizeHandle index={2} label="phone" width={columnWidths[2]} onStart={startColumnResize} onAdjust={adjustColumnWidth} />
+              </th>
               <th
+                scope="col"
                 className="members-sortable"
+                tabIndex="0"
                 onClick={() => toggleSort("validTill")}
+                onKeyDown={(event) => handleSortKeyDown(event, "validTill")}
                 aria-sort={sortBy === "validTill" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
               >
-                Valid Till <span className="members-sort-icon">{sortIndicator("validTill")}</span>
+                <span>Valid Till <span className="members-sort-icon">{sortIndicator("validTill")}</span></span>
+                <ColumnResizeHandle index={3} label="valid till" width={columnWidths[3]} onStart={startColumnResize} onAdjust={adjustColumnWidth} />
               </th>
               <th
+                scope="col"
                 className="members-sortable"
+                tabIndex="0"
                 onClick={() => toggleSort("daysLeft")}
+                onKeyDown={(event) => handleSortKeyDown(event, "daysLeft")}
                 aria-sort={sortBy === "daysLeft" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
               >
-                Days Left <span className="members-sort-icon">{sortIndicator("daysLeft")}</span>
+                <span>Days Left <span className="members-sort-icon">{sortIndicator("daysLeft")}</span></span>
+                <ColumnResizeHandle index={4} label="days left" width={columnWidths[4]} onStart={startColumnResize} onAdjust={adjustColumnWidth} />
               </th>
               <th
+                scope="col"
                 className="members-sortable"
+                tabIndex="0"
                 onClick={() => toggleSort("plan")}
+                onKeyDown={(event) => handleSortKeyDown(event, "plan")}
                 aria-sort={sortBy === "plan" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
               >
-                Plan <span className="members-sort-icon">{sortIndicator("plan")}</span>
+                <span>Plan <span className="members-sort-icon">{sortIndicator("plan")}</span></span>
+                <ColumnResizeHandle index={5} label="plan" width={columnWidths[5]} onStart={startColumnResize} onAdjust={adjustColumnWidth} />
               </th>
-              <th>Payment</th>
-              <th>Action</th>
+              <th scope="col">
+                Payment
+                <ColumnResizeHandle index={6} label="payment" width={columnWidths[6]} onStart={startColumnResize} onAdjust={adjustColumnWidth} />
+              </th>
+              <th scope="col" className="members-action-heading">
+                Action
+                <ColumnResizeHandle index={7} label="action" width={columnWidths[7]} onStart={startColumnResize} onAdjust={adjustColumnWidth} />
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -776,29 +984,16 @@ export default function AdminMembers() {
                     {member.paymentStatus.replace('_', ' ').toUpperCase()}
                   </span>
                 </td>
-                <td style={{ textAlign: 'center' }}>
-                  <div className="flex justify-center items-center gap-2">
-                    <IconButton
-                      type="refresh"
-                      onClick={() => openRenew(member.gymId, member.memberCode)}
-                      title="Renew membership"
-                      disabled={renewLoadingGymId === member.gymId}
-                      className={renewLoadingGymId === member.gymId ? "cursor-wait" : ""}
-                    />
-                    <IconButton
-                      type="edit"
-                      onClick={() => openEditModal(member.gymId, member.memberCode)}
-                      title="Edit member details"
-                      disabled={editLoadingGymId === member.gymId}
-                    />
-                    {isSuperadmin && (
-                      <IconButton
-                        type="delete"
-                        onClick={() => confirmDelete(member.gymId, member.memberCode)}
-                        title="Delete member"
-                      />
-                    )}
-                  </div>
+                <td className="members-action-cell">
+                  <MembersOverflowMenu
+                    member={member}
+                    isSuperadmin={isSuperadmin}
+                    renewBusy={renewLoadingGymId === member.gymId}
+                    editBusy={editLoadingGymId === member.gymId}
+                    onRenew={() => openRenew(member.gymId, member.memberCode)}
+                    onEdit={() => openEditModal(member.gymId, member.memberCode)}
+                    onDelete={() => confirmDelete(member.gymId, member.memberCode)}
+                  />
                 </td>
               </tr>
             ))}
@@ -808,10 +1003,14 @@ export default function AdminMembers() {
                 <td colSpan="8">
                   <div className="members-empty">
                     <p className="members-empty-title">No members found</p>
-                    <p className="members-empty-sub">No members match the selected filters.</p>
-                    <button className="btn-secondary" onClick={clearFilters} style={{ minHeight: 0, padding: "8px 14px", fontSize: "13px" }}>
-                      Clear filters
-                    </button>
+                    {hasActiveFilters ? (
+                      <>
+                        <p className="members-empty-sub">No members match your current filters.</p>
+                        <button className="btn-secondary" onClick={clearFilters} style={{ minHeight: 0, padding: "8px 14px", fontSize: "13px" }}>
+                          Clear filters
+                        </button>
+                      </>
+                    ) : <p className="members-empty-sub">No members have been registered yet.</p>}
                   </div>
                 </td>
               </tr>
@@ -854,9 +1053,26 @@ export default function AdminMembers() {
             </div>
             <div className="members-card-validity">Valid till {formatDate(member.validTill || member.validityEnd)}</div>
             <div className="members-card-actions">
-              <IconButton type="refresh" onClick={() => openRenew(member.gymId, member.memberCode)} title="Renew membership" />
-              <IconButton type="edit" onClick={() => openEditModal(member.gymId, member.memberCode)} title="Edit member details" />
-              {isSuperadmin && <IconButton type="delete" onClick={() => confirmDelete(member.gymId, member.memberCode)} title="Delete member" />}
+              <IconButton
+                type="refresh"
+                onClick={() => openRenew(member.gymId, member.memberCode)}
+                title="Renew membership"
+                disabled={renewLoadingGymId === member.gymId}
+                className={renewLoadingGymId === member.gymId ? "cursor-wait" : ""}
+              />
+              <IconButton
+                type="edit"
+                onClick={() => openEditModal(member.gymId, member.memberCode)}
+                title="Edit member details"
+                disabled={editLoadingGymId === member.gymId}
+              />
+              {isSuperadmin && (
+                <IconButton
+                  type="delete"
+                  onClick={() => confirmDelete(member.gymId, member.memberCode)}
+                  title="Delete member"
+                />
+              )}
             </div>
           </div>
         ))}
@@ -864,10 +1080,14 @@ export default function AdminMembers() {
         {!loading && !loadError && rows.length === 0 && (
           <div className="members-empty" style={{ border: "1px dashed var(--border-color)", borderRadius: "10px" }}>
             <p className="members-empty-title">No members found</p>
-            <p className="members-empty-sub">No members match the selected filters.</p>
-            <button className="btn-secondary" onClick={clearFilters} style={{ minHeight: 0, padding: "8px 14px", fontSize: "13px" }}>
-              Clear filters
-            </button>
+            {hasActiveFilters ? (
+              <>
+                <p className="members-empty-sub">No members match your current filters.</p>
+                <button className="btn-secondary" onClick={clearFilters} style={{ minHeight: 0, padding: "8px 14px", fontSize: "13px" }}>
+                  Clear filters
+                </button>
+              </>
+            ) : <p className="members-empty-sub">No members have been registered yet.</p>}
           </div>
         )}
       </div>
