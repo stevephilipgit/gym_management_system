@@ -42,10 +42,16 @@ const activationRedeemLimiter = rateLimit({
 router.post("/activate/generate", adminAuth, requireRole("superadmin"), activationController.generate);
 router.post("/activate", activationRedeemLimiter, adminAuth, requireRole("trainer"), activationController.redeem);
 
-// Lock / revoke.
-// POST /:registrationId/deactivate — Trainer locks their OWN device (Trainer-only).
+// Lock / unlock / deactivate / reactivate / revoke.
+// POST /:registrationId/lock — Trainer temporarily locks their OWN active device.
+// POST /:registrationId/unlock — Trainer unlocks their OWN locked device.
+// POST /:registrationId/deactivate — Trainer deactivates their OWN device (reactivation remains eligible).
+// POST /:registrationId/reactivate — Trainer reactivates their OWN trainer-deactivated device (issues fresh credential).
 // POST /:registrationId/revoke — Super Admin global revoke.
+router.post("/:registrationId/lock", adminAuth, requireRole("trainer"), deviceController.lock);
+router.post("/:registrationId/unlock", adminAuth, requireRole("trainer"), deviceController.unlock);
 router.post("/:registrationId/deactivate", adminAuth, requireRole("trainer"), deviceController.deactivate);
+router.post("/:registrationId/reactivate", adminAuth, requireRole("trainer"), deviceController.reactivate);
 router.post("/:registrationId/revoke", adminAuth, requireRole("superadmin"), deviceController.revoke);
 router.post("/:registrationId/rotate", adminAuth, requireRole("superadmin"), deviceController.rotate);
 router.post("/kiosks/:kioskId/reassign-scope", adminAuth, requireRole("superadmin"), deviceController.reassignScope);

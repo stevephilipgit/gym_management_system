@@ -12,11 +12,16 @@
 //      → O(1) credential lookup for kioskAuth (exactly one bcrypt compare).
 //
 // Lifecycle:
-//   active=true → active registration carrying a live credential.
-//   Replacement / deactivate → active=false, deactivatedAt set, credential unset.
-//   Revoke (Super Admin) → active=false, revokedAt set, credential unset.
-//   Terminal states cannot be silently re-activated; only a fresh activation
-//   creates a new registration.
+//   active=true, locked=false → active registration carrying a live credential.
+//   active=true, locked=true  → locked; credentials preserved; no attendance.
+//   Trainer deactivation → active=false, deactivatedAt set, deactivationReason="trainer";
+//       credential preserved for secure reactivation (new key issued at reactivate).
+//   Replacement → active=false, deactivatedAt set, deactivationReason="replaced";
+//       credential destroyed; terminal.
+//   Revoke (Super Admin) → active=false, revokedAt set, deactivationReason="revoked";
+//       credential destroyed; terminal.
+//   Scope reassign → active=false, revokedAt set, deactivationReason="scope_reassigned";
+//       credential destroyed; terminal.
 
 import mongoose from "mongoose";
 
@@ -35,12 +40,32 @@ const deviceRegistrationSchema = new mongoose.Schema(
     // localStorage). It is an IDENTIFIER only — NOT hardware attestation.
     browserDeviceId: { type: String, required: true },
 
-    // ── Registration lifecycle ─────────────────────────────────────────
+         // ── Registration lifecycle ─────────────────────────────────────────
     active: { type: Boolean, default: true },
     activatedAt: { type: Date, default: Date.now },
     deactivatedAt: { type: Date, default: null },
     revokedAt: { type: Date, default: null },
     lastSeenAt: { type: Date, default: null },
+
+    // Distinguishes Trainer-initiated deactivation (reactivable) from
+    // replacement / revocation / scope-change (terminal).
+    //   "trainer"           → deactivationRegistration(); reactivatable by Trainer
+    //   "replaced"          → replacement during redeemActivation(); terminal
+    //   "revoked"           → revokeRegistration() (Super Admin); terminal
+    //   "scope_reassigned"  → reassignKioskScope() (Super Admin); terminal
+    deactivationReason: {
+      type: String,
+      enum: ["trainer", "replaced", "revoked", "scope_reassigned"],
+      default: null,
+    },
+    reactivatedAt: { type: Date, default: null },
+
+    // ── Lock state (temporary attendance pause) ───────────────────────
+    // locked=true requires active=true. Credentials are preserved so the
+    // Trainer can unlock and resume without Super Admin involvement.
+    locked: { type: Boolean, default: false, index: true },
+    lockedAt: { type: Date, default: null },
+    unlockedAt: { type: Date, default: null },
 
     // ── Credential ─────────────────────────────────────────────────────
     // Only ever present on an active registration. Removed on deactivate/revoke.
@@ -66,12 +91,14 @@ deviceRegistrationSchema.pre("validate", function (next) {
     return next(err);
   };
 
-  // Deactivated/revoked registrations never carry a credential.
+    // Deactivated/revoked registrations never carry a credential — EXCEPT a
+  // Trainer-deactivated registration, which preserves the credential so it can
+  // be securely reactivated (a fresh key is issued at reactivation time).
   if (d.deactivatedAt && d.active) {
     return fail("active", "A deactivated registration cannot be active");
   }
-  if (d.deactivatedAt && d.apiKeyHash) {
-    return fail("apiKeyHash", "A deactivated registration cannot carry a credential");
+  if (d.deactivatedAt && d.apiKeyHash && d.deactivationReason !== "trainer") {
+    return fail("apiKeyHash", "A terminal deactivated registration cannot carry a credential");
   }
   if (d.revokedAt && d.active) {
     return fail("active", "A revoked registration cannot be active");
@@ -83,6 +110,30 @@ deviceRegistrationSchema.pre("validate", function (next) {
   // Active registrations must carry a credential.
   if (d.active && !d.apiKeyHash) {
     return fail("apiKeyHash", "An active registration must carry a credential");
+  }
+
+  // Locked registrations must be active (can't lock an inactive registration).
+  if (d.locked && !d.active) {
+    return fail("locked", "A locked registration must be active");
+  }
+
+  // Deactivated/revoked registrations must not be locked.
+  if (d.deactivatedAt && d.locked) {
+    return fail("locked", "A deactivated registration cannot be locked");
+  }
+  if (d.revokedAt && d.locked) {
+    return fail("locked", "A revoked registration cannot be locked");
+  }
+
+  // Locked registrations must preserve their credential.
+  if (d.locked && !d.apiKeyHash) {
+    return fail("apiKeyHash", "A locked registration must preserve its credential");
+  }
+
+  // Reactivation invariant: active registrations may carry reactivatedAt.
+  // The deactivation reason is cleared when reactivation succeeds.
+  if (d.reactivatedAt && !d.active) {
+    return fail("reactivatedAt", "reactivatedAt requires active=true");
   }
 
   next();

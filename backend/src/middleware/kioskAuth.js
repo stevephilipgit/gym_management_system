@@ -51,11 +51,17 @@ export default async function kioskAuth(req, res, next) {
       });
     }
 
-    // 3. Lifecycle: active + not revoked.
+    // 3. Lifecycle: active + not revoked + not locked.
     if (!reg.active || reg.revokedAt) {
       return res.status(401).json({
         success: false,
         message: "Kiosk authentication failed.",
+      });
+    }
+    if (reg.locked) {
+      return res.status(403).json({
+        success: false,
+        message: "Device is locked. Unlock it to continue attendance.",
       });
     }
 

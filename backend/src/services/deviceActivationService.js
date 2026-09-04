@@ -312,9 +312,10 @@ export async function redeemActivation({ trainerId, browserDeviceId, code, qrSec
           trainerId: trainer._id,
           active: true,
         }).session(session);
-        if (old) {
+                if (old) {
           old.active = false;
           old.deactivatedAt = new Date();
+          old.deactivationReason = "replaced";
           old.apiKeyHash = undefined;
           old.keyFingerprint = undefined;
           await old.save({ session });
