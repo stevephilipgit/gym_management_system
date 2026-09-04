@@ -240,7 +240,7 @@ export default function ActivateDeviceModal({
       setError(
         mode === "code"
           ? "Enter the 6-digit code and your password."
-          : "Enter or scan the QR value and your password."
+          : "Scan the QR code and enter your password."
       );
       return;
     }
@@ -358,7 +358,8 @@ export default function ActivateDeviceModal({
                   <div className="adm-activate-modal__notice-title">Important</div>
                   <p className="adm-activate-modal__notice-body">
                     Make sure you're on the device you want to use for attendance. Activating a new
-                    device will deactivate your previous attendance device. This action cannot be undone.
+                    device will deactivate your previous attendance device. You can reactivate that
+                    device later without requesting a new administrator activation code.
                   </p>
                 </div>
               </div>

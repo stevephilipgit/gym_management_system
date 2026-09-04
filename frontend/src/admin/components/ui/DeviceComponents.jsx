@@ -26,7 +26,7 @@ export function PageHeader({ title, description, actions }) {
           <h1 className="page-title" style={{ margin: 0, fontSize: 22 }}>{title}</h1>
           {description ? <p className="muted-copy" style={{ margin: "4px 0 0" }}>{description}</p> : null}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>{actions}</div>
+        <div className="device-page-header-actions" style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>{actions}</div>
       </div>
     );
   }

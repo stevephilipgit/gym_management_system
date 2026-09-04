@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { FiAlertTriangle, FiPlus, FiRefreshCcw, FiTrash2 } from "react-icons/fi";
+import { FiLock, FiPauseCircle, FiPlus, FiRefreshCcw, FiUnlock } from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
 import {
   getOrCreateBrowserDeviceId,
@@ -38,6 +38,30 @@ function shortDeviceId(id) {
   if (!id) return "—";
   if (id.length <= 18) return id;
   return `${id.slice(0, 10)}…${id.slice(-4)}`;
+}
+
+// Lifecycle state for a registration row. `deactivationReason` is stamped
+// server-side and is authoritative (never derived from UI assumptions alone):
+//   "trainer"           → reactivatable by the owning Trainer
+//   "replaced"          → terminal (superseded by a newer registration)
+//   "revoked"           → terminal (Super Admin revoke)
+//   "scope_reassigned"  → terminal (Super Admin scope change)
+// Legacy rows with no deactivationReason are treated as non-reactivatable.
+function inactiveInfo(d) {
+  if (d.revokedAt) {
+    return {
+      label: d.deactivationReason === "scope_reassigned" ? "Scope Reassigned" : "Revoked",
+      cls: "badge-muted",
+      reactivatable: false,
+    };
+  }
+  if (d.deactivationReason === "replaced") {
+    return { label: "Replaced", cls: "badge-muted", reactivatable: false };
+  }
+  if (d.deactivationReason === "trainer") {
+    return { label: "Deactivated", cls: "badge-muted", reactivatable: true };
+  }
+  return { label: "Deactivated", cls: "badge-muted", reactivatable: false };
 }
 
 export default function AttendanceMyDevices() {
@@ -99,21 +123,77 @@ export default function AttendanceMyDevices() {
     await fetchData();
   };
 
-  const [confirmDeactivate, setConfirmDeactivate] = useState(null);
+  const lockDevice = async (registrationId) => {
+    if (busyAction) return;
+    setBusyAction(`lock-${registrationId}`);
+    setError("");
+    setSuccess("");
+    try {
+      await apiClient.post(`/admin/devices/${registrationId}/lock`);
+      setSuccess("Device locked. Customer attendance is paused on this browser.");
+      await fetchData();
+    } catch (err) {
+      setError(err?.response?.data?.message || "Failed to lock the device.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const unlockDevice = async (registrationId) => {
+    if (busyAction) return;
+    setBusyAction(`unlock-${registrationId}`);
+    setError("");
+    setSuccess("");
+    try {
+      await apiClient.post(`/admin/devices/${registrationId}/unlock`);
+      setSuccess("Device unlocked. Customer attendance is active on this browser.");
+      await fetchData();
+    } catch (err) {
+      setError(err?.response?.data?.message || "Failed to unlock the device.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
 
   const deactivateDevice = async (registrationId) => {
     if (busyAction) return;
+    const ok = window.confirm(
+      "Deactivate this device?\n\n" +
+      "This temporarily stops attendance on this device. " +
+      "You can reactivate this same device later without a new administrator activation code. " +
+      "It will remain unavailable for attendance while deactivated."
+    );
+    if (!ok) return;
     setBusyAction(`deactivate-${registrationId}`);
     setError("");
     setSuccess("");
     try {
       await apiClient.post(`/admin/devices/${registrationId}/deactivate`);
       clearKioskIdentity();
-      setConfirmDeactivate(null);
-      setSuccess("Device deactivated. The customer attendance page is disabled on this browser.");
+      setSuccess("Device deactivated. Attendance is paused on this browser. You can reactivate it later from this page.");
       await fetchData();
     } catch (err) {
       setError(err?.response?.data?.message || "Failed to deactivate the device.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const reactivateDevice = async (registrationId) => {
+    if (busyAction) return;
+    setBusyAction(`reactivate-${registrationId}`);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await apiClient.post(`/admin/devices/${registrationId}/reactivate`);
+      const { registration, apiKey } = res.data || {};
+      if (registration?.kioskId && apiKey) {
+        setKioskIdentity(registration.kioskId, apiKey);
+      }
+      setSuccess("Device reactivated. Customer attendance is active on this browser.");
+      await fetchData();
+    } catch (err) {
+      setError(err?.response?.data?.message || "Failed to reactivate the device.");
     } finally {
       setBusyAction(null);
     }
@@ -176,20 +256,50 @@ export default function AttendanceMyDevices() {
                   {activeDevice.deviceLabel || "This browser"}
                 </td>
                 <td>
-                  <StatusBadge label="Active" cls="badge-active" />
+                  {activeDevice.locked ? (
+                    <StatusBadge label="Locked" cls="badge-muted" />
+                  ) : (
+                    <StatusBadge label="Active" cls="badge-active" />
+                  )}
                 </td>
                 <td className="device-col-date">{fmtShort(activeDevice.activatedAt)}</td>
-                <td className="device-col-date">—</td>
+                <td className="device-col-date">{activeDevice.locked && activeDevice.lockedAt ? fmtShort(activeDevice.lockedAt) : "—"}</td>
                 <td className="device-col-actions">
-                  <button
-                    type="button"
-                    className="btn-ghost min-h-0 px-2 py-1 text-xs"
-                    onClick={() => setConfirmDeactivate(activeDevice.registrationId)}
-                    title="Deactivate this device"
-                  >
-                    <FiTrash2 size={12} aria-hidden="true" />
-                    Deactivate
-                  </button>
+                  {activeDevice.locked ? (
+                    <button
+                      type="button"
+                      className="btn-ghost min-h-0 px-2 py-1 text-xs"
+                      disabled={busyAction === `unlock-${activeDevice.registrationId}`}
+                      onClick={() => unlockDevice(activeDevice.registrationId)}
+                      title="Unlock this device"
+                    >
+                      <FiUnlock size={12} aria-hidden="true" />
+                      {busyAction === `unlock-${activeDevice.registrationId}` ? "Unlocking…" : "Unlock"}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-ghost min-h-0 px-2 py-1 text-xs"
+                        disabled={busyAction === `lock-${activeDevice.registrationId}`}
+                        onClick={() => lockDevice(activeDevice.registrationId)}
+                        title="Lock this device"
+                      >
+                        <FiLock size={12} aria-hidden="true" />
+                        {busyAction === `lock-${activeDevice.registrationId}` ? "Locking…" : "Lock"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost min-h-0 px-2 py-1 text-xs"
+                        disabled={busyAction === `deactivate-${activeDevice.registrationId}`}
+                        onClick={() => deactivateDevice(activeDevice.registrationId)}
+                        title="Deactivate this device (you can reactivate it later)"
+                      >
+                        <FiPauseCircle size={12} aria-hidden="true" />
+                        {busyAction === `deactivate-${activeDevice.registrationId}` ? "Deactivating…" : "Deactivate"}
+                      </button>
+                    </>
+                  )}
                 </td>
               </tr>
             ) : (
@@ -199,19 +309,37 @@ export default function AttendanceMyDevices() {
                 </td>
               </tr>
             )}
-            {inactiveDevices.map((d) => (
-              <tr key={d.registrationId}>
-                <td className="device-col-device" title={d.browserDeviceId || ""}>
-                  {d.deviceLabel || shortDeviceId(d.browserDeviceId)}
-                </td>
-                <td>
-                  <StatusBadge label={d.revokedAt ? "Revoked" : "Deactivated"} cls="badge-muted" />
-                </td>
-                <td className="device-col-date">{fmtShort(d.activatedAt)}</td>
-                <td className="device-col-date">{fmtShort(d.deactivatedAt || d.revokedAt)}</td>
-                <td className="device-col-actions">—</td>
-              </tr>
-            ))}
+            {inactiveDevices.map((d) => {
+              const info = inactiveInfo(d);
+              return (
+                <tr key={d.registrationId}>
+                  <td className="device-col-device" title={d.browserDeviceId || ""}>
+                    {d.deviceLabel || shortDeviceId(d.browserDeviceId)}
+                  </td>
+                  <td>
+                    <StatusBadge label={info.label} cls={info.cls} />
+                  </td>
+                  <td className="device-col-date">{fmtShort(d.activatedAt)}</td>
+                  <td className="device-col-date">{fmtShort(d.deactivatedAt || d.revokedAt)}</td>
+                  <td className="device-col-actions">
+                    {info.reactivatable ? (
+                      <button
+                        type="button"
+                        className="btn-ghost min-h-0 px-2 py-1 text-xs"
+                        disabled={busyAction === `reactivate-${d.registrationId}`}
+                        onClick={() => reactivateDevice(d.registrationId)}
+                        title="Reactivate this device (no Super Admin code needed)"
+                      >
+                        <FiRefreshCcw size={12} aria-hidden="true" />
+                        {busyAction === `reactivate-${d.registrationId}` ? "Reactivating…" : "Reactivate"}
+                      </button>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -224,21 +352,51 @@ export default function AttendanceMyDevices() {
               <span className="device-stack-name">
                 {activeDevice.deviceLabel || "This browser"}
               </span>
-              <StatusBadge label="Active" cls="badge-active" />
+              {activeDevice.locked ? (
+                <StatusBadge label="Locked" cls="badge-muted" />
+              ) : (
+                <StatusBadge label="Active" cls="badge-active" />
+              )}
             </div>
             <div className="device-stack-meta">
-              {scopeLabel(scope)} · Activated {fmtShort(activeDevice.activatedAt)}
+              {scopeLabel(scope)} · {activeDevice.locked ? `Locked ${fmtShort(activeDevice.lockedAt)}` : `Activated ${fmtShort(activeDevice.activatedAt)}`}
             </div>
             <div className="device-stack-actions">
-              <button
-                type="button"
-                className="btn-ghost min-h-0 px-2 py-1 text-xs"
-                onClick={() => setConfirmDeactivate(activeDevice.registrationId)}
-                title="Deactivate this device"
-              >
-                <FiTrash2 size={12} aria-hidden="true" />
-                Deactivate
-              </button>
+              {activeDevice.locked ? (
+                <button
+                  type="button"
+                  className="btn-ghost min-h-0 px-2 py-1 text-xs"
+                  disabled={busyAction === `unlock-${activeDevice.registrationId}`}
+                  onClick={() => unlockDevice(activeDevice.registrationId)}
+                  title="Unlock this device"
+                >
+                  <FiUnlock size={12} aria-hidden="true" />
+                  {busyAction === `unlock-${activeDevice.registrationId}` ? "Unlocking…" : "Unlock"}
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn-ghost min-h-0 px-2 py-1 text-xs"
+                    disabled={busyAction === `lock-${activeDevice.registrationId}`}
+                    onClick={() => lockDevice(activeDevice.registrationId)}
+                    title="Lock this device"
+                  >
+                    <FiLock size={12} aria-hidden="true" />
+                    {busyAction === `lock-${activeDevice.registrationId}` ? "Locking…" : "Lock"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost min-h-0 px-2 py-1 text-xs"
+                    disabled={busyAction === `deactivate-${activeDevice.registrationId}`}
+                    onClick={() => deactivateDevice(activeDevice.registrationId)}
+                    title="Deactivate this device (you can reactivate it later)"
+                  >
+                    <FiPauseCircle size={12} aria-hidden="true" />
+                    {busyAction === `deactivate-${activeDevice.registrationId}` ? "Deactivating…" : "Deactivate"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         ) : (
@@ -251,63 +409,37 @@ export default function AttendanceMyDevices() {
             </div>
           </div>
         )}
-        {inactiveDevices.map((d) => (
-          <div key={d.registrationId} className="device-stack-row">
-            <div className="device-stack-top">
-              <span className="device-stack-name">
-                {d.deviceLabel || shortDeviceId(d.browserDeviceId)}
-              </span>
-              <StatusBadge label={d.revokedAt ? "Revoked" : "Deactivated"} cls="badge-muted" />
-            </div>
-            <div className="device-stack-meta">
-              Activated {fmtShort(d.activatedAt)} · Ended {fmtShort(d.deactivatedAt || d.revokedAt)}
-            </div>
-          </div>
-        ))}
-      </div>
-      {confirmDeactivate ? (
-        <div className="modal-shell" onClick={() => setConfirmDeactivate(null)}>
-          <div className="modal-card" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Deactivate device?</h2>
+        {inactiveDevices.map((d) => {
+          const info = inactiveInfo(d);
+          return (
+            <div key={d.registrationId} className="device-stack-row">
+              <div className="device-stack-top">
+                <span className="device-stack-name">
+                  {d.deviceLabel || shortDeviceId(d.browserDeviceId)}
+                </span>
+                <StatusBadge label={info.label} cls={info.cls} />
               </div>
-              <button type="button" className="icon-close-btn" onClick={() => setConfirmDeactivate(null)} aria-label="Close">
-                ×
-              </button>
-            </div>
-            <div className="modal-content">
-              <div className="adm-activate-modal__notice" style={{ marginBottom: 16 }}>
-                <FiAlertTriangle aria-hidden="true" className="adm-activate-modal__notice-icon" />
-                <div>
-                  <div className="adm-activate-modal__notice-title">This action is permanent</div>
-                  <p className="adm-activate-modal__notice-body">
-                    Deactivating will invalidate this device's credentials. The customer attendance page will be disabled on this browser. A new activation code from the administrator will be required to use attendance again.
-                  </p>
+              <div className="device-stack-meta">
+                Activated {fmtShort(d.activatedAt)} · Ended {fmtShort(d.deactivatedAt || d.revokedAt)}
+              </div>
+              {info.reactivatable ? (
+                <div className="device-stack-actions">
+                  <button
+                    type="button"
+                    className="btn-ghost min-h-0 px-2 py-1 text-xs"
+                    disabled={busyAction === `reactivate-${d.registrationId}`}
+                    onClick={() => reactivateDevice(d.registrationId)}
+                    title="Reactivate this device (no Super Admin code needed)"
+                  >
+                    <FiRefreshCcw size={12} aria-hidden="true" />
+                    {busyAction === `reactivate-${d.registrationId}` ? "Reactivating…" : "Reactivate"}
+                  </button>
                 </div>
-              </div>
-              <div className="modal-button-row" style={{ justifyContent: "flex-end", gap: 8 }}>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={() => setConfirmDeactivate(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-danger btn-sm"
-                  disabled={busyAction === `deactivate-${confirmDeactivate}`}
-                  onClick={() => deactivateDevice(confirmDeactivate)}
-                >
-                  {busyAction === `deactivate-${confirmDeactivate}` ? "Deactivating…" : "Deactivate"}
-                </button>
-              </div>
+              ) : null}
             </div>
-          </div>
-        </div>
-      ) : null}
-
+          );
+        })}
+      </div>
       <ActivateDeviceModal
         key={activationOpen ? "open" : "closed"}
         open={activationOpen}
