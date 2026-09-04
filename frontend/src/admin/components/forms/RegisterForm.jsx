@@ -40,27 +40,7 @@ export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel =
       try {
         const res = await apiClient.get("/fields/member");
         setDynamicFields(res.data?.data || res.data || []);
-      } catch (err) {
-        console.log("Failed to load dynamic fields");
-      }
-    };
-
-    loadDynamicFields();
-
-    // Refresh when user returns to this tab after toggling fields in ManageFields
-    const handleVisibility = () => {
-      if (!document.hidden) loadDynamicFields();
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, []);
-
-  useEffect(() => {
-    const loadDynamicFields = async () => {
-      try {
-        const res = await apiClient.get("/fields/member");
-        setDynamicFields(res.data?.data || res.data || []);
-      } catch (err) {
+      } catch {
         console.log("Failed to load dynamic fields");
       }
     };
@@ -77,12 +57,14 @@ export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel =
 
   useEffect(() => {
     if (defaultData?.customFields) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCustomFields(defaultData.customFields);
     }
   }, [defaultData]);
 
   useEffect(() => {
     if (defaultData && Object.keys(defaultData).length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm((prev) => ({
         ...prev,
         fullName: defaultData.fullName || "",

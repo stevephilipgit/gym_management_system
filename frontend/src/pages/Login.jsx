@@ -23,7 +23,7 @@ export default function Login() {
       const res = await apiClient.get("/admin/captcha");
       setCaptchaId(res.data?.captchaId || "");
       setCaptchaSvg(res.data?.svgBase64 || "");
-    } catch (err) {
+    } catch {
       setLoginError("Unable to load the security check. Please refresh the page.");
     } finally {
       setCaptchaLoading(false);

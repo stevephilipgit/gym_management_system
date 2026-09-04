@@ -10,7 +10,7 @@ export class ErrorBoundary extends Component {
     };
   }
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError() {
     return { hasError: true };
   }
 
@@ -39,7 +39,7 @@ export class ErrorBoundary extends Component {
           <p style={{ marginBottom: "10px", color: "#666" }}>
             An error occurred while rendering this component. Please refresh the page and try again.
           </p>
-          {process.env.NODE_ENV === "development" && (
+          {import.meta.env.DEV && (
             <details style={{
               marginTop: "10px",
               padding: "10px",

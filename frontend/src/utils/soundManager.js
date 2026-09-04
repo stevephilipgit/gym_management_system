@@ -14,7 +14,7 @@ class SoundManager {
     // Simple beep sounds (using Web Audio API)
     try {
       this.initWebAudio();
-    } catch (err) {
+    } catch {
       console.warn('Web Audio not available, sounds disabled');
     }
   }
@@ -39,8 +39,8 @@ class SoundManager {
 
         oscillator.start(audioContext.currentTime);
         oscillator.stop(audioContext.currentTime + 0.2);
-      } catch (err) {
-        console.warn('Could not play success sound', err);
+      } catch (error) {
+        console.warn('Could not play success sound', error);
       }
     };
 
@@ -63,8 +63,8 @@ class SoundManager {
 
         oscillator.start(audioContext.currentTime);
         oscillator.stop(audioContext.currentTime + 0.3);
-      } catch (err) {
-        console.warn('Could not play error sound', err);
+      } catch (error) {
+        console.warn('Could not play error sound', error);
       }
     };
   }
