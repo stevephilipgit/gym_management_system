@@ -180,6 +180,8 @@ export default function AdminDashboardHome() {
     pollIntervalRef.current = setInterval(() => {
       if (view === "today") {
         fetchTodayData();
+        const today = new Date().toISOString().split("T")[0];
+        fetchAnalytics({ from: today, to: today });
       }
     }, 30000);
 
@@ -350,9 +352,53 @@ export default function AdminDashboardHome() {
             <DashboardMetricCard title="Transactions" value={formatCount(displayData?.logs?.length || 0)} />
           </section>
 
-          {Object.keys(safePlans).length > 0 ? (
-            <>
-              <section className="dash-grid dash-grid-2" aria-label="Revenue by plan and training type">
+          <section className="dash-transactions" aria-labelledby="dash-transactions-title">
+            <div className="dash-section-heading">
+              <h2 id="dash-transactions-title" className="dash-section-title">
+                {view === "today" ? "Today's Transactions" : "Transactions"}
+              </h2>
+              <span className="dash-section-count">
+                {formatCount(displayData?.logs?.length || 0)}
+              </span>
+            </div>
+
+            {displayData?.logs?.length ? (
+              <div className="dash-transactions-table-wrap">
+                <table className="data-table dash-transactions-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Member</th>
+                      <th scope="col">Plan</th>
+                      <th scope="col">Training</th>
+                      <th scope="col">Type</th>
+                      <th scope="col">Amount</th>
+                      <th scope="col">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayData.logs.map((log, index) => (
+                      <tr key={log._id || `${log.memberName}-${log.date}-${index}`}>
+                        <td title={log.memberName}>{log.memberName}</td>
+                        <td title={log.plan}>{log.plan}</td>
+                        <td title={log.trainingType}>{log.trainingType}</td>
+                        <td>{log.type === "renew" ? "Renewal" : "New"}</td>
+                        <td>{formatINR(log.amount)}</td>
+                        <td>{formatTransactionDate(log.date)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="dash-transactions-empty">
+                {view === "today"
+                  ? "No transactions recorded today."
+                  : "No transactions found for the selected date range."}
+              </p>
+            )}
+          </section>
+
+          <section className="dash-grid dash-grid-2" aria-label="Revenue by plan and training type">
                 <ChartCard title={view === "today" ? "Today's Income by Plan" : "Income by Plan"}>
                   {planItems.length > 1 ? (
                     <MiniBarChart
@@ -400,20 +446,22 @@ export default function AdminDashboardHome() {
                   </AnalyticsBlock>
                 </ChartCard>
               </section>
-            </>
-          ) : (
-            <div className="empty-state">
-              <p>
-                {view === "today"
-                  ? "No transactions recorded today yet."
-                  : "No data found for the selected date range."}
-              </p>
-            </div>
-          )}
+
         </>
       )}
     </div>
   );
+}
+
+function formatTransactionDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 /* ── Reusable dashboard components ──────────────────────────────── */
