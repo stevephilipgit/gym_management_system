@@ -1,6 +1,7 @@
 import { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ErrorBoundary } from "./components/shared/ErrorBoundary";
+import { ToastProvider } from "./components/shared/ToastProvider";
 
 /* PUBLIC */
 const Home = lazy(() => import("./pages/Home"));
@@ -32,60 +33,62 @@ const AttendanceMyDevices = lazy(() => import("./admin/AttendanceMyDevices"));
 
 function App() {
   return (
-    <BrowserRouter>
-      <ErrorBoundary>
-        <Suspense
-          fallback={
-            <div className="page-frame py-10 text-center text-sm uppercase tracking-[0.24em] text-[var(--muted)]">
-              Loading...
-            </div>
-          }
-        >
-          <Routes>
-            {/* PUBLIC */}
-            <Route path="/" element={<Home />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/kiosk-attendance" element={<KioskAttendance />} />
+    <ToastProvider>
+      <BrowserRouter>
+        <ErrorBoundary>
+          <Suspense
+            fallback={
+              <div className="page-frame py-10 text-center text-sm uppercase tracking-[0.24em] text-[var(--muted)]">
+                Loading...
+              </div>
+            }
+          >
+            <Routes>
+              {/* PUBLIC */}
+              <Route path="/" element={<Home />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/kiosk-attendance" element={<KioskAttendance />} />
 
-            {/* ADMIN (FULL PROTECTION) */}
-            <Route
-              path="/admin"
-              element={
-                <AuthGuard>
-                  <AdminLayout />
-                </AuthGuard>
-              }
-            >
+              {/* ADMIN (FULL PROTECTION) */}
               <Route
-                index
+                path="/admin"
                 element={
-                  <RoleGuard roles={["superadmin"]}>
-                    <AdminDashboardHome />
-                  </RoleGuard>
+                  <AuthGuard>
+                    <AdminLayout />
+                  </AuthGuard>
                 }
-              />
-              <Route path="members" element={<AdminMembers />} />
-              <Route path="register" element={<AdminRegister />} />
-              <Route path="update" element={<AdminUpdate />} />
-              <Route path="packages" element={<RoleGuard roles={["superadmin"]}><AdminManagePackages /></RoleGuard>} />
-              <Route path="fields" element={<RoleGuard roles={["superadmin"]}><AdminManageFields /></RoleGuard>} />
-              <Route path="diet-manager" element={<AdminDietManager />} />
-              <Route path="attendance-front-desk" element={<AttendanceFrontDesk />} />
-              {/* Super Admin: global Device Management (RoleGuard enforced) */}
-              <Route path="devices" element={<RoleGuard roles={["superadmin"]}><AttendanceDevices /></RoleGuard>} />
-              {/* Trainer: My Attendance Devices (TRAINER-ONLY — exact role, no superadmin superset) */}
-              <Route path="my-devices" element={<RoleGuard roles={["trainer"]} exact><AttendanceMyDevices /></RoleGuard>} />
-              <Route path="inactivity-reports" element={<InactiveReportsPage />} />
-              <Route path="settings" element={<RoleGuard roles={["superadmin"]}><SettingsPage /></RoleGuard>} />
-              <Route path="admins" element={<RoleGuard roles={["superadmin"]}><AdminManageAdmins /></RoleGuard>} />
-              <Route path="enquiries" element={<AdminEnquiries />} />
-            </Route>
+              >
+                <Route
+                  index
+                  element={
+                    <RoleGuard roles={["superadmin"]}>
+                      <AdminDashboardHome />
+                    </RoleGuard>
+                  }
+                />
+                <Route path="members" element={<AdminMembers />} />
+                <Route path="register" element={<AdminRegister />} />
+                <Route path="update" element={<AdminUpdate />} />
+                <Route path="packages" element={<RoleGuard roles={["superadmin"]}><AdminManagePackages /></RoleGuard>} />
+                <Route path="fields" element={<RoleGuard roles={["superadmin"]}><AdminManageFields /></RoleGuard>} />
+                <Route path="diet-manager" element={<AdminDietManager />} />
+                <Route path="attendance-front-desk" element={<AttendanceFrontDesk />} />
+                {/* Super Admin: global Device Management (RoleGuard enforced) */}
+                <Route path="devices" element={<RoleGuard roles={["superadmin"]}><AttendanceDevices /></RoleGuard>} />
+                {/* Trainer: My Attendance Devices (TRAINER-ONLY — exact role, no superadmin superset) */}
+                <Route path="my-devices" element={<RoleGuard roles={["trainer"]} exact><AttendanceMyDevices /></RoleGuard>} />
+                <Route path="inactivity-reports" element={<InactiveReportsPage />} />
+                <Route path="settings" element={<RoleGuard roles={["superadmin"]}><SettingsPage /></RoleGuard>} />
+                <Route path="admins" element={<RoleGuard roles={["superadmin"]}><AdminManageAdmins /></RoleGuard>} />
+                <Route path="enquiries" element={<AdminEnquiries />} />
+              </Route>
 
-            <Route path="*" element={<Home />} />
-          </Routes>
-        </Suspense>
-      </ErrorBoundary>
-    </BrowserRouter>
+              <Route path="*" element={<Home />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
+      </BrowserRouter>
+    </ToastProvider>
   );
 }
 
