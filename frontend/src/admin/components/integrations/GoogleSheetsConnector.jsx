@@ -5,14 +5,14 @@ import {
   testGoogleSheetsConnection,
   openGoogleAuthFlow,
 } from "../../../utils/googleSheetsClient";
+import { useToast } from "../../../components/shared/ToastProvider";
 
 export const GoogleSheetsConnector = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [connector, setConnector] = useState(null);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
+  const toast = useToast();
 
   useEffect(() => {
     loadConnectionStatus();
@@ -21,13 +21,12 @@ export const GoogleSheetsConnector = () => {
   const loadConnectionStatus = async () => {
     try {
       setLoading(true);
-      setError(null);
       const data = await getConnectionStatus();
       setIsConnected(data.isConnected);
       setConnector(data.connector);
     } catch (err) {
       console.error("Failed to load connection status:", err);
-      setError("Failed to load connection status");
+      toast.error("Failed to load connection status");
     } finally {
       setLoading(false);
     }
@@ -35,8 +34,6 @@ export const GoogleSheetsConnector = () => {
 
   const handleConnect = async () => {
     try {
-      setError(null);
-      setSuccess(null);
       await openGoogleAuthFlow();
       
       // Reload status after a delay (user should close the popup after connecting)
@@ -45,7 +42,7 @@ export const GoogleSheetsConnector = () => {
       }, 2000);
     } catch (err) {
       console.error("Failed to connect:", err);
-      setError("Failed to initiate connection. Please try again.");
+      toast.error("Failed to initiate connection. Please try again.");
     }
   };
 
@@ -55,32 +52,28 @@ export const GoogleSheetsConnector = () => {
     }
 
     try {
-      setError(null);
       await disconnectGoogleSheets();
-      setSuccess("Google Sheets disconnected successfully");
+      toast.success("Google Sheets disconnected successfully");
       setIsConnected(false);
       setConnector(null);
-      setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       console.error("Failed to disconnect:", err);
-      setError("Failed to disconnect. Please try again.");
+      toast.error("Failed to disconnect. Please try again.");
     }
   };
 
   const handleTestConnection = async () => {
     try {
       setTesting(true);
-      setError(null);
       const result = await testGoogleSheetsConnection();
       if (result.success) {
-        setSuccess("Connection test successful!");
-        setTimeout(() => setSuccess(null), 3000);
+        toast.success("Connection test successful!");
       } else {
-        setError(result.message || "Connection test failed");
+        toast.error(result.message || "Connection test failed");
       }
     } catch (err) {
       console.error("Connection test failed:", err);
-      setError("Connection test failed. Please try again.");
+      toast.error("Connection test failed. Please try again.");
     } finally {
       setTesting(false);
     }
@@ -145,38 +138,6 @@ export const GoogleSheetsConnector = () => {
             )}
           </div>
         </div>
-
-        {/* Error Message */}
-        {error && (
-          <div
-            style={{
-              padding: "12px",
-              backgroundColor: "#fee",
-              borderLeft: "4px solid #c33",
-              borderRadius: "4px",
-              color: "#c33",
-              fontSize: "14px",
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {/* Success Message */}
-        {success && (
-          <div
-            style={{
-              padding: "12px",
-              backgroundColor: "#efe",
-              borderLeft: "4px solid #2ecc71",
-              borderRadius: "4px",
-              color: "#2ecc71",
-              fontSize: "14px",
-            }}
-          >
-            {success}
-          </div>
-        )}
 
         {/* Connection Details */}
         {isConnected && connector && (

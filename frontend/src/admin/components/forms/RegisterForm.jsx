@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import apiClient, { API_BASE_URL } from "../../../utils/apiClient.js";
 import { allowedGendersForScope } from "../../../utils/scopeGenders.js";
 import { useAdmin } from "../../authContext.js";
+import { useToast } from "../../../components/shared/ToastProvider";
 
 export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel = "Submit" }) {
   const admin = useAdmin();
+  const toast = useToast();
   const [dynamicFields, setDynamicFields] = useState([]);
   const [customFields, setCustomFields] = useState({});
   const [form, setForm] = useState({
@@ -121,7 +123,7 @@ export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel =
     e.preventDefault();
     const error = validateForm();
     if (error) {
-      alert(error);
+      toast.warning(error);
       return;
     }
     // Include the version for optimistic concurrency protection.

@@ -1,6 +1,7 @@
 // components/MemberImportModal.jsx — Super Admin bulk member import (CSV)
 import { useState, useRef } from "react";
 import apiClient from "../../utils/apiClient.js";
+import { useToast } from "../../components/shared/ToastProvider";
 
 const GENDERS = ["Male", "Female", "Transgender"];
 const REQUIRED_HEADERS = ["gymId", "fullName", "fatherName", "gender", "dob", "phone", "aadhar", "bloodGroup", "address", "occupation", "gymPlan", "trainingType"];
@@ -68,6 +69,7 @@ export default function MemberImportModal({ isOpen, onClose }) {
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState(null);
   const fileInputRef = useRef(null);
+  const toast = useToast();
 
   if (!isOpen) return null;
 
@@ -78,14 +80,14 @@ export default function MemberImportModal({ isOpen, onClose }) {
     reader.onload = () => {
       const parsed = parseCSV(reader.result);
       if (parsed.length === 0) {
-        alert("Could not parse CSV. Check the file format.");
+        toast.error("Could not parse CSV. Check the file format.");
         return;
       }
       // Check required headers
       const keys = Object.keys(parsed[0]);
       const missing = REQUIRED_HEADERS.filter((h) => !keys.includes(h));
       if (missing.length > 0) {
-        alert(`Missing required columns: ${missing.join(", ")}`);
+        toast.error(`Missing required columns: ${missing.join(", ")}`);
         return;
       }
       setRows(parsed);
@@ -101,7 +103,7 @@ export default function MemberImportModal({ isOpen, onClose }) {
       setResult(res.data);
       setStep("result");
     } catch (err) {
-      alert(err.response?.data?.message || "Import failed");
+      toast.error(err.response?.data?.message || "Import failed");
     } finally {
       setImporting(false);
     }
