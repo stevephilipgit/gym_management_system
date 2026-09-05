@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { FiRefreshCw } from 'react-icons/fi';
 import apiClient from '../utils/apiClient.js';
+import { useToast } from '../components/shared/ToastProvider';
 
 function formatTime(date) {
   if (!date) return '--:--';
@@ -47,8 +48,7 @@ function getStatusClass(state) {
 export default function AttendanceFrontDesk() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState('');
+  const toast = useToast();
 
   const fetchTodayLogs = useCallback(async () => {
     setLoading(true);
@@ -59,23 +59,17 @@ export default function AttendanceFrontDesk() {
       setRecords(data.records || []);
     } catch (err) {
       console.error('Failed to fetch attendance logs:', err);
-      showMessage('Failed to load attendance logs', 'error');
+      toast.error('Failed to load attendance logs');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchTodayLogs();
     const interval = setInterval(fetchTodayLogs, 30000);
     return () => clearInterval(interval);
   }, [fetchTodayLogs]);
-
-  const showMessage = (msg, type = 'error', duration = 3000) => {
-    setMessage(msg);
-    setMessageType(type);
-    if (duration) setTimeout(() => setMessage(''), duration);
-  };
 
   const insideCount = records.filter(r => r.state === 'inside').length;
   const visitedCount = records.filter(r => r.state === 'completed' || r.state === 'auto_closed').length;
@@ -100,12 +94,6 @@ export default function AttendanceFrontDesk() {
           <FiRefreshCw size={16} className={loading ? 'attendance-spin' : ''} />
         </button>
       </div>
-
-      {message && (
-        <div className={`pkg-notice pkg-notice-${messageType === 'success' ? 'success' : 'error'}`} role="status">
-          {message}
-        </div>
-      )}
 
       <section className="dash-grid dash-grid-kpis" aria-label="Attendance metrics">
         <article className="dash-kpi">

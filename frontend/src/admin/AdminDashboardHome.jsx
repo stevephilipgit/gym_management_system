@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import apiClient from "../utils/apiClient.js";
+import { useToast } from "../components/shared/ToastProvider";
 import {
   Bar,
   BarChart,
@@ -46,6 +47,7 @@ const TOOLTIP_STYLE = {
 };
 
 export default function AdminDashboardHome() {
+  const toast = useToast();
   const [todayData, setTodayData] = useState(null);
   const [todayLoading, setTodayLoading] = useState(false);
   const [fromDate, setFromDate] = useState(null);
@@ -76,7 +78,7 @@ export default function AdminDashboardHome() {
 
   const fetchCustomReport = async () => {
     if (!fromDate || !toDate) {
-      alert("Please select both dates");
+      toast.warning("Please select both dates");
       return;
     }
 
@@ -90,7 +92,7 @@ export default function AdminDashboardHome() {
       });
       setCustomData(res.data?.data || res.data || null);
     } catch {
-      alert("No data found for this range");
+      toast.error("No data found for this range");
       setCustomData(null);
     } finally {
       setCustomLoading(false);
@@ -100,12 +102,12 @@ export default function AdminDashboardHome() {
   const exportAnalyticsPDF = async () => {
     try {
       if (!fromDate || !toDate) {
-        alert("Please select both dates for export");
+        toast.warning("Please select both dates for export");
         return;
       }
 
       if (!customData) {
-        alert("Please generate a report first before exporting");
+        toast.warning("Please generate a report first before exporting");
         return;
       }
 
@@ -130,7 +132,7 @@ export default function AdminDashboardHome() {
       URL.revokeObjectURL(link.href);
     } catch (err) {
       console.error("Export Error:", err);
-      alert("Failed to export PDF. Please check the console for details.");
+      toast.error("Failed to export PDF. Please check the console for details.");
     }
   };
 
@@ -315,7 +317,7 @@ export default function AdminDashboardHome() {
               className="btn-primary min-h-0 px-4 py-2"
               onClick={async () => {
                 if (!fromDate || !toDate) {
-                  alert("Please select both dates");
+                  toast.warning("Please select both dates");
                   return;
                 }
                 await fetchCustomReport();

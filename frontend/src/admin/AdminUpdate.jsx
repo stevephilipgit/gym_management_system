@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import apiClient from "../utils/apiClient.js";
 import RegisterForm from "./components/forms/RegisterForm";
+import { useToast } from "../components/shared/ToastProvider";
 
 export default function AdminUpdate() {
   const [gymId, setGymId] = useState("");
   const [memberData, setMemberData] = useState(null);
   const [loading, setLoading] = useState(false);
   const location = useLocation();
+  const toast = useToast();
 
   const normalizeGymId = (value) => value.replace(/\D/g, "");
 
@@ -20,7 +22,7 @@ export default function AdminUpdate() {
       setMemberData(res.data?.data || res.data || null);
       setGymId(normalizedGymId);
     } catch {
-      alert("Member not found or unauthorized");
+      toast.error("Member not found or unauthorized");
       setMemberData(null);
     } finally {
       setLoading(false);
@@ -29,13 +31,19 @@ export default function AdminUpdate() {
 
   const searchMember = async () => {
     const normalizedGymId = normalizeGymId(gymId);
-    if (!normalizedGymId) return alert("Please enter a valid Gym ID");
+    if (!normalizedGymId) {
+      toast.warning("Please enter a valid Gym ID");
+      return;
+    }
     await fetchMemberByGymId(normalizedGymId);
   };
 
   const updateMember = async (updated) => {
     const normalizedGymId = normalizeGymId(gymId);
-    if (!normalizedGymId) return alert("Invalid Gym ID");
+    if (!normalizedGymId) {
+      toast.warning("Invalid Gym ID");
+      return;
+    }
 
     try {
       const fd = new FormData();
@@ -52,14 +60,14 @@ export default function AdminUpdate() {
 
       await apiClient.put(`/members/${normalizedGymId}`, fd);
 
-      alert("Member updated successfully");
+      toast.success("Member updated successfully");
       setMemberData(null);
       setGymId("");
     } catch (err) {
       if (err.response?.status === 409) {
-        alert(err.response?.data?.message || "This member was modified by another user. Please reload and try again.");
+        toast.error(err.response?.data?.message || "This member was modified by another user. Please reload and try again.");
       } else {
-        alert("Update failed");
+        toast.error("Update failed");
       }
       console.log("Update Error:", err);
     }

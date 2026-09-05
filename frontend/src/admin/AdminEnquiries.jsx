@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import apiClient from '../utils/apiClient';
 import IconButton from './components/ui/IconButton';
+import { useToast } from '../components/shared/ToastProvider';
 
 const BRANCH_OPTS = ['all', 'Mathur', 'Vepery', 'Any Branch'];
 const STATUS_OPTS = ['all', 'new', 'contacted', 'closed', 'spam'];
@@ -28,7 +29,6 @@ function StatusBadge({ status }) {
     </span>
   );
 }
-
 function DetailModal({ enquiry, onClose, onStatusChange }) {
   const [status, setStatus] = useState(enquiry.status);
   const [notes, setNotes] = useState(enquiry.notes || '');
@@ -119,23 +119,17 @@ function DetailModal({ enquiry, onClose, onStatusChange }) {
     </div>
   );
 }
-
 export default function AdminEnquiries() {
   const [enquiries, setEnquiries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
   const [filters, setFilters] = useState({ status: 'all', branch: 'all', reason: 'all', search: '', dateFrom: '', dateTo: '' });
   const [selected, setSelected] = useState(null);
-  const [toast, setToast] = useState('');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [enquiryToDelete, setEnquiryToDelete] = useState(null);
   const searchRef = useRef();
   const searchTimer = useRef();
-
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(''), 3000);
-  };
+  const toast = useToast();
 
   const fetchEnquiries = useCallback(async (page = 1) => {
     setLoading(true);
@@ -179,9 +173,9 @@ export default function AdminEnquiries() {
       setEnquiries((prev) => prev.filter((e) => e._id !== enquiryToDelete));
       setDeleteModalOpen(false);
       setEnquiryToDelete(null);
-      showToast('Enquiry deleted.');
+      toast.success('Enquiry deleted.');
     } catch {
-      showToast('Failed to delete enquiry.');
+      toast.error('Failed to delete enquiry.');
       setDeleteModalOpen(false);
     }
   };
@@ -190,7 +184,7 @@ export default function AdminEnquiries() {
     setEnquiries((prev) =>
       prev.map((e) => (e._id === id ? { ...e, status, notes } : e))
     );
-    showToast('Status updated.');
+    toast.success('Status updated.');
   };
 
   const handleExportCSV = async () => {
@@ -204,7 +198,7 @@ export default function AdminEnquiries() {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      showToast('Export failed.');
+      toast.error('Export failed.');
     }
   };
 
@@ -213,24 +207,12 @@ export default function AdminEnquiries() {
       await apiClient.patch(`/enquiries/${id}/status`, { status });
       handleStatusChange(id, status, undefined);
     } catch {
-      showToast('Update failed.');
+      toast.error('Update failed.');
     }
   };
 
   return (
     <div className="saas-container management-page">
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position: 'fixed', top: 20, right: 20, zIndex: 9999,
-          background: '#1a1a1a', border: '1px solid #ccff00', color: '#ccff00',
-          padding: '12px 20px', borderRadius: 8, fontSize: 14, fontWeight: 600,
-          boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
-        }}>
-          {toast}
-        </div>
-      )}
-
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div className="saas-header" style={{ marginBottom: 0 }}>
@@ -371,13 +353,16 @@ export default function AdminEnquiries() {
 
       {/* Delete Confirmation Modal */}
       {deleteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] p-4" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--modal-backdrop)', zIndex: 9999 }}>
-          <div className="w-full max-w-sm rounded-[var(--radius-md)] bg-[var(--surface-soft)] p-6 shadow-2xl border border-[var(--border-strong)]" style={{ background: 'var(--surface-soft)', padding: '24px', borderRadius: '16px', border: '1px solid var(--border-strong)', width: '100%', maxWidth: '384px' }}>
-            <h3 className="mb-2 text-xl font-semibold text-white" style={{ marginBottom: '8px', fontSize: '1.25rem', fontWeight: 600, color: '#fff' }}>Delete Enquiry?</h3>
-            <p className="mb-6 text-[var(--text-secondary)]" style={{ marginBottom: '24px', color: 'var(--text-secondary)' }}>This action cannot be undone. Are you sure you want to delete this enquiry?</p>
-            <div className="flex justify-end gap-3" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button onClick={() => setDeleteModalOpen(false)} className="btn-secondary min-h-0 px-4 py-2" style={actionBtnStyle('var(--surface-muted)', 'var(--text-primary)')}>Cancel</button>
-              <button onClick={handleDelete} className="btn-danger min-h-0 px-4 py-2" style={actionBtnStyle('#ff5d5d', '#fff')}>Delete</button>
+        <div className="modal-shell" onClick={() => setDeleteModalOpen(false)}>
+          <div className="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-enquiry-title" onClick={(e) => e.stopPropagation()}>
+            <div className="confirmation-dialog-header">
+              <h3 id="delete-enquiry-title" className="confirmation-dialog-title">Delete Enquiry?</h3>
+              <button type="button" className="icon-close-btn confirmation-dialog-close" onClick={() => setDeleteModalOpen(false)} aria-label="Close delete enquiry dialog" title="Close">×</button>
+            </div>
+            <p className="confirmation-dialog-body">This action cannot be undone. Are you sure you want to delete this enquiry?</p>
+            <div className="confirmation-dialog-actions">
+              <button onClick={() => setDeleteModalOpen(false)} className="btn-secondary min-h-0 px-4 py-2">Cancel</button>
+              <button onClick={handleDelete} className="btn-danger min-h-0 px-4 py-2">Delete</button>
             </div>
           </div>
         </div>
@@ -385,16 +370,3 @@ export default function AdminEnquiries() {
     </div>
   );
 }
-
-const actionBtnStyle = (bg, color) => ({
-  background: bg,
-  color,
-  border: 'none',
-  borderRadius: 5,
-  padding: '4px 10px',
-  fontWeight: 700,
-  fontSize: 11,
-  cursor: 'pointer',
-  marginRight: 4,
-  transition: 'opacity 0.15s',
-});

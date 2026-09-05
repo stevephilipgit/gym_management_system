@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
-import { FiUpload, FiUserPlus } from "react-icons/fi";
+import { FiDownload, FiUserPlus } from "react-icons/fi";
 import { DietSelector } from "./components/DietSelector";
 import apiClient from "../utils/apiClient.js";
 import { downloadMembershipInvoice } from "./utils/invoicePdf.js";
@@ -11,6 +11,7 @@ import RegisterForm from "./components/forms/RegisterForm";
 import ToggleSwitch from "./components/ui/ToggleSwitch";
 import MemberImportModal from "./components/MemberImportModal";
 import { useAdmin, canAccess } from "./authContext.js";
+import { useToast } from "../components/shared/ToastProvider";
 
 const MS_DAY = 1000 * 60 * 60 * 24;
 
@@ -172,6 +173,7 @@ function ColumnResizeHandle({ index, label, width, onStart, onAdjust }) {
 
 export default function AdminMembers() {
   const admin = useAdmin();
+  const toast = useToast();
   const isSuperadmin = canAccess(admin?.role, ["superadmin"]);
   const navigate = useNavigate();
   const adminId = admin?._id || admin?.id;
@@ -451,7 +453,7 @@ export default function AdminMembers() {
       setShowEditPopup(true);
     } catch (err) {
       console.error("Failed to load member details for edit:", err);
-      alert(err.response?.data?.message || err.message || "Unable to load member details");
+      toast.error(err.response?.data?.message || err.message || "Unable to load member details");
     } finally {
       setEditLoadingGymId(null);
     }
@@ -547,9 +549,9 @@ export default function AdminMembers() {
       await apiClient.delete(`/members/${deleteId}`, { data: { memberCode: deleteMemberCode } });
       setShowDeletePopup(false);
       await loadMembers();
-      alert("Member deleted successfully");
+      toast.success("Member deleted successfully");
     } catch (err) {
-      alert("Delete failed");
+      toast.error("Delete failed");
       console.log(err);
     }
   };
@@ -680,7 +682,7 @@ export default function AdminMembers() {
     
     if (!selectedMember || !renewMode) return;
     if (renewData.paymentStatus === "not_paid") {
-      alert("Marked as not paid. Renewal skipped.");
+      toast.warning("Marked as not paid. Renewal skipped.");
       closeRenewModal();
       return;
     }
@@ -745,7 +747,7 @@ export default function AdminMembers() {
 
       await loadMembers();
       closeRenewModal();
-      alert("Membership renewed successfully");
+      toast.success("Membership renewed successfully");
     } catch (err) {
       console.error("Renewal failed:", err);
       const errorMsg =
@@ -783,7 +785,7 @@ export default function AdminMembers() {
 
       await loadMembers();
       closeEditModal();
-      alert("Member details updated successfully");
+      toast.success("Member details updated successfully");
     } catch (err) {
       console.error("Update failed:", err);
       const errorMsg =
@@ -818,7 +820,7 @@ export default function AdminMembers() {
               title="Import Members"
               aria-label="Import Members"
             >
-              <FiUpload size={17} strokeWidth={2.5} aria-hidden="true" />
+              <FiDownload size={17} strokeWidth={2.5} aria-hidden="true" />
             </button>
           )}
           <button
@@ -1095,65 +1097,64 @@ export default function AdminMembers() {
 
       {/* Pagination + result summary (server-driven) */}
       {!loading && !loadError && total > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
-          <span className="text-sm text-[var(--text-secondary)]">
+        <div className="members-pagination">
+          <span className="members-pagination-summary">
             Page {page} of {totalPages} · {total} member{total === 1 ? "" : "s"}
           </span>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="text-sm text-[var(--text-secondary)]" htmlFor="members-page-size">Per page</label>
+          <nav className="members-pagination-nav" aria-label="Members pagination">
+            <button
+              type="button"
+              onClick={() => goToPage(page - 1)}
+              disabled={page <= 1}
+              className="members-pagination-arrow"
+              aria-label="Previous page"
+              title="Previous page"
+            >
+              ‹
+            </button>
+            <span className="members-pagination-page" aria-current="page">{page}</span>
+            <button
+              type="button"
+              onClick={() => goToPage(page + 1)}
+              disabled={page >= totalPages}
+              className="members-pagination-arrow"
+              aria-label="Next page"
+              title="Next page"
+            >
+              ›
+            </button>
+          </nav>
+          <label className="members-pagination-size" htmlFor="members-page-size">
             <select
               id="members-page-size"
               className="saas-input"
               value={pageSize}
               onChange={(e) => changePageSize(e.target.value)}
+              aria-label="Members per page"
             >
               <option value="10">10</option>
               <option value="25">25</option>
               <option value="50">50</option>
               <option value="100">100</option>
             </select>
-            <button
-              onClick={() => goToPage(page - 1)}
-              disabled={page <= 1}
-              className="saas-input"
-              style={{ cursor: page <= 1 ? "not-allowed" : "pointer" }}
-            >
-              ← Prev
-            </button>
-            <span className="text-sm text-[var(--text-primary)]" style={{ minWidth: '48px', textAlign: 'center' }}>{page}</span>
-            <button
-              onClick={() => goToPage(page + 1)}
-              disabled={page >= totalPages}
-              className="saas-input"
-              style={{ cursor: page >= totalPages ? "not-allowed" : "pointer" }}
-            >
-              Next →
-            </button>
-          </div>
+            <span>/ page</span>
+          </label>
         </div>
       )}
 
       {showDeletePopup && (
         <div className="modal-shell" onClick={() => setShowDeletePopup(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="section-heading">
-                <span className="eyebrow">Confirm Delete</span>
-                <h3 className="panel-title">This will permanently remove the member?</h3>
-              </div>
-              <button type="button" onClick={() => setShowDeletePopup(false)} className="icon-close-btn" aria-label="Close delete modal">
-                ✕
+          <div className="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-member-title" onClick={(e) => e.stopPropagation()}>
+            <div className="confirmation-dialog-header">
+              <h3 id="delete-member-title" className="confirmation-dialog-title">Confirm Delete</h3>
+              <button type="button" onClick={() => setShowDeletePopup(false)} className="icon-close-btn confirmation-dialog-close" aria-label="Close delete member dialog" title="Close">
+                ×
               </button>
             </div>
-            <div className="modal-content">
-              <div className="mt-6 flex gap-3">
-                <button onClick={deleteMember} className="btn-danger">
-                  Yes
-                </button>
-                <button onClick={() => setShowDeletePopup(false)} className="btn-secondary">
-                  Cancel
-                </button>
-              </div>
+            <p className="confirmation-dialog-body">This action cannot be undone. Are you sure you want to delete this member?</p>
+            <div className="confirmation-dialog-actions">
+              <button onClick={() => setShowDeletePopup(false)} className="btn-secondary min-h-0 px-4 py-2">Cancel</button>
+              <button onClick={deleteMember} className="btn-danger min-h-0 px-4 py-2">Yes</button>
             </div>
           </div>
         </div>

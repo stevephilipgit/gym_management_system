@@ -3,6 +3,7 @@ import { FiPlus } from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
 import IconButton from "./components/ui/IconButton";
 import AdminAccountModal from "./components/AdminAccountModal";
+import { useToast } from "../components/shared/ToastProvider";
 
 const ROLE_LABELS = { superadmin: "Super Admin", trainer: "Trainer" };
 const SCOPE_LABELS = {
@@ -16,12 +17,12 @@ export default function AdminManageAdmins() {
   const [admins, setAdmins] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState(null);
   const [tempPassword, setTempPassword] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("create"); // "create" | "edit"
   const [editingAdmin, setEditingAdmin] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const toast = useToast();
 
   const loadAdmins = async () => {
     setLoading(true);
@@ -30,7 +31,7 @@ export default function AdminManageAdmins() {
       setAdmins(res.data?.data || res.data || []);
     } catch (err) {
       console.log("LOAD ADMINS ERROR:", err);
-      showNotice("Failed to load admin accounts.", "error");
+      toast.error("Failed to load admin accounts.");
     } finally {
       setLoading(false);
     }
@@ -40,12 +41,6 @@ export default function AdminManageAdmins() {
     loadAdmins();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const showNotice = (msg, type = "success") => {
-    setNotice({ msg, type });
-    window.clearTimeout(showNotice._timer);
-    showNotice._timer = window.setTimeout(() => setNotice(null), 3500);
-  };
 
   const openCreate = () => {
     setModalMode("create");
@@ -70,16 +65,16 @@ export default function AdminManageAdmins() {
     try {
       if (modalMode === "edit") {
         await apiClient.put(`/admin/${editingAdmin._id}`, data);
-        showNotice("Admin updated successfully.");
+        toast.success("Admin updated successfully.");
       } else {
         await apiClient.post("/admin/create", data);
-        showNotice("Admin account created successfully. Share the credentials with the trainer.");
+        toast.success("Admin account created successfully. Share the credentials with the trainer.");
       }
       setModalOpen(false);
       setEditingAdmin(null);
       loadAdmins();
     } catch (err) {
-      showNotice(err.response?.data?.message || "Failed to save admin.", "error");
+      toast.error(err.response?.data?.message || "Failed to save admin.");
     } finally {
       setSaving(false);
     }
@@ -91,10 +86,10 @@ export default function AdminManageAdmins() {
     try {
       const res = await apiClient.post(`/admin/reset-password/${admin._id}`);
       setTempPassword(res.data?.tempPassword || null);
-      showNotice("Password reset. Share the temporary password with the trainer.");
+      toast.success("Password reset. Share the temporary password with the trainer.");
       loadAdmins();
     } catch (err) {
-      showNotice(err.response?.data?.message || "Failed to reset password.", "error");
+      toast.error(err.response?.data?.message || "Failed to reset password.");
     } finally {
       setSaving(false);
     }
@@ -105,10 +100,10 @@ export default function AdminManageAdmins() {
     setSaving(true);
     try {
       await apiClient.put(`/admin/${admin._id}`, { status: nextStatus });
-      showNotice(nextStatus === "active" ? "Admin re-enabled." : "Admin disabled — all sessions revoked.");
+      toast.success(nextStatus === "active" ? "Admin re-enabled." : "Admin disabled — all sessions revoked.");
       loadAdmins();
     } catch (err) {
-      showNotice(err.response?.data?.message || "Failed to update status.", "error");
+      toast.error(err.response?.data?.message || "Failed to update status.");
     } finally {
       setSaving(false);
     }
@@ -121,11 +116,11 @@ export default function AdminManageAdmins() {
     setSaving(true);
     try {
       await apiClient.delete(`/admin/${deleteTarget._id}`);
-      showNotice("Admin account deleted.");
+      toast.success("Admin account deleted.");
       setDeleteTarget(null);
       loadAdmins();
     } catch (err) {
-      showNotice(err.response?.data?.message || "Failed to delete admin.", "error");
+      toast.error(err.response?.data?.message || "Failed to delete admin.");
     } finally {
       setSaving(false);
     }
@@ -143,12 +138,6 @@ export default function AdminManageAdmins() {
           Add Admin Account
         </button>
       </div>
-
-      {notice && (
-        <div className={`pkg-notice pkg-notice-${notice.type}`} role="status">
-          {notice.msg}
-        </div>
-      )}
 
       {tempPassword && (
         <div className="pkg-notice pkg-notice-success" role="status">
@@ -221,13 +210,16 @@ export default function AdminManageAdmins() {
       />
 
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] p-4">
-          <div className="w-full max-w-sm rounded-[var(--radius-md)] bg-[var(--surface-soft)] p-6 shadow-2xl border border-[var(--border-strong)]">
-            <h3 className="mb-2 text-xl font-semibold">Delete admin account?</h3>
-            <p className="mb-6 text-[var(--text-secondary)]">
+        <div className="modal-shell" onClick={() => setDeleteTarget(null)}>
+          <div className="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-admin-title" onClick={(e) => e.stopPropagation()}>
+            <div className="confirmation-dialog-header">
+              <h3 id="delete-admin-title" className="confirmation-dialog-title">Delete admin account?</h3>
+              <button type="button" className="icon-close-btn confirmation-dialog-close" onClick={() => setDeleteTarget(null)} aria-label="Close delete admin dialog" title="Close">×</button>
+            </div>
+            <p className="confirmation-dialog-body">
               "{deleteTarget.username}" will be removed and all their sessions revoked. This cannot be undone.
             </p>
-            <div className="flex justify-end gap-3">
+            <div className="confirmation-dialog-actions">
               <button onClick={() => setDeleteTarget(null)} className="btn-secondary min-h-0 px-4 py-2">Cancel</button>
               <button onClick={deleteAdmin} className="btn-danger min-h-0 px-4 py-2">Delete</button>
             </div>

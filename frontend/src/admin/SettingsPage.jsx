@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import apiClient from '../utils/apiClient';
 import ToggleSwitch from './components/ui/ToggleSwitch';
 import { getStoredTheme, applyTheme } from '../theme.js';
+import { useToast } from '../components/shared/ToastProvider';
 
 const SECTION_TABS = [
   { id: 'attendance', label: '⏱ Attendance' },
@@ -37,8 +38,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState(null);
   const [activeTab, setActiveTab] = useState('attendance');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState('');
+  const toast = useToast();
 
   useEffect(() => { fetchSettings(); }, []);
 
@@ -47,14 +47,8 @@ export default function SettingsPage() {
       const res = await apiClient.get('/settings');
       if (res.data.settings) setSettings(res.data.settings);
     } catch {
-      showMsg('Failed to load settings', 'error');
+      toast.error('Failed to load settings');
     }
-  };
-
-  const showMsg = (msg, type = 'error', duration = 3000) => {
-    setMessage(msg);
-    setMessageType(type);
-    if (duration) setTimeout(() => setMessage(''), duration);
   };
 
   const handleChange = (field, value) => {
@@ -71,9 +65,9 @@ export default function SettingsPage() {
       }
 
       await apiClient.put('/settings', updates);
-      showMsg('✓ Settings saved successfully', 'success', 2000);
+      toast.success('Settings saved successfully');
     } catch {
-      showMsg('Error saving settings', 'error');
+      toast.error('Error saving settings');
     } finally {
       setLoading(false);
     }
@@ -93,18 +87,6 @@ export default function SettingsPage() {
         <h1>System Settings</h1>
         <p>All changes take effect immediately. Last updated: {settings.updatedAt ? new Date(settings.updatedAt).toLocaleString('en-GB') : 'Never'}</p>
       </div>
-
-      {/* Toast */}
-      {message && (
-        <div style={{
-          marginBottom: 16, padding: '12px 16px', borderRadius: 8, fontSize: 14, fontWeight: 600,
-          background: messageType === 'success' ? 'rgba(61,220,132,0.12)' : 'rgba(255,93,93,0.12)',
-          border: `1px solid ${messageType === 'success' ? '#3ddc84' : '#ff5d5d'}`,
-          color: messageType === 'success' ? '#3ddc84' : '#ff5d5d',
-        }}>
-          {message}
-        </div>
-      )}
 
       {/* Tab Bar */}
       <div style={{

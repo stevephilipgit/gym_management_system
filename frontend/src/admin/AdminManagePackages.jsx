@@ -3,6 +3,7 @@ import { FiPlus } from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
 import IconButton from "./components/ui/IconButton";
 import PackageModal from "./components/PackageModal";
+import { useToast } from "../components/shared/ToastProvider";
 
 const formatPrice = (value) => {
   const num = Number(value);
@@ -14,7 +15,6 @@ export default function AdminManagePackages() {
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [notice, setNotice] = useState(null);
   const [genderFilter, setGenderFilter] = useState("All");
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("create"); // "create" | "edit"
@@ -22,17 +22,12 @@ export default function AdminManagePackages() {
   const [saving, setSaving] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [packageToDelete, setPackageToDelete] = useState(null);
+  const toast = useToast();
 
   useEffect(() => {
     loadPackages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [genderFilter]);
-
-  const showNotice = (msg, type = "success") => {
-    setNotice({ msg, type });
-    window.clearTimeout(showNotice._timer);
-    showNotice._timer = window.setTimeout(() => setNotice(null), 3500);
-  };
 
   const loadPackages = async () => {
     setLoading(true);
@@ -45,7 +40,7 @@ export default function AdminManagePackages() {
       console.log("LOAD PACKAGE ERROR:", err);
       setLoadError(true);
       setPackages([]);
-      showNotice("Failed to load packages.", "error");
+      toast.error("Failed to load packages.");
     } finally {
       setLoading(false);
     }
@@ -74,17 +69,17 @@ export default function AdminManagePackages() {
     try {
       if (modalMode === "edit") {
         await apiClient.put(`/packages/${editingPackage._id}`, data);
-        showNotice("Package updated successfully.");
+        toast.success("Package updated successfully.");
       } else {
         await apiClient.post("/packages", data);
-        showNotice("Package created successfully.");
+        toast.success("Package created successfully.");
       }
       setModalOpen(false);
       setEditingPackage(null);
       loadPackages();
     } catch (err) {
       console.log("SAVE PACKAGE ERROR:", err);
-      showNotice(err.response?.data?.message || "Failed to save package.", "error");
+      toast.error(err.response?.data?.message || "Failed to save package.");
     } finally {
       setSaving(false);
     }
@@ -101,11 +96,11 @@ export default function AdminManagePackages() {
       await apiClient.delete(`/packages/${packageToDelete}`);
       setDeleteModalOpen(false);
       setPackageToDelete(null);
-      showNotice("Package deleted.");
+      toast.success("Package deleted.");
       loadPackages();
     } catch (err) {
       console.log("DELETE PACKAGE ERROR:", err);
-      showNotice("Failed to delete package.", "error");
+      toast.error("Failed to delete package.");
     }
   };
 
@@ -121,12 +116,6 @@ export default function AdminManagePackages() {
           Add Package
         </button>
       </div>
-
-      {notice && (
-        <div className={`pkg-notice pkg-notice-${notice.type}`} role="status">
-          {notice.msg}
-        </div>
-      )}
 
       <div className="saas-filter-bar" style={{ marginBottom: '16px' }}>
         <label className="field-label" style={{ margin: 0 }}>Filter Packages by Gender</label>
@@ -213,11 +202,14 @@ export default function AdminManagePackages() {
       />
 
       {deleteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] p-4">
-          <div className="w-full max-w-sm rounded-[var(--radius-md)] bg-[var(--surface-soft)] p-6 shadow-2xl border border-[var(--border-strong)]">
-            <h3 className="mb-2 text-xl font-semibold">Delete Package?</h3>
-            <p className="mb-6 text-[var(--text-secondary)]">This action cannot be undone. Are you sure you want to delete this package?</p>
-            <div className="flex justify-end gap-3">
+        <div className="modal-shell" onClick={() => setDeleteModalOpen(false)}>
+          <div className="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-package-title" onClick={(e) => e.stopPropagation()}>
+            <div className="confirmation-dialog-header">
+              <h3 id="delete-package-title" className="confirmation-dialog-title">Delete Package?</h3>
+              <button type="button" className="icon-close-btn confirmation-dialog-close" onClick={() => setDeleteModalOpen(false)} aria-label="Close delete package dialog" title="Close">×</button>
+            </div>
+            <p className="confirmation-dialog-body">This action cannot be undone. Are you sure you want to delete this package?</p>
+            <div className="confirmation-dialog-actions">
               <button onClick={() => setDeleteModalOpen(false)} className="btn-secondary min-h-0 px-4 py-2">Cancel</button>
               <button onClick={deletePackage} className="btn-danger min-h-0 px-4 py-2">Delete</button>
             </div>

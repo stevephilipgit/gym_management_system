@@ -4,12 +4,12 @@ import apiClient from "../utils/apiClient.js";
 import IconButton from "./components/ui/IconButton";
 import DietModal from "./components/DietModal";
 import { canAccess, useAdmin } from "./authContext.js";
+import { useToast } from "../components/shared/ToastProvider";
 
 export const AdminDietManager = () => {
   const [diets, setDiets] = useState([]);
   const [fetching, setFetching] = useState(true);
   const [fetchError, setFetchError] = useState("");
-  const [notice, setNotice] = useState(null);
   const [genderFilter, setGenderFilter] = useState("All");
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("create"); // "create" | "edit"
@@ -18,17 +18,12 @@ export const AdminDietManager = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [dietToDelete, setDietToDelete] = useState(null);
   const admin = useAdmin();
+  const toast = useToast();
   const isSuperadmin = canAccess(admin?.role, ["superadmin"]);
 
   useEffect(() => {
     fetchDiets();
   }, []);
-
-  const showNotice = (msg, type = "success") => {
-    setNotice({ msg, type });
-    window.clearTimeout(showNotice._timer);
-    showNotice._timer = window.setTimeout(() => setNotice(null), 3500);
-  };
 
   const fetchDiets = async () => {
     setFetching(true);
@@ -71,17 +66,17 @@ export const AdminDietManager = () => {
       const payload = isSuperadmin ? data : { name: data.name, description: data.description };
       if (modalMode === "edit") {
         await apiClient.put(`/diets/${editingDiet._id}`, payload);
-        showNotice("Diet updated successfully.");
+        toast.success("Diet updated successfully.");
       } else {
         await apiClient.post("/diets", payload);
-        showNotice("Diet created successfully.");
+        toast.success("Diet created successfully.");
       }
       setModalOpen(false);
       setEditingDiet(null);
       fetchDiets();
     } catch (submitError) {
       console.log("SAVE DIET ERROR:", submitError);
-      showNotice(submitError?.response?.data?.message || "Operation failed", "error");
+      toast.error(submitError?.response?.data?.message || "Operation failed");
     } finally {
       setSaving(false);
     }
@@ -98,11 +93,11 @@ export const AdminDietManager = () => {
       await apiClient.delete(`/diets/${dietToDelete}`);
       setDeleteModalOpen(false);
       setDietToDelete(null);
-      showNotice("Diet deleted.");
+      toast.success("Diet deleted.");
       fetchDiets();
     } catch (deleteError) {
       console.log("DELETE DIET ERROR:", deleteError);
-      showNotice(deleteError?.response?.data?.message || "Delete failed", "error");
+      toast.error(deleteError?.response?.data?.message || "Delete failed");
     }
   };
 
@@ -126,12 +121,6 @@ export const AdminDietManager = () => {
           Create Diet
         </button>
       </div>
-
-      {notice && (
-        <div className={`pkg-notice pkg-notice-${notice.type}`} role="status">
-          {notice.msg}
-        </div>
-      )}
 
       <div className="saas-filter-bar" style={{ marginBottom: '16px' }}>
         <label className="field-label" style={{ margin: 0 }}>Filter by Gender</label>
@@ -219,11 +208,14 @@ export const AdminDietManager = () => {
       />
 
       {deleteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] p-4">
-          <div className="w-full max-w-sm rounded-[var(--radius-md)] bg-[var(--surface-soft)] p-6 shadow-2xl border border-[var(--border-strong)]">
-            <h3 className="mb-2 text-xl font-semibold">Delete Diet?</h3>
-            <p className="mb-6 text-[var(--text-secondary)]">This action cannot be undone. Are you sure you want to delete this diet plan?</p>
-            <div className="flex justify-end gap-3">
+        <div className="modal-shell" onClick={() => setDeleteModalOpen(false)}>
+          <div className="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-diet-title" onClick={(e) => e.stopPropagation()}>
+            <div className="confirmation-dialog-header">
+              <h3 id="delete-diet-title" className="confirmation-dialog-title">Delete Diet?</h3>
+              <button type="button" className="icon-close-btn confirmation-dialog-close" onClick={() => setDeleteModalOpen(false)} aria-label="Close delete diet dialog" title="Close">×</button>
+            </div>
+            <p className="confirmation-dialog-body">This action cannot be undone. Are you sure you want to delete this diet plan?</p>
+            <div className="confirmation-dialog-actions">
               <button onClick={() => setDeleteModalOpen(false)} className="btn-secondary min-h-0 px-4 py-2">Cancel</button>
               <button onClick={handleDelete} className="btn-danger min-h-0 px-4 py-2">Delete</button>
             </div>

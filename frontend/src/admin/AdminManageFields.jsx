@@ -4,6 +4,7 @@ import apiClient from "../utils/apiClient.js";
 import ToggleSwitch from "./components/ui/ToggleSwitch";
 import IconButton from "./components/ui/IconButton";
 import FieldModal from "./components/FieldModal";
+import { useToast } from "../components/shared/ToastProvider";
 
 const formatOptions = (options) => {
   if (!options || options.length === 0) return "—";
@@ -14,24 +15,18 @@ const formatOptions = (options) => {
 export default function AdminManageFields() {
   const [fields, setFields] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [notice, setNotice] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("create");
   const [editingField, setEditingField] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [fieldToDelete, setFieldToDelete] = useState(null);
+  const toast = useToast();
 
   useEffect(() => {
     loadFields();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const showNotice = (msg, type = "success") => {
-    setNotice({ msg, type });
-    window.clearTimeout(showNotice._timer);
-    showNotice._timer = window.setTimeout(() => setNotice(null), 3500);
-  };
 
   const loadFields = async () => {
     try {
@@ -39,7 +34,7 @@ export default function AdminManageFields() {
       setFields(res.data?.data || res.data || []);
     } catch (err) {
       console.error("Error loading fields:", err);
-      showNotice("Failed to load fields", "error");
+      toast.error("Failed to load fields");
     }
   };
 
@@ -66,17 +61,17 @@ export default function AdminManageFields() {
     try {
       if (modalMode === "edit") {
         await apiClient.put(`/fields/member/${editingField._id}`, data);
-        showNotice("Field updated successfully.");
+        toast.success("Field updated successfully.");
       } else {
         await apiClient.post("/fields/member", data);
-        showNotice("Field created successfully.");
+        toast.success("Field created successfully.");
       }
       setModalOpen(false);
       setEditingField(null);
       loadFields();
     } catch (err) {
       console.error("Save field error:", err);
-      showNotice(err.response?.data?.message || "Failed to save field.", "error");
+      toast.error(err.response?.data?.message || "Failed to save field.");
     } finally {
       setSaving(false);
     }
@@ -89,7 +84,7 @@ export default function AdminManageFields() {
       loadFields();
     } catch (err) {
       console.error("Toggle error:", err);
-      showNotice(`Error: ${err.response?.data?.message || "Failed to toggle field"}`, "error");
+      toast.error(`Error: ${err.response?.data?.message || "Failed to toggle field"}`);
     } finally {
       setLoading(false);
     }
@@ -106,10 +101,10 @@ export default function AdminManageFields() {
       await apiClient.delete(`/fields/member/${fieldToDelete}`);
       setDeleteModalOpen(false);
       setFieldToDelete(null);
-      showNotice("Field deleted.");
+      toast.success("Field deleted.");
       loadFields();
     } catch (err) {
-      showNotice(err.response?.data?.message || "Failed to delete field", "error");
+      toast.error(err.response?.data?.message || "Failed to delete field");
     }
   };
 
@@ -125,12 +120,6 @@ export default function AdminManageFields() {
           Add Field
         </button>
       </div>
-
-      {notice && (
-        <div className={`pkg-notice pkg-notice-${notice.type}`} role="status">
-          {notice.msg}
-        </div>
-      )}
 
       <div className="management-table-scroll">
       <div className="saas-table-container">
@@ -185,11 +174,14 @@ export default function AdminManageFields() {
       />
 
       {deleteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] p-4">
-          <div className="w-full max-w-sm rounded-[var(--radius-md)] bg-[var(--surface-soft)] p-6 shadow-2xl border border-[var(--border-strong)]">
-            <h3 className="mb-2 text-xl font-semibold">Delete Field?</h3>
-            <p className="mb-6 text-[var(--text-secondary)]">This action cannot be undone. Are you sure you want to permanently delete this field?</p>
-            <div className="flex justify-end gap-3">
+        <div className="modal-shell" onClick={() => setDeleteModalOpen(false)}>
+          <div className="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-field-title" onClick={(e) => e.stopPropagation()}>
+            <div className="confirmation-dialog-header">
+              <h3 id="delete-field-title" className="confirmation-dialog-title">Delete Field?</h3>
+              <button type="button" className="icon-close-btn confirmation-dialog-close" onClick={() => setDeleteModalOpen(false)} aria-label="Close delete field dialog" title="Close">×</button>
+            </div>
+            <p className="confirmation-dialog-body">This action cannot be undone. Are you sure you want to permanently delete this field?</p>
+            <div className="confirmation-dialog-actions">
               <button onClick={() => setDeleteModalOpen(false)} className="btn-secondary min-h-0 px-4 py-2">Cancel</button>
               <button onClick={deleteField} className="btn-danger min-h-0 px-4 py-2">Delete</button>
             </div>

@@ -2,15 +2,15 @@ import { useEffect, useState } from 'react';
 import { FiDownload } from 'react-icons/fi';
 import apiClient from '../utils/apiClient';
 import { downloadCSV } from './utils/attendanceHelpers';
+import { useToast } from '../components/shared/ToastProvider';
 
 export default function InactiveReportsPage() {
   const [members, setMembers] = useState([]);
   const [selectedDays, setSelectedDays] = useState(7);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState('');
   const [skip, setSkip] = useState(0);
   const [total, setTotal] = useState(0);
+  const toast = useToast();
 
   const LIMIT = 50;
 
@@ -26,13 +26,13 @@ export default function InactiveReportsPage() {
       if (data.members) {
         setMembers(data.members);
         setTotal(data.total);
-        showMsg(`Found ${data.count} inactive members`, 'success');
+        toast.success(`Found ${data.count} inactive members`);
       } else {
         setMembers([]);
-        showMsg('No members found', 'info');
+        toast.info('No members found');
       }
     } catch (err) {
-      showMsg('Failed to fetch members', 'error');
+      toast.error('Failed to fetch members');
       console.error(err);
     } finally {
       setLoading(false);
@@ -44,12 +44,6 @@ export default function InactiveReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDays, skip]);
 
-  const showMsg = (msg, type = 'error', duration = 3000) => {
-    setMessage(msg);
-    setMessageType(type);
-    if (duration) setTimeout(() => setMessage(''), duration);
-  };
-
   const exportAsCSV = async () => {
     try {
       const res = await apiClient.get(
@@ -58,9 +52,9 @@ export default function InactiveReportsPage() {
       );
 
       downloadCSV(res.data, `inactive-${selectedDays}days-${new Date().toISOString().split('T')[0]}.csv`);
-      showMsg('CSV Downloaded', 'success');
+      toast.success('CSV Downloaded');
     } catch (err) {
-      showMsg('Export failed', 'error');
+      toast.error('Export failed');
       console.error(err);
     }
   };
@@ -74,12 +68,6 @@ export default function InactiveReportsPage() {
         <h1>Inactivity Reports</h1>
         <p>Identify members who haven't visited recently.</p>
       </div>
-
-      {message && (
-        <div className={`pkg-notice pkg-notice-${messageType === 'success' ? 'success' : 'error'}`} role="status">
-          {message}
-        </div>
-      )}
 
       <div className="saas-filter-bar" style={{ marginBottom: '16px' }}>
         <label className="field-label" style={{ margin: 0 }}>Show inactive for</label>
