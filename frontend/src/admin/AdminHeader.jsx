@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FiMenu, FiBell } from "react-icons/fi";
 import apiClient from "../utils/apiClient.js";
+import PreferencesModal from "./components/PreferencesModal.jsx";
 
 const ROLE_LABELS = {
   superadmin: "Super Admin",
@@ -43,6 +44,10 @@ export default function AdminHeader({ admin, toggleSidebar }) {
   const notifLoadingRef = useRef(false);
   const notifRef = useRef(null);
 
+  const [avatarOpen, setAvatarOpen] = useState(false);
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  const avatarRef = useRef(null);
+
   const pageTitle = PAGE_TITLES[location.pathname] ?? "Dashboard";
 
   const fetchNotifications = useCallback(async () => {
@@ -75,6 +80,25 @@ export default function AdminHeader({ admin, toggleSidebar }) {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
+
+  // Close the avatar dropdown when clicking outside or pressing Escape.
+  useEffect(() => {
+    if (!avatarOpen) return undefined;
+    const onClick = (e) => {
+      if (avatarRef.current && !avatarRef.current.contains(e.target)) {
+        setAvatarOpen(false);
+      }
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setAvatarOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [avatarOpen]);
 
   const markRead = async (id) => {
     setNotifications((prev) =>
@@ -200,16 +224,47 @@ export default function AdminHeader({ admin, toggleSidebar }) {
             )}
           </div>
 
-          {/* User avatar chip */}
-          <div className="admin-avatar-chip" role="status" aria-label={`Logged in as ${displayName}`}>
-            <div className="admin-avatar" aria-hidden="true">{initials}</div>
-            <div className="admin-avatar-info">
-              <span className="admin-avatar-name">{displayName}</span>
-              <span className="admin-avatar-role">{roleLabel}</span>
-            </div>
+          {/* User avatar chip + dropdown (Preferences) */}
+          <div className="admin-avatar-wrap" ref={avatarRef}>
+            <button
+              type="button"
+              className="admin-avatar-chip admin-avatar-chip-button"
+              aria-label={`Account menu for ${displayName}`}
+              aria-haspopup="menu"
+              aria-expanded={avatarOpen}
+              onClick={() => setAvatarOpen((o) => !o)}
+            >
+              <div className="admin-avatar" aria-hidden="true">{initials}</div>
+              <div className="admin-avatar-info">
+                <span className="admin-avatar-name">{displayName}</span>
+                <span className="admin-avatar-role">{roleLabel}</span>
+              </div>
+            </button>
+
+            {avatarOpen && (
+              <div className="admin-avatar-menu" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="admin-avatar-menu-item"
+                  onClick={() => {
+                    setAvatarOpen(false);
+                    setPrefsOpen(true);
+                  }}
+                >
+                  Preferences
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      <PreferencesModal
+        open={prefsOpen}
+        onClose={() => setPrefsOpen(false)}
+        admin={admin}
+      />
     </header>
   );
 }

@@ -895,6 +895,191 @@
   --tooltip-bg: #ffffff;
 }
 
+/* ============================================================
+   UI DENSITY TOKENS
+   ============================================================ */
+/* Density: Tiny (0) — maximum information density, power users */
+:root[data-density="0"] {
+  --density-space-1: 2px;
+  --density-space-2: 4px;
+  --density-space-3: 6px;
+  --density-space-4: 8px;
+  --density-space-5: 10px;
+  --density-space-6: 12px;
+  --density-space-8: 16px;
+  --sidebar-width: 184px;
+  --sidebar-rail: 52px;
+  --header-height: 48px;
+  --panel-padding: 12px;
+  --section-gap: 12px;
+  --table-cell-padding: 6px 8px;
+  --form-grid-gap: 12px;
+  --modal-shell-padding: 12px;
+  --modal-inner-padding: 14px;
+  --empty-state-padding: 20px;
+  --empty-state-min-height: 160px;
+  --control-min-height: 36px;
+  --button-min-height: 36px;
+  --sidebar-link-height: 28px;
+  --sidebar-link-padding: 3px 6px;
+  --topbar-inner-padding: 0 12px;
+  --topbar-gap: 6px;
+  --nav-link-padding: 6px 10px;
+  --section-shell-padding-y: 20px;
+  --metric-card-gap: 12px;
+  --metric-card-min-height: 128px;
+  --status-pill-padding: 4px 8px;
+  --chip-padding: 4px 8px;
+}
+
+/* Density: Mini (1) — very dense, still comfortable */
+:root[data-density="1"] {
+  --density-space-1: 3px;
+  --density-space-2: 6px;
+  --density-space-3: 8px;
+  --density-space-4: 10px;
+  --density-space-5: 12px;
+  --density-space-6: 14px;
+  --density-space-8: 20px;
+  --sidebar-width: 192px;
+  --sidebar-rail: 54px;
+  --header-height: 50px;
+  --panel-padding: 14px;
+  --section-gap: 14px;
+  --table-cell-padding: 7px 9px;
+  --form-grid-gap: 14px;
+  --modal-shell-padding: 14px;
+  --modal-inner-padding: 16px;
+  --empty-state-padding: 22px;
+  --empty-state-min-height: 170px;
+  --control-min-height: 38px;
+  --button-min-height: 38px;
+  --sidebar-link-height: 30px;
+  --sidebar-link-padding: 4px 7px;
+  --topbar-inner-padding: 0 14px;
+  --topbar-gap: 7px;
+  --nav-link-padding: 7px 11px;
+  --section-shell-padding-y: 22px;
+  --metric-card-gap: 14px;
+  --metric-card-min-height: 136px;
+  --status-pill-padding: 5px 9px;
+  --chip-padding: 5px 9px;
+}
+
+/* Density: Compact (2) — compact everyday working density */
+:root[data-density="2"] {
+  --density-space-1: 3px;
+  --density-space-2: 6px;
+  --density-space-3: 9px;
+  --density-space-4: 12px;
+  --density-space-5: 16px;
+  --density-space-6: 18px;
+  --density-space-8: 24px;
+  --sidebar-width: 200px;
+  --sidebar-rail: 56px;
+  --header-height: 52px;
+  --panel-padding: 16px;
+  --section-gap: 16px;
+  --table-cell-padding: 8px 10px;
+  --form-grid-gap: 16px;
+  --modal-shell-padding: 16px;
+  --modal-inner-padding: 18px;
+  --empty-state-padding: 24px;
+  --empty-state-min-height: 180px;
+  --control-min-height: 40px;
+  --button-min-height: 40px;
+  --sidebar-link-height: 32px;
+  --sidebar-link-padding: 4px 8px;
+  --topbar-inner-padding: 0 16px;
+  --topbar-gap: 8px;
+  --nav-link-padding: 8px 12px;
+  --section-shell-padding-y: 24px;
+  --metric-card-gap: 16px;
+  --metric-card-min-height: 144px;
+  --status-pill-padding: 6px 10px;
+  --chip-padding: 6px 10px;
+}
+
+/* Density: Medium (3) — current GIRI GYM baseline */
+:root[data-density="3"] {
+  --density-space-1: 4px;
+  --density-space-2: 8px;
+  --density-space-3: 12px;
+  --density-space-4: 16px;
+  --density-space-5: 20px;
+  --density-space-6: 24px;
+  --density-space-8: 32px;
+  --sidebar-width: 224px;
+  --sidebar-rail: 60px;
+  --header-height: 56px;
+  --panel-padding: 24px;
+  --section-gap: 24px;
+  --table-cell-padding: 16px;
+  --form-grid-gap: 24px;
+  --modal-shell-padding: 24px;
+  --modal-inner-padding: 24px;
+  --empty-state-padding: 32px;
+  --empty-state-min-height: 220px;
+  --control-min-height: 48px;
+  --button-min-height: 46px;
+  --sidebar-link-height: 38px;
+  --sidebar-link-padding: 5px 10px;
+  --topbar-inner-padding: 0 20px;
+  --topbar-gap: 12px;
+  --nav-link-padding: 10px 14px;
+  --section-shell-padding-y: 32px;
+  --metric-card-gap: 20px;
+  --metric-card-min-height: 168px;
+  --status-pill-padding: 8px 12px;
+  --chip-padding: 8px 12px;
+}
+
+/* Density: Spacious (4) — increased breathing room */
+:root[data-density="4"] {
+  --density-space-1: 5px;
+  --density-space-2: 10px;
+  --density-space-3: 15px;
+  --density-space-4: 20px;
+  --density-space-5: 24px;
+  --density-space-6: 30px;
+  --density-space-8: 40px;
+  --sidebar-width: 256px;
+  --sidebar-rail: 64px;
+  --header-height: 60px;
+  --panel-padding: 28px;
+  --section-gap: 32px;
+  --table-cell-padding: 16px 20px;
+  --form-grid-gap: 28px;
+  --modal-shell-padding: 28px;
+  --modal-inner-padding: 28px;
+  --empty-state-padding: 40px;
+  --empty-state-min-height: 260px;
+  --control-min-height: 52px;
+  --button-min-height: 50px;
+  --sidebar-link-height: 44px;
+  --sidebar-link-padding: 6px 12px;
+  --topbar-inner-padding: 0 24px;
+  --topbar-gap: 16px;
+  --nav-link-padding: 12px 16px;
+  --section-shell-padding-y: 40px;
+  --metric-card-gap: 24px;
+  --metric-card-min-height: 192px;
+  --status-pill-padding: 10px 14px;
+  --chip-padding: 10px 14px;
+}
+
+/* Mobile clamp: density never reduces touch targets below 44px.
+   Applies to Tiny (0) and Mini (1) where interactive token values
+   may fall below the accessibility minimum. */
+@media (max-width: 767px) {
+  :root[data-density="0"],
+  :root[data-density="1"] {
+    --control-min-height: 44px;
+    --button-min-height: 44px;
+    --sidebar-link-height: 44px;
+  }
+}
+
 @layer base {
   * {
     box-sizing: border-box;
@@ -1008,17 +1193,17 @@
   }
 
   .section-shell {
-    padding: 32px 0;
+    padding: var(--section-shell-padding-y) 0;
   }
 
   .section-stack {
     display: grid;
-    gap: 24px;
+    gap: var(--section-gap);
   }
 
   .section-heading {
     display: grid;
-    gap: 12px;
+    gap: var(--density-space-3);
   }
 
   .eyebrow {
@@ -1041,7 +1226,7 @@
   .panel,
   .metric-card,
   .table-shell,
-  .modal-card {
+  .bento-card {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     background: var(--bg-secondary);
@@ -1050,8 +1235,8 @@
   .panel,
   .metric-card,
   .table-shell,
-  .modal-card {
-    padding: 24px;
+  .bento-card {
+    padding: var(--panel-padding);
   }
 
   .hero-panel {
@@ -1080,7 +1265,7 @@
   .hero-grid,
   .bento-grid {
     display: grid;
-    gap: 24px;
+    gap: var(--section-gap);
   }
 
   .hero-grid {
@@ -1097,7 +1282,7 @@
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     background: var(--bg-secondary);
-    padding: 24px;
+    padding: var(--panel-padding);
   }
 
   .bento-span-3 {
@@ -1142,7 +1327,7 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 14px;
+    padding: var(--nav-link-padding);
     border-radius: 999px;
     color: var(--text-secondary);
     transition: color 180ms ease, background-color 180ms ease;
@@ -1172,8 +1357,8 @@
     align-items: center;
     gap: 10px;
     width: 100%;
-    min-height: 38px;
-    padding: 5px 10px;
+    min-height: var(--sidebar-link-height);
+    padding: var(--sidebar-link-padding);
     border-radius: 10px;
     border: 1px solid transparent;
     color: var(--text-secondary);
@@ -1210,7 +1395,7 @@
 
   .field-group {
     display: grid;
-    gap: 8px;
+    gap: var(--density-space-2);
   }
 
   .field-label {
@@ -1223,7 +1408,7 @@
 
   .field-control {
     width: 100%;
-    min-height: 48px;
+    min-height: var(--control-min-height);
     padding: 12px 14px;
     background: var(--surface-soft);
     color: var(--text-primary);
@@ -1234,7 +1419,7 @@
   }
 
   textarea.field-control {
-    min-height: 108px;
+    min-height: calc(var(--control-min-height) * 2.25);
     resize: vertical;
   }
 
@@ -1258,7 +1443,7 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    min-height: 46px;
+    min-height: var(--button-min-height);
     padding: 12px 18px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-color);
@@ -1307,8 +1492,8 @@
 
   .metric-card {
     display: grid;
-    gap: 20px;
-    min-height: 168px;
+    gap: var(--metric-card-gap);
+    min-height: var(--metric-card-min-height);
   }
 
   .metric-value {
@@ -1321,7 +1506,7 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
+    padding: var(--status-pill-padding);
     border-radius: 999px;
     border: 1px solid var(--border-color);
     font-size: 0.8rem;
@@ -1432,8 +1617,8 @@
     display: grid;
     place-items: center;
     gap: 12px;
-    min-height: 220px;
-    padding: 32px;
+    min-height: var(--empty-state-min-height);
+    padding: var(--empty-state-padding);
     text-align: center;
     color: var(--text-secondary);
     border: 1px dashed var(--border-color);
@@ -1448,7 +1633,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px;
+    padding: var(--modal-shell-padding, 24px);
     background: var(--modal-backdrop);
     backdrop-filter: blur(8px);
   }
@@ -1459,6 +1644,7 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    background: var(--surface-soft);
     box-shadow: 0 30px 90px rgba(0, 0, 0, 0.18);
   }
 
@@ -1467,7 +1653,7 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: 20px;
-    padding: 24px;
+    padding: var(--modal-inner-padding, 24px);
     border-bottom: 1px solid var(--border-color);
     background: var(--bg-secondary);
   }
@@ -1475,7 +1661,7 @@
   .modal-content {
     overflow-y: auto;
     max-height: calc(85vh - 110px);
-    padding: 24px;
+    padding: var(--modal-inner-padding, 24px);
   }
 
   .modal-subheader {
@@ -1529,7 +1715,7 @@
   .form-grid-2,
   .form-grid-3 {
     display: grid;
-    gap: 24px;
+    gap: var(--form-grid-gap);
   }
 
   .form-grid-2 {
@@ -1548,8 +1734,8 @@
   .chip {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
+    gap: var(--density-space-3);
+    padding: var(--chip-padding);
     border-radius: 999px;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
@@ -3339,8 +3525,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 0 14px;
-    height: 56px;
+    padding: var(--topbar-inner-padding);
+    height: var(--header-height);
     border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
   }
@@ -3404,7 +3590,7 @@
   }
 
   .admin-nav-group {
-    padding: 0 7px;
+    padding: 0 var(--density-space-2);
   }
 
   .admin-nav-group-label {
@@ -3413,14 +3599,14 @@
     letter-spacing: 0.16em;
     text-transform: uppercase;
     color: var(--text-muted);
-    padding: 9px 8px 3px;
+    padding: 9px var(--density-space-2) 3px;
     margin: 0;
     line-height: 1;
   }
 
   .admin-nav-items {
     display: grid;
-    gap: 1px;
+    gap: var(--density-space-1);
   }
 
   .sidebar-icon {
@@ -3456,7 +3642,7 @@
   }
 
   .admin-sidebar-footer {
-    padding: 10px 14px;
+    padding: var(--density-space-2) var(--density-space-3);
     border-top: 1px solid rgba(255, 255, 255, 0.05);
     background: inherit;
     flex-shrink: 0;
@@ -3465,10 +3651,10 @@
   .sidebar-logout {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--density-space-3);
     width: 100%;
-    min-height: 40px;
-    padding: 8px 12px;
+    min-height: var(--button-min-height);
+    padding: var(--density-space-2) var(--density-space-3);
     border-radius: 10px;
     border: 1px solid transparent;
     color: var(--text-secondary);
@@ -3498,9 +3684,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 0 20px;
-    height: 56px;
+    gap: var(--topbar-gap);
+    padding: var(--topbar-inner-padding);
+    height: var(--header-height);
   }
 
   .admin-topbar-left {
@@ -3728,8 +3914,150 @@
     white-space: nowrap;
   }
 
+  /* Avatar dropdown (Preferences entry) — mirrors the notification
+     dropdown pattern but is anchored to the avatar chip. */
+  .admin-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .admin-avatar-chip-button {
+    cursor: pointer;
+    transition: border-color 180ms ease, background-color 180ms ease;
+  }
+
+  .admin-avatar-chip-button:hover {
+    border-color: var(--border-strong);
+    background: var(--ghost-fill);
+  }
+
+  .admin-avatar-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 180px;
+    padding: 6px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+    z-index: 60;
+  }
+
+  .admin-avatar-menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 9px 12px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 140ms ease;
+  }
+
+  .admin-avatar-menu-item:hover,
+  .admin-avatar-menu-item:focus-visible {
+    background: var(--ghost-fill);
+    outline: none;
+  }
+
+  /* Preferences modal — uses the standard modal system; only the card
+     width and the slider chrome are local. .modal-card padding remains
+     density-neutral per the approved plan. */
+  .prefs-modal-card {
+    width: min(100%, 420px);
+  }
+
+  .prefs-modal-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .prefs-modal-subtitle {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+  }
+
+  .prefs-slider-wrap {
+    display: grid;
+    gap: 14px;
+  }
+
+  .density-slider {
+    position: relative;
+    height: 20px;
+    display: flex;
+    align-items: center;
+  }
+
+  .prefs-density-slider {
+    width: 100%;
+    accent-color: var(--accent);
+    cursor: pointer;
+    position: relative;
+    z-index: 2;
+  }
+
+  .density-slider-markers {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    justify-content: space-between;
+    pointer-events: none;
+    z-index: 1;
+    padding: 0 calc(var(--thumb-width, 16px) / 2);
+  }
+
+  .density-marker {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border-strong);
+    transition: background 0.15s, transform 0.15s;
+    flex-shrink: 0;
+  }
+
+  .density-marker.is-active {
+    background: var(--accent);
+    transform: scale(1.35);
+  }
+
+  .prefs-slider-labels {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .prefs-slider-tick.is-active {
+    color: var(--accent);
+  }
+
+  .prefs-slider-hint {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+  }
+
   @media (max-width: 639px) {
-      .admin-topbar-inner { padding: 0 12px; height: 56px; }
+      .admin-topbar-inner { padding: var(--topbar-inner-padding); height: var(--header-height); }
       .admin-avatar-info { display: none; }
     }
 
@@ -3789,9 +4117,9 @@ body {
 }
 
 .app-layout {
-  --sidebar-width: 224px;
-  --sidebar-rail: 60px;
-  --header-height: 56px;
+  /* Density-controlled shell dimensions (--sidebar-width / --sidebar-rail /
+     --header-height are declared on :root[data-density="N"]). Local
+     re-declaration removed so the tokens cascade from :root. */
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   grid-template-rows: var(--header-height) minmax(0, 1fr);
@@ -3835,11 +4163,12 @@ body {
   overflow-y: auto;
 }
 
-/* Mobile < 768px: single column; sidebar becomes an overlay drawer. */
+/* Mobile < 768px: single column; sidebar becomes an overlay drawer.
+   The drawer width follows the density-controlled --sidebar-width (Compact
+   drawer 200px, Medium 224px, Spacious 256px). */
 @media (max-width: 767px) {
   .app-layout,
   .app-layout.sidebar-collapsed {
-    --sidebar-width: 224px;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: var(--header-height) minmax(0, 1fr);
   }
@@ -3939,13 +4268,13 @@ body {
 
 /* --- SaaS UI Components --- */
 .saas-container {
-  padding: 24px;
+  padding: var(--panel-padding);
   width: 100%;
   max-width: 100%;
 }
 
 .page-content {
-  padding: 24px;
+  padding: var(--panel-padding);
   width: 100%;
   max-width: 100%;
 }
@@ -3986,7 +4315,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-bottom: 24px;
+  margin-bottom: var(--section-gap);
 }
 
 .saas-header h1 {
@@ -4005,8 +4334,8 @@ body {
 .saas-filter-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 24px;
+  gap: var(--density-space-3);
+  margin-bottom: var(--section-gap);
   align-items: center;
 }
 
@@ -4015,7 +4344,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-bottom: 20px;
+  margin-bottom: var(--density-space-5);
 }
 
 .saas-page-header h1 {
@@ -4059,7 +4388,7 @@ body {
 /* Packages table refinements */
 .pk-table .saas-table th,
 .pk-table .saas-table td {
-  padding: 11px 14px;
+  padding: var(--table-cell-padding);
 }
 
 .pk-table .saas-table th {
@@ -4326,9 +4655,9 @@ body {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--density-space-3);
   flex-wrap: wrap;
-  margin-bottom: 14px;
+  margin-bottom: var(--density-space-3);
 }
 
 .dash-header-meta {
@@ -4385,10 +4714,10 @@ body {
 .dash-filter {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) auto;
-  gap: 10px;
+  gap: var(--density-space-3);
   align-items: end;
-  padding: 10px 12px;
-  margin-bottom: 14px;
+  padding: var(--density-space-3) var(--density-space-4);
+  margin-bottom: var(--density-space-3);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
@@ -4414,9 +4743,9 @@ body {
 /* Grids */
 .dash-grid {
   display: grid;
-  gap: 10px;
+  gap: var(--density-space-3);
   align-items: stretch;
-  margin-bottom: 10px;
+  margin-bottom: var(--density-space-3);
 }
 
 .dash-grid-kpis {
@@ -4439,7 +4768,7 @@ body {
   justify-content: center;
   gap: 4px;
   min-height: 68px;
-  padding: 10px 12px;
+  padding: var(--density-space-3) var(--density-space-4);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
@@ -4538,7 +4867,7 @@ body {
 
 .dash-transactions-table th,
 .dash-transactions-table td {
-  padding: 8px 10px;
+  padding: var(--table-cell-padding);
   white-space: nowrap;
 }
 
@@ -4757,7 +5086,7 @@ body {
 }
 
 .saas-table th {
-  padding: 12px 16px;
+  padding: var(--table-cell-padding);
   color: var(--text-muted);
   font-weight: 600;
   font-size: 12px;
@@ -4769,7 +5098,7 @@ body {
 }
 
 .saas-table td {
-  padding: 14px 16px;
+  padding: var(--table-cell-padding);
   color: var(--text-primary);
   border-bottom: 1px solid var(--row-even); /* subtle row divider */
   vertical-align: middle;
@@ -5283,7 +5612,7 @@ body {
 /* Dense table (page-scoped — base .saas-table is shared by other pages) */
 .members-table .saas-table th,
 .members-table .saas-table td {
-  padding: 8px 10px;
+  padding: var(--table-cell-padding);
   font-size: 13px;
 }
 
@@ -5783,7 +6112,7 @@ body {
 
 .device-table .saas-table th,
 .device-table .saas-table td {
-  padding: 8px 10px;
+  padding: var(--table-cell-padding);
 }
 
 .device-table .saas-table th {

@@ -1146,15 +1146,13 @@ export default function AdminMembers() {
         <div className="modal-shell" onClick={() => setShowDeletePopup(false)}>
           <div className="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-member-title" onClick={(e) => e.stopPropagation()}>
             <div className="confirmation-dialog-header">
-              <h3 id="delete-member-title" className="confirmation-dialog-title">Confirm Delete</h3>
-              <button type="button" onClick={() => setShowDeletePopup(false)} className="icon-close-btn confirmation-dialog-close" aria-label="Close delete member dialog" title="Close">
-                ×
-              </button>
+              <h3 id="delete-member-title" className="confirmation-dialog-title">Delete Member?</h3>
+              <button type="button" onClick={() => setShowDeletePopup(false)} className="icon-close-btn confirmation-dialog-close" aria-label="Close delete member dialog" title="Close">×</button>
             </div>
             <p className="confirmation-dialog-body">This action cannot be undone. Are you sure you want to delete this member?</p>
             <div className="confirmation-dialog-actions">
               <button onClick={() => setShowDeletePopup(false)} className="btn-secondary min-h-0 px-4 py-2">Cancel</button>
-              <button onClick={deleteMember} className="btn-danger min-h-0 px-4 py-2">Yes</button>
+              <button onClick={deleteMember} className="btn-danger min-h-0 px-4 py-2">Delete</button>
             </div>
           </div>
         </div>
