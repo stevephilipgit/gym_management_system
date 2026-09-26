@@ -11,6 +11,7 @@
 
 import Kiosk from "../models/Kiosk.js";
 import logger from "../core/logger.js";
+import { invalidateKioskCredentialCache } from "../middleware/kioskAuth.js";
 
 const toPublicKiosk = (k) => ({
   _id: k._id,
@@ -92,6 +93,10 @@ export const updateKiosk = async (req, res) => {
     if (enabled !== undefined) kiosk.enabled = !!enabled;
 
     await kiosk.save();
+    // Enabling/disabling a kiosk changes whether cached principals are still
+    // valid — drop the whole kiosk credential cache group so the very next
+    // punch re-reads `enabled` from MongoDB.
+    await invalidateKioskCredentialCache(kiosk.kioskId);
     logger.info(`Kiosk updated: ${kiosk.kioskId}`, { adminId: req.admin?.id });
     return res.json({ success: true, kiosk: toPublicKiosk(kiosk.toObject()) });
   } catch (err) {
@@ -109,6 +114,9 @@ export const deleteKiosk = async (req, res) => {
     if (!kiosk) {
       return res.status(404).json({ success: false, message: "Kiosk not found" });
     }
+    // The physical device is gone — any cached principal for it is now a
+    // dangling credential and must not survive the delete.
+    await invalidateKioskCredentialCache(kiosk.kioskId);
     logger.info(`Kiosk deleted (revoked): ${kiosk.kioskId}`, { adminId: req.admin?.id });
     return res.json({ success: true, message: "Kiosk revoked and deleted" });
   } catch (err) {

@@ -20,6 +20,7 @@ import {
   reassignKioskScope,
   DeviceError,
 } from "../services/deviceRegistrationService.js";
+import { invalidateKioskCredentialCache } from "../middleware/kioskAuth.js";
 
 const Kiosk = mongoose.model("Kiosk");
 
@@ -29,6 +30,12 @@ const asAdmin = (req) => ({
   isSuperAdmin: req.admin?.role === "superadmin",
 });
 
+// Any credential-affecting lifecycle change must evict the kiosk's cached
+// principals, otherwise a revoked / rotated / locked device could keep punching
+// from cache for the remainder of the 30-minute TTL. Fail-safe (never throws),
+// so a Redis outage here cannot break the admin operation itself.
+const evictCachedCredentials = (kioskId) => invalidateKioskCredentialCache(kioskId);
+
 // POST /api/admin/devices/:registrationId/deactivate
 // Trainer may deactivate only their own; Super Admin any.
 export const deactivate = async (req, res) => {
@@ -37,6 +44,7 @@ export const deactivate = async (req, res) => {
       registrationId: String(req.params.registrationId),
       ...asAdmin(req),
     });
+    await evictCachedCredentials(result?.kioskId);
     return res.json({ success: true, registration: result });
   } catch (err) {
     if (err instanceof DeviceError) {
@@ -54,6 +62,7 @@ export const lock = async (req, res) => {
       registrationId: String(req.params.registrationId),
       ...asAdmin(req),
     });
+    await evictCachedCredentials(result?.kioskId);
     return res.json({ success: true, locked: true, registration: result });
   } catch (err) {
     if (err instanceof DeviceError) {
@@ -71,6 +80,7 @@ export const unlock = async (req, res) => {
       registrationId: String(req.params.registrationId),
       ...asAdmin(req),
     });
+    await evictCachedCredentials(result?.kioskId);
     return res.json({ success: true, locked: false, registration: result });
   } catch (err) {
     if (err instanceof DeviceError) {
@@ -89,6 +99,7 @@ export const reactivate = async (req, res) => {
       registrationId: String(req.params.registrationId),
       trainerId: req.admin?.id,
     });
+    await evictCachedCredentials(result?.registration?.kioskId);
     return res.json({ success: true, ...result });
   } catch (err) {
     if (err instanceof DeviceError) {
@@ -104,6 +115,7 @@ export const revoke = async (req, res) => {
       registrationId: String(req.params.registrationId),
       ...asAdmin(req),
     });
+    await evictCachedCredentials(result?.kioskId);
     return res.json({ success: true, registration: result });
   } catch (err) {
     if (err instanceof DeviceError) {
@@ -120,6 +132,9 @@ export const rotate = async (req, res) => {
       registrationId: String(req.params.registrationId),
       ...asAdmin(req),
     });
+    // Rotation replaces the fingerprint, so the OLD cached credential (keyed by
+    // the old fingerprint) must go — otherwise the retired key stays valid.
+    await evictCachedCredentials(result?.registration?.kioskId);
     return res.json({ success: true, ...result });
   } catch (err) {
     if (err instanceof DeviceError) {
@@ -138,6 +153,9 @@ export const reassignScope = async (req, res) => {
       newScope: req.body?.scope,
       ...asAdmin(req),
     });
+    // Scope reassignment revokes every registration under the kiosk and stamps
+    // scopeChangedAt; cached principals carry the OLD scope and must be dropped.
+    await evictCachedCredentials(result?.kioskId ?? String(req.params.kioskId));
     return res.json({ success: true, ...result });
   } catch (err) {
     if (err instanceof DeviceError) {
