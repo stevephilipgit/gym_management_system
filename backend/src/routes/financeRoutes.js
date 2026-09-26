@@ -43,4 +43,10 @@ router.get("/analytics/source-contribution", sensitiveLimiter, adminAuth, requir
 // GET /api/finance/analytics/plan-distribution
 router.get("/analytics/plan-distribution", sensitiveLimiter, adminAuth, requireRole("superadmin"), paymentController.getPlanDistribution);
 
+// POST /api/finance/reconcile
+// Recomputes DailySummary from FinanceLog over a bounded lookback window and
+// returns the drift it corrected. Superadmin-only: it rewrites the pre-
+// aggregated totals the dashboard reads, so it is a privileged operation.
+router.post("/reconcile", sensitiveLimiter, adminAuth, requireRole("superadmin"), financeLimiter, paymentController.reconcileFinance);
+
 export default router;

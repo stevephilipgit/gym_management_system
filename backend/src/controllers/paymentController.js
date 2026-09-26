@@ -8,6 +8,8 @@ import FinanceLog from "../models/FinanceLog.js";
 import DailySummary from "../models/DailySummary.js";
 import Member from "../models/Member.js";
 import { updateTodaySummary } from "../services/summaryService.js";
+import { executeFinanceReconciliation } from "../jobs/financeReconcileJob.js";
+import { CRON_CONFIG } from "../config/cronConfig.js";
 
 const toPlainObject = (value) => {
   if (!value) return {};
@@ -465,6 +467,38 @@ export const paymentController = {
     return res.json({
       success: true,
       message: "Payment deleted successfully",
+    });
+  }),
+
+  // Recompute DailySummary from FinanceLog (self-healing reconciliation).
+  // Shares one implementation with the nightly cron, so a manual run and a
+  // scheduled run produce identical results and an identical audit report.
+  reconcileFinance: asyncHandler(async (req, res) => {
+    const { lookbackDays, driftAlertThreshold } = CRON_CONFIG.jobs.financialReconciliation;
+
+    // A caller may narrow the window but never widen it past the configured
+    // one — this walks FinanceLog per day, so it must stay bounded.
+    const requested = Number.parseInt(
+      req.body?.lookbackDays ?? req.query?.lookbackDays,
+      10
+    );
+    const days =
+      Number.isInteger(requested) && requested > 0
+        ? Math.min(requested, lookbackDays)
+        : lookbackDays;
+
+    const report = await executeFinanceReconciliation({
+      lookbackDays: days,
+      driftAlertThreshold,
+    });
+
+    return res.json({
+      success: report.errors.length === 0,
+      message:
+        report.errors.length === 0
+          ? `Reconciliation completed: ${report.processedDays} day(s) processed, ${report.driftDetectedCount} corrected`
+          : `Reconciliation completed with ${report.errors.length} day(s) failed`,
+      data: report,
     });
   }),
 };
