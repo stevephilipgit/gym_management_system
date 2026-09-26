@@ -1,6 +1,6 @@
 // controllers/analyticsController.js - Analytics and reporting
 import analyticsService from "../services/analyticsService.js";
-import PDFGenerator from "../utils/pdfGenerator.js";
+import { generatePDFInWorker } from "../utils/pdfWorkerPool.js";
 import { asyncHandler, ValidationError } from "../core/errorHandler.js";
 
 export const analyticsController = {
@@ -39,7 +39,9 @@ export const analyticsController = {
     // header threw 'Cannot read properties of undefined' and every export
     // request returned HTTP 500.
     const metrics = await analyticsService.getAnalyticsMetrics(start, end);
-    const pdfBuffer = await PDFGenerator.generateAnalyticsPDF(metrics, dateRange);
+
+    // CPU-bound pdfkit layout and font subsetting now runs on a worker thread.
+    const pdfBuffer = await generatePDFInWorker(metrics, dateRange);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
