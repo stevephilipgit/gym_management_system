@@ -24,6 +24,12 @@ import bcrypt from "bcryptjs";
 import Kiosk from "../models/Kiosk.js";
 import DeviceRegistration from "../models/DeviceRegistration.js";
 import logger from "../core/logger.js";
+import {
+  getCache,
+  setCache,
+  trackCacheKey,
+  deleteCacheGroup,
+} from "../config/redis.js";
 
 // Strict credential shapes (fixed alphabet + bounded length) enforced before any
 // I/O, so a kioskId/credential can never be shaped into a query operator:
@@ -33,6 +39,46 @@ const KIOSK_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const KIOSK_KEY_PATTERN = /^[A-Za-z0-9_.-]{1,128}$/;
 
 const INVALID_CREDENTIALS_MESSAGE = "Kiosk authentication failed.";
+
+// ── Redis credential cache ──────────────────────────────────────────────────
+// A validated kiosk principal is cached for 30 minutes so a busy counter does
+// not pay for a DeviceRegistration lookup + a bcrypt compare on every single
+// punch (bcrypt at cost 10 dominates the kiosk latency budget).
+//
+// Safety model:
+//   - The cache key is `kiosk:cred:<kioskId>:<sha256(apiKey)>`, so a cache hit
+//     is only ever possible for a credential that previously passed the FULL
+//     check below. The secret itself is never stored in Redis.
+//   - Every cache entry is tracked in the group index `kiosk:cred:idx:<kioskId>`
+//     so ANY admin mutation (enable/disable, lock, deactivate, revoke, rotate,
+//     scope reassign, kiosk delete) can drop the whole group instantly.
+//   - Any cache read failure is treated as a MISS and falls through to MongoDB.
+const CRED_CACHE_TTL_SECONDS = 1800; // 30 minutes
+const CRED_CACHE_PREFIX = "kiosk:cred:";
+const CRED_CACHE_INDEX_PREFIX = "kiosk:cred:idx:";
+
+const buildCredCacheKey = (kioskId, fingerprint) =>
+  `${CRED_CACHE_PREFIX}${kioskId}:${fingerprint}`;
+
+const buildCredCacheIndex = (kioskId) =>
+  `${CRED_CACHE_INDEX_PREFIX}${kioskId}`;
+
+/**
+ * Drop every cached credential for a kiosk.
+ *
+ * MUST be called by every admin path that changes kiosk/registration state
+ * (enable, disable, lock, unlock, deactivate, revoke, rotate, scope
+ * reassignment, kiosk delete). Without it, a cached principal could keep
+ * punching for up to 30 minutes after the device was revoked.
+ *
+ * Fail-safe: never throws, so it is safe to `await` inline in a controller.
+ *
+ * @param {string} kioskId
+ */
+export async function invalidateKioskCredentialCache(kioskId) {
+  if (!kioskId || typeof kioskId !== "string") return 0;
+  return deleteCacheGroup(buildCredCacheIndex(kioskId));
+}
 
 // Throttle lastSeenAt writes to at most once per 5 minutes per registration.
 const lastSeenAtCache = new Map();
@@ -73,7 +119,45 @@ export default async function kioskAuth(req, res, next) {
     // 1. Compute the indexed prefilter fingerprint.
     const fingerprint = crypto.createHash("sha256").update(apiKey).digest("hex");
 
-    // 2. Exactly-one lookup by (kioskId, keyFingerprint) — unique index.
+    // 2. FAST PATH — a previously validated principal for this exact
+    //    (kioskId, key fingerprint) pair. Skips the DeviceRegistration lookup
+    //    AND the bcrypt compare. Any error is a miss (getCache never throws).
+    const credCacheKey = buildCredCacheKey(kioskId, fingerprint);
+    const cached = await getCache(credCacheKey);
+    if (cached && cached.principal) {
+      // Defence in depth: the cached snapshot still has to agree with itself.
+      if (cached.locked) {
+        logInvalidCredentials("device_locked", kioskId, sourceIp);
+        return res.status(403).json({
+          success: false,
+          message: "Device is locked. Unlock it to continue attendance.",
+        });
+      }
+      if (!cached.enabled) {
+        logInvalidCredentials("kiosk_disabled", kioskId, sourceIp);
+        return res.status(403).json({
+          success: false,
+          message: "Kiosk is disabled. Contact gym staff.",
+        });
+      }
+      // Defense-in-depth: a registration older than the last scope reassignment
+      // is invalid even if it survived the invalidation transaction.
+      if (
+        cached.scopeChangedAt &&
+        new Date(cached.activatedAt) < new Date(cached.scopeChangedAt)
+      ) {
+        logInvalidCredentials("stale_registration", kioskId, sourceIp);
+        return res.status(401).json({
+          success: false,
+          message: INVALID_CREDENTIALS_MESSAGE,
+        });
+      }
+
+      req.kiosk = cached.principal;
+      return next();
+    }
+
+    // 3. Exactly-one lookup by (kioskId, keyFingerprint) — unique index.
     const reg = await DeviceRegistration.findOne({ kioskId, keyFingerprint: fingerprint }).lean();
     if (!reg) {
       logInvalidCredentials("unknown_credential", kioskId, sourceIp);
@@ -83,7 +167,7 @@ export default async function kioskAuth(req, res, next) {
       });
     }
 
-    // 3. Lifecycle: active + not revoked + not locked.
+    // 4. Lifecycle: active + not revoked + not locked.
     if (!reg.active || reg.revokedAt) {
       logInvalidCredentials("inactive_registration", kioskId, sourceIp);
       return res.status(401).json({
@@ -99,7 +183,7 @@ export default async function kioskAuth(req, res, next) {
       });
     }
 
-    // 4. Exactly ONE bcrypt comparison confirms the key.
+    // 5. Exactly ONE bcrypt comparison confirms the key.
     const valid = await bcrypt.compare(apiKey, reg.apiKeyHash);
     if (!valid) {
       logInvalidCredentials("bad_key", kioskId, sourceIp);
@@ -109,7 +193,7 @@ export default async function kioskAuth(req, res, next) {
       });
     }
 
-    // 5. Physical device must exist and be enabled (fail-closed).
+    // 6. Physical device must exist and be enabled (fail-closed).
     const kiosk = await Kiosk.findOne({ kioskId }).lean();
     if (!kiosk) {
       logInvalidCredentials("unknown_kiosk", kioskId, sourceIp);
@@ -126,7 +210,7 @@ export default async function kioskAuth(req, res, next) {
       });
     }
 
-    // 6. Defense-in-depth: a registration older than the last scope reassignment
+    // 7. Defense-in-depth: a registration older than the last scope reassignment
     //    is invalid even if it survived the invalidation transaction.
     if (kiosk.scopeChangedAt && new Date(reg.activatedAt) < new Date(kiosk.scopeChangedAt)) {
       logInvalidCredentials("stale_registration", kioskId, sourceIp);
@@ -144,6 +228,30 @@ export default async function kioskAuth(req, res, next) {
       registrationId: reg._id,
       principalType: "kiosk",
     };
+
+    // 8. Cache the validated principal for CRED_CACHE_TTL_SECONDS so the next
+    //    punch on this device skips the bcrypt compare. Only reached after the
+    //    FULL validation above, and tracked under the kiosk group index so any
+    //    later admin mutation (enable/lock/revoke/rotate/scope) drops it.
+    //    The raw key and the bcrypt hash are NEVER written to Redis.
+    await setCache(
+      credCacheKey,
+      {
+        principal: req.kiosk,
+        enabled: true,
+        locked: false,
+        activatedAt: reg.activatedAt ? new Date(reg.activatedAt).toISOString() : null,
+        scopeChangedAt: kiosk.scopeChangedAt
+          ? new Date(kiosk.scopeChangedAt).toISOString()
+          : null,
+      },
+      CRED_CACHE_TTL_SECONDS
+    );
+    await trackCacheKey(
+      buildCredCacheIndex(kioskId),
+      credCacheKey,
+      CRED_CACHE_TTL_SECONDS
+    );
 
     // Rate-limited lastSeenAt update.
     const now = Date.now();

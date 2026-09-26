@@ -25,6 +25,7 @@ import { evaluateMemberPunch } from "./attendanceEligibilityService.js";
 import systemSettingsService from "./systemSettingsService.js";
 import { validateSearchInput, normalizeDate, buildPunchResponse } from "../utils/attendanceInput.js";
 import config from "../config/index.js";
+import { acquireLock, releaseLock } from "../config/redis.js";
 import { GENDERS_FOR_SCOPE } from "./deviceRegistrationService.js";
 
 const Attendance = mongoose.model("Attendance");
@@ -97,6 +98,13 @@ function verifySelectionToken(token, kioskId) {
     return null;
   }
 }
+
+// ── Per-member distributed lock ──────────────────────────────────────────────
+// Serializes the read-then-write punch sequence per member. 3s is comfortably
+// above a normal punch (a few Mongo round-trips) and short enough that a hard
+// crash cannot block a member for long. The lock is always released in a
+// `finally`; the TTL is only a safety net.
+const PUNCH_LOCK_TTL_MS = 3000;
 
 // ── Safe candidate DTO ──────────────────────────────────────────────────────
 // Whitelisted fields only — never the full Member document. No Aadhaar,
@@ -233,14 +241,56 @@ async function resolveForInput(input, kioskId, scope) {
 
 /**
  * Execute the atomic punch for an exact, freshly-loaded member.
- * Runs eligibility against CURRENT member state and atomic punchIn/punchOut.
+ *
+ * SERIALIZED PER MEMBER: the whole read-then-write sequence (eligibility
+ * evaluation → duplicate-window check → today's attendance lookup →
+ * punchIn/punchOut) runs under a short-lived distributed lock keyed on
+ * `lock:punch:<memberId>`. Without it, two simultaneous requests (e.g. a
+ * double-tap on the kiosk, or the same member punching at two counters) can
+ * both read "no record today" and race to write.
+ *
+ * The lock is ACQUIRED AFTER member identity is resolved, so invalid/ambiguous
+ * input never contends. The TTL is a crash safety net only — the lock is
+ * released in a `finally` on every exit path.
+ *
+ * If the lock cannot be acquired we return a clean 429 rather than queueing:
+ * a second physical punch for the same member within milliseconds is always a
+ * mis-tap or a duplicate, never a legitimate concurrent request.
  *
  * @param {object} member  current Member doc
  * @param {Date}   [now]   clock override for deterministic tests
  * @returns {Promise<object>} buildPunchResponse payload
  * @throws {KioskError} on ineligible / duplicate / already-completed states
+ *                       or when a punch for this member is already in flight
  */
 async function executePunchForMember(member, now = new Date()) {
+  const lockKey = `lock:punch:${member._id}`;
+  const lockToken = crypto.randomUUID();
+
+  const acquired = await acquireLock(lockKey, lockToken, PUNCH_LOCK_TTL_MS);
+  if (!acquired) {
+    logger.warn("Kiosk punch rejected: a punch is already in progress", {
+      memberId: String(member._id),
+    });
+    throw new KioskError(
+      429,
+      "A punch is currently being processed for this member. Please wait.",
+      { status: "rate_limited", error: "punch_in_progress" }
+    );
+  }
+
+  try {
+    return await executePunchUnderLock(member, now);
+  } finally {
+    await releaseLock(lockKey, lockToken);
+  }
+}
+
+/**
+ * The unlocked body of the punch: eligibility evaluation + atomic mutation.
+ * Only ever called from `executePunchForMember`, which owns the lock.
+ */
+async function executePunchUnderLock(member, now) {
   const settings = await systemSettingsService.getSettings();
   const outcome = await evaluateMemberPunch(member._id, settings, now);
 
