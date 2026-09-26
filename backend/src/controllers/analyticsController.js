@@ -33,10 +33,13 @@ export const analyticsController = {
     const start = startDate || new Date().toISOString().split("T")[0];
     const end = endDate || new Date().toISOString().split("T")[0];
 
-    const metrics = await analyticsService.getAnalyticsMetrics(start, end);
+    const dateRange = { startDate: start, endDate: end };
 
-    // Generate PDF
-    const pdfBuffer = await PDFGenerator.generateAnalyticsPDF(metrics);
+    // dateRange was never passed to the generator, so rendering the report
+    // header threw 'Cannot read properties of undefined' and every export
+    // request returned HTTP 500.
+    const metrics = await analyticsService.getAnalyticsMetrics(start, end);
+    const pdfBuffer = await PDFGenerator.generateAnalyticsPDF(metrics, dateRange);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
@@ -44,6 +47,7 @@ export const analyticsController = {
       `attachment; filename="analytics-${start}-to-${end}.pdf"`
     );
     res.send(pdfBuffer);
+    return;
   }),
 
   // Get member statistics
