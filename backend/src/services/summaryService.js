@@ -163,93 +163,107 @@ export async function markPreviousDayComplete() {
 }
 
 /**
- * Recalculates today's summary from scratch
- * Use if summary gets corrupted or out of sync
- * 
- * Process:
- * 1. Fetch all FinanceLog transactions for today
- * 2. Aggregate manually (sum amounts, group by plan/type)
- * 3. Upsert new summary
- * 4. Replace old summary
- * 
- * Note: This is SLOWER than atomic updates (full table scan)
- * Only use for recovery, not in normal operation
+ * Business-day boundary helpers.
+ *
+ * Day boundaries are computed in the PROCESS timezone, which server.js pins to
+ * `config.cron.timezone` (Asia/Kolkata) as its very first statement. Anything
+ * that imports this service without booting server.js — notably the test suite
+ * — must set `process.env.TZ` itself, or windows will silently be computed in
+ * the host timezone.
  */
-export async function rebuildTodaySummary() {
-  try {
-    logger.info("🔨 Rebuilding today's summary from FinanceLog...");
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+/** Midnight (business timezone) of the day containing targetDate. */
+export function startOfDay(targetDate = new Date()) {
+  const start = new Date(targetDate);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
 
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+/** Half-open [start, nextDay) window for the business day containing targetDate. */
+export function dayWindow(targetDate = new Date()) {
+  const start = startOfDay(targetDate);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+}
 
-    // ========== STEP 1: Fetch today's transactions ==========
-    const transactions = await FinanceLog.find({
-      date: { $gte: today, $lt: tomorrow },
-    });
+/**
+ * YYYY-MM-DD of the business day, formatted from LOCAL parts.
+ *
+ * Deliberately not `toISOString().slice(0, 10)`: an IST midnight is 18:30 UTC
+ * the previous day, so the ISO form would label every day one day early.
+ */
+export function businessDateKey(targetDate = new Date()) {
+  const { start } = dayWindow(targetDate);
+  const y = start.getFullYear();
+  const m = String(start.getMonth() + 1).padStart(2, '0');
+  const d = String(start.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 
-    logger.info(`   Found ${transactions.length} transactions for today`);
+/**
+ * Recompute ONE business day's DailySummary from the source records.
+ *
+ * This is the single rebuild primitive — `rebuildTodaySummary`,
+ * `rebuildLastSevenDays` and the nightly reconciliation all delegate here, so
+ * a fix to the aggregation only ever has to be made once.
+ *
+ * Rebuilds every derived field, including `membersByTrainingType` and
+ * `lastUpdatedAt` (both of which the previous 7-day rebuild silently omitted).
+ *
+ * @param {Date|string|number} targetDate - any instant inside the target day.
+ * @returns {Promise<Object>} the upserted DailySummary document.
+ */
+export async function rebuildSummaryForDate(targetDate = new Date()) {
+  const { start, end } = dayWindow(targetDate);
+  const dateKey = businessDateKey(start);
 
-    // ========== STEP 2: Initialize aggregation variables ==========
-    let totalRevenue = 0;
-    let newRevenue = 0;
-    let renewalRevenue = 0;
-    const incomeByPlan = new Map();
-    const incomeByTrainingType = new Map();
+  const transactions = await FinanceLog.find({ date: { $gte: start, $lt: end } });
 
-    // ========== STEP 3: Loop through transactions to aggregate ==========
-    for (const tx of transactions) {
-      const amount = Number(tx.amount) || 0;
+  let totalRevenue = 0;
+  let newRevenue = 0;
+  let renewalRevenue = 0;
+  const incomeByPlan = new Map();
+  const incomeByTrainingType = new Map();
 
-      // Total
-      totalRevenue += amount;
+  for (const tx of transactions) {
+    const amount = Number(tx.amount) || 0;
+    totalRevenue += amount;
 
-      // Revenue by type (new vs renewal)
-      if (tx.type === "new") {
-        newRevenue += amount;
-      } else if (tx.type === "renew") {
-        renewalRevenue += amount;
-      }
+    if (tx.type === 'new') newRevenue += amount;
+    else if (tx.type === 'renew') renewalRevenue += amount;
 
-      // Revenue by plan
-      const plan = tx.plan || "Unknown";
-      incomeByPlan.set(plan, (incomeByPlan.get(plan) || 0) + amount);
+    const plan = tx.plan || 'Unknown';
+    incomeByPlan.set(plan, (incomeByPlan.get(plan) || 0) + amount);
 
-      // Revenue by training type
-      const trainingType = tx.trainingType || "Unknown";
-      incomeByTrainingType.set(
-        trainingType,
-        (incomeByTrainingType.get(trainingType) || 0) + amount
-      );
-    }
+    const trainingType = tx.trainingType || 'Unknown';
+    incomeByTrainingType.set(
+      trainingType,
+      (incomeByTrainingType.get(trainingType) || 0) + amount
+    );
+  }
 
-    // ========== STEP 4: Get member count by training type for today ==========
-    const memberCountAgg = await Member.aggregate([
-      {
-        $match: {
-          paymentStatus: "paid",
-          createdAt: { $gte: today, $lt: tomorrow },
-        },
-      },
-      {
-        $group: {
-          _id: "$trainingType",
-          count: { $sum: 1 },
-        },
-      },
-    ]);
+  // Member counts are derived from Member.createdAt (registration time), NOT
+  // from FinanceLog — a renewal must not inflate the "members joined" count.
+  const memberCountAgg = await Member.aggregate([
+    { $match: { paymentStatus: 'paid', createdAt: { $gte: start, $lt: end } } },
+    { $group: { _id: '$trainingType', count: { $sum: 1 } } },
+  ]);
 
-    const membersByTrainingType = new Map();
-    memberCountAgg.forEach((m) => {
-      membersByTrainingType.set(m._id || "Unknown", m.count);
-    });
+  const membersByTrainingType = new Map();
+  for (const entry of memberCountAgg) {
+    membersByTrainingType.set(entry._id || 'Unknown', entry.count);
+  }
 
-    // ========== STEP 5: Upsert summary ==========
-    const summary = await DailySummary.findOneAndUpdate(
-      { date: today },
-      {
+  logger.info(
+    `Rebuilding ${dateKey}: ${transactions.length} transactions, ` +
+    `revenue ${totalRevenue}, ${memberCountAgg.length} training types`
+  );
+
+  return DailySummary.findOneAndUpdate(
+    { date: start },
+    {
+      $set: {
         totalRevenue,
         newJoiningRevenue: newRevenue,
         renewalRevenue,
@@ -259,94 +273,141 @@ export async function rebuildTodaySummary() {
         membersByTrainingType,
         lastUpdatedAt: new Date(),
       },
-      { upsert: true, new: true }
-    );
-
-    logger.info("✅ Summary rebuilt:");
-    logger.info(`   Total: ₹${totalRevenue}`);
-    logger.info(`   New: ₹${newRevenue} | Renewal: ₹${renewalRevenue}`);
-    logger.info(`   Transactions: ${transactions.length}`);
-
-    return summary;
-  } catch (err) {
-    logger.error("❌ Error rebuilding summary:", err.message);
-    throw err;
-  }
+    },
+    { upsert: true, new: true }
+  );
 }
 
 /**
- * Rebuilds last 7 days of summaries
- * Use if corrupted multiple days or need historical consistency
- * 
- * WARNING: Expensive operation, runs full scans for 7 days
- * Only execute during off-peak hours
+ * Recalculates a summary from scratch (defaults to today).
+ * Back-compatible wrapper — use rebuildSummaryForDate for a specific day.
  */
-export async function rebuildLastSevenDays() {
-  try {
-    logger.info("🔨 Rebuilding last 7 days of summaries...");
+export async function rebuildTodaySummary(targetDate = new Date()) {
+  return rebuildSummaryForDate(targetDate);
+}
 
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      date.setHours(0, 0, 0, 0);
+/**
+ * Rebuilds the last `days` business days (today inclusive).
+ *
+ * Each day is isolated: a failure on one date is recorded and the remaining
+ * days still run, so a single bad day can never leave the week half-rebuilt
+ * with no record of which days completed.
+ *
+ * @param {number} days - lookback window size, default 7.
+ * @returns {Promise<Array<{date:string, ok:boolean, totalRevenue?:number, error?:string}>>}
+ */
+export async function rebuildLastSevenDays(days = 7) {
+  const results = [];
 
-      const dateStr = date.toISOString().split('T')[0];
-      logger.info(`   Processing ${dateStr}...`);
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const target = new Date();
+    target.setDate(target.getDate() - i);
+    const dateKey = businessDateKey(target);
 
-      const tomorrow = new Date(date);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-
-      // Fetch transactions
-      const transactions = await FinanceLog.find({
-        date: { $gte: date, $lt: tomorrow },
+    try {
+      const summary = await rebuildSummaryForDate(target);
+      results.push({
+        date: dateKey,
+        ok: true,
+        totalRevenue: Number(summary?.totalRevenue || 0),
       });
+    } catch (err) {
+      logger.error(`Error rebuilding ${dateKey}:`, err.message);
+      results.push({ date: dateKey, ok: false, error: err.message });
+    }
+  }
 
-      // Aggregate
-      let totalRevenue = 0;
-      let newRevenue = 0;
-      let renewalRevenue = 0;
-      const incomeByPlan = new Map();
-      const incomeByTrainingType = new Map();
+  const ok = results.filter((r) => r.ok).length;
+  logger.info(`${days}-day rebuild complete: ${ok}/${days} days succeeded`);
+  return results;
+}
 
-      for (const tx of transactions) {
-        const amount = Number(tx.amount) || 0;
-        totalRevenue += amount;
+/**
+ * Nightly self-healing reconciliation.
+ *
+ * DailySummary is a denormalised cache maintained by $inc on the write path.
+ * Any write that skips `updateTodaySummary` (bulk import, a profile edit, a
+ * crash between the ledger write and the increment) leaves it permanently
+ * wrong — and the pre-existing rebuild helpers were never invoked by anything.
+ * This walks the lookback window, recomputes each day from FinanceLog, and
+ * reports exactly what it corrected.
+ *
+ * Errors are isolated per day. Shared by the nightly cron and the manual admin
+ * endpoint so both paths run one implementation.
+ *
+ * @param {object} options
+ * @param {number} options.lookbackDays - days to reconcile, including today.
+ * @param {number} options.driftAlertThreshold - absolute delta above which a
+ *   correction is reported as drift (guards against float noise).
+ * @returns {Promise<object>} audit report.
+ */
+export async function reconcileDailySummaries({
+  lookbackDays = 7,
+  driftAlertThreshold = 0.01,
+} = {}) {
+  const report = {
+    startedAt: new Date(),
+    lookbackDays,
+    processedDays: 0,
+    driftDetectedCount: 0,
+    createdCount: 0,
+    totalDrift: 0,
+    details: [],
+    errors: [],
+  };
 
-        if (tx.type === "new") newRevenue += amount;
-        if (tx.type === "renew") renewalRevenue += amount;
+  for (let i = lookbackDays - 1; i >= 0; i -= 1) {
+    const target = new Date();
+    target.setDate(target.getDate() - i);
+    const dateKey = businessDateKey(target);
 
-        const plan = tx.plan || "Unknown";
-        incomeByPlan.set(plan, (incomeByPlan.get(plan) || 0) + amount);
+    try {
+      const { start } = dayWindow(target);
+      const before = await DailySummary.findOne({ date: start }).lean();
 
-        const trainingType = tx.trainingType || "Unknown";
-        incomeByTrainingType.set(
-          trainingType,
-          (incomeByTrainingType.get(trainingType) || 0) + amount
+      const previousRevenue = Number(before?.totalRevenue || 0);
+      const previousTransactions = Number(before?.totalTransactions || 0);
+
+      const summary = await rebuildSummaryForDate(target);
+
+      const newRevenue = Number(summary?.totalRevenue || 0);
+      const newTransactions = Number(summary?.totalTransactions || 0);
+      const delta = Math.abs(newRevenue - previousRevenue);
+      const hasDrift = delta > driftAlertThreshold;
+
+      if (hasDrift) {
+        report.driftDetectedCount += 1;
+        report.totalDrift += delta;
+        logger.warn(
+          `Drift reconciled for ${dateKey}: stored ${previousRevenue} -> actual ` +
+          `${newRevenue} (delta ${delta}${before ? '' : ', summary was missing'})`
         );
       }
+      if (!before) report.createdCount += 1;
 
-      // Upsert
-      await DailySummary.findOneAndUpdate(
-        { date },
-        {
-          totalRevenue,
-          newJoiningRevenue: newRevenue,
-          renewalRevenue,
-          totalTransactions: transactions.length,
-          incomeByPlan,
-          incomeByTrainingType,
-        },
-        { upsert: true }
-      );
-
-      logger.info(`      ✓ ${dateStr}: ₹${totalRevenue} from ${transactions.length} transactions`);
+      report.details.push({
+        date: dateKey,
+        hadSummary: Boolean(before),
+        previousRevenue,
+        newRevenue,
+        delta,
+        previousTransactions,
+        newTransactions,
+        hasDrift,
+      });
+      report.processedDays += 1;
+    } catch (err) {
+      logger.error(`Reconciliation failed for ${dateKey}:`, err.message);
+      report.errors.push({ date: dateKey, error: err.message });
     }
-
-    logger.info("✅ 7-day rebuild complete");
-  } catch (err) {
-    logger.error("❌ Error in 7-day rebuild:", err.message);
-    throw err;
   }
+
+  report.completedAt = new Date();
+  logger.info(
+    `Financial reconciliation complete: ${report.processedDays} days processed, ` +
+    `${report.driftDetectedCount} drifted, ${report.errors.length} failed`
+  );
+  return report;
 }
 
 /**
