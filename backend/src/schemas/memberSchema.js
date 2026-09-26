@@ -313,7 +313,13 @@ export const memberRenewSchema = Joi.object({
   dietIncludedInLastBilling: Joi.alternatives()
     .try(Joi.boolean(), Joi.string())
     .optional(),
-}).or("plan", "newPlan");
+
+  // A renewal must carry a positive amount. `amount` and `price` are each
+  // optional on their own, so without this constraint a request could extend a
+  // member's validity while recording a ₹0 payment — silent financial drift.
+  // Both are already `.positive()`, so any supplied value must be > 0.
+}).or("plan", "newPlan")
+  .or("amount", "price");
 
 export const validateMemberRegister = (data) => memberRegisterSchema.validate(data, { abortEarly: false });
 export const validateMemberUpdate = (data) => memberUpdateSchema.validate(data, { abortEarly: false });
