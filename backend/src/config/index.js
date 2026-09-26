@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { applyDnsServerOverride } from './dnsResolver.js';
+import { CRON_CONFIG } from './cronConfig.js';
 dotenv.config();
 
 // Pin Node's internal (c-ares) resolver when DNS_SERVERS is set. Required on
@@ -59,6 +60,10 @@ const config = {
     // validateEnv() logs a startup warning when KIOSK_SELECTION_SECRET is unset.
     selectionSecret: process.env.KIOSK_SELECTION_SECRET || process.env.JWT_ACCESS_SECRET,
   },
+  // Background job schedules, business timezone and reconciliation thresholds.
+  // Defined in cronConfig.js (single source of truth) — kept under `config.cron`
+  // so existing consumers (`config.cron.timezone`, `config.cron.jobs.*`) still work.
+  cron: CRON_CONFIG,
   ai: {
     enabled: String(process.env.AI_ENABLED).toLowerCase() === 'true',
     provider: process.env.AI_PROVIDER || 'gemini',

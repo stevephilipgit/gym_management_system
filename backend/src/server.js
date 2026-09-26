@@ -2,7 +2,7 @@
 // attendance day boundaries, business hours, late-punch threshold, and cron
 // schedules all operate in gym-local time (Asia/Kolkata). node-cron also gets
 // an explicit `timezone` so the scheduler and the date math never diverge.
-process.env.TZ = "Asia/Kolkata";
+process.env.TZ = process.env.BUSINESS_TIMEZONE || "Asia/Kolkata";
 
 // gym_project_backend/server.js
 import "express-async-errors";
@@ -59,6 +59,8 @@ import aiRoutes from "./routes/aiRoutes.js";
 import adminAuth from "./middleware/adminAuth.js";
 import requireRole from "./middleware/requireRole.js";
 import { initDailyTasks } from "./services/summaryService.js";
+import { CRON_CONFIG } from "./config/cronConfig.js";
+import { executeFinanceReconciliation } from "./jobs/financeReconcileJob.js";
 import healthController from "./controllers/healthController.js";
 
 // ✅ NEW: Attendance System Routes
@@ -288,84 +290,79 @@ const startServer = async () => {
     // ✅ NEW: Startup Recovery Job (auto-close yesterday's open records if server was down)
     await startupRecoveryJob();
 
-    // ✅ NEW: Schedule auto-close job at 23:59 IST daily using node-cron
-    // Cron format: minute hour day-of-month month day-of-week
-    cron.schedule("59 23 * * *", async () => {
+    // ✅ All background job schedules, enable flags and the business timezone
+    // come from CRON_CONFIG (src/config/cronConfig.js), so every cadence is
+    // tunable through env vars without editing this file. Each task runs in its
+    // own try/catch so one failing job can never take the scheduler down.
+    const scheduleJob = (name, label, task) => {
+      const job = CRON_CONFIG.jobs[name];
+      if (!job.enabled) {
+        logger.info(`⏭️ ${label} disabled by configuration`);
+        return;
+      }
+      cron.schedule(
+        job.schedule,
+        async () => {
+          try {
+            await task();
+          } catch (err) {
+            logger.error(`${label} failed`, { error: err.message });
+          }
+        },
+        { timezone: CRON_CONFIG.timezone }
+      );
+      logger.info(`✅ ${label} scheduled at ${job.schedule} (${CRON_CONFIG.timezone})`);
+    };
+
+    // ✅ Auto-close yesterday's open attendance records at 23:59 IST.
+    scheduleJob("autoCloseDay", "Attendance auto-close job", () => {
       logger.info("Executing scheduled auto-close job...");
-      try {
-        await autoCloseJob();
-      } catch (err) {
-        logger.error("Scheduled auto-close job failed", { error: err.message });
-      }
-    }, { timezone: "Asia/Kolkata" });
-    logger.info("✅ Attendance auto-close job scheduled for 23:59 daily (IST)");
+      return autoCloseJob();
+    });
 
-    // ✅ Stale record auto-close: every 30 minutes, close records > 2 hours old
-    cron.schedule("*/30 * * * *", async () => {
-      try {
-        await staleAutoCloseJob();
-      } catch (err) {
-        logger.error("Stale auto-close job failed", { error: err.message });
-      }
-    }, { timezone: "Asia/Kolkata" });
-    logger.info("✅ Stale record auto-close job scheduled every 30 minutes (IST)");
+    // ✅ Stale record auto-close: close records > 2 hours old left by a crash.
+    scheduleJob("staleAutoClose", "Stale record auto-close", staleAutoCloseJob);
 
-    // ✅ NEW: Daily enquiry cleanup at 02:00 IST
-    cron.schedule("0 2 * * *", async () => {
-      try {
-        const deleted = await cleanupOldEnquiries();
-        logger.info(`[Enquiry Cleanup] Deleted ${deleted} old records`);
-      } catch (err) {
-        logger.error("[Enquiry Cleanup] Job failed", { error: err.message });
-      }
-    }, { timezone: "Asia/Kolkata" });
-    logger.info("✅ Enquiry cleanup cron scheduled at 02:00 daily (IST)");
+    // ✅ Daily enquiry cleanup.
+    scheduleJob("enquiryCleanup", "Enquiry cleanup", async () => {
+      const deleted = await cleanupOldEnquiries();
+      logger.info(`[Enquiry Cleanup] Deleted ${deleted} old records`);
+    });
 
-    // ✅ NEW: Daily previous-day attendance export at 00:05 IST, after the
-    // 23:59 auto-close has run. Idempotent + crash safe; notifies superadmin.
-    cron.schedule("5 0 * * *", async () => {
+    // ✅ Previous-day attendance export at 00:05 IST, after the 23:59
+    // auto-close has run. Idempotent + crash safe; notifies superadmin.
+    scheduleJob("attendanceExport", "Daily attendance export", () => {
       logger.info("Executing scheduled daily attendance export...");
-      await attendanceDailyExportJob();
-    }, { timezone: "Asia/Kolkata" });
-    logger.info("✅ Daily attendance export cron scheduled at 00:05 daily (IST)");
+      return attendanceDailyExportJob();
+    });
 
-    // ✅ Notification retry sweep every 30 min: delivers notifications for
-    // exports that are ready but not yet notified (never regenerates the CSV).
-    cron.schedule("*/30 * * * *", async () => {
-      try {
-        await retryPendingNotifications();
-      } catch (err) {
-        logger.error("Notification retry sweep failed", { error: err.message });
-      }
-    }, { timezone: "Asia/Kolkata" });
-    logger.info("✅ Notification retry sweep scheduled every 30 minutes (IST)");
+    // ✅ Notification retry sweep: delivers notifications for exports that are
+    // ready but not yet notified (never regenerates the CSV).
+    scheduleJob("notificationRetry", "Notification retry sweep", retryPendingNotifications);
 
-    // ✅ Export retention cleanup daily at 03:00 IST. No-op until
-    // export_retention_days > 0 is configured in SystemSettings.
-    cron.schedule("0 3 * * *", async () => {
-      try {
-        const settings = await systemSettingsService.getSettings();
-        await cleanupExpiredExports(settings);
-      } catch (err) {
-        logger.error("Export retention cleanup failed", { error: err.message });
-      }
-    }, { timezone: "Asia/Kolkata" });
-    logger.info("✅ Export retention cleanup scheduled at 03:00 daily (IST)");
+    // ✅ Export retention cleanup. No-op until export_retention_days > 0 is
+    // configured in SystemSettings.
+    scheduleJob("exportRetention", "Export retention cleanup", async () => {
+      const settings = await systemSettingsService.getSettings();
+      await cleanupExpiredExports(settings);
+    });
+
+    // ✅ Financial self-healing: recompute DailySummary from FinanceLog over the
+    // configured lookback window and report the drift it corrected. Same
+    // implementation the manual POST /api/finance/reconcile endpoint uses.
+    scheduleJob("financialReconciliation", "Financial reconciliation", () =>
+      executeFinanceReconciliation()
+    );
 
     // ✅ AI: daily session lifecycle (archive inactive → purge expired archived).
     // Idempotent + bounded + restart-safe; never touches AIUserMemory.
-    cron.schedule("0 3 * * *", async () => {
-      try {
-        const result = await runSessionLifecycle({
-          archiveAfterDays: aiConfig.sessionArchiveDays,
-          retentionDays: aiConfig.sessionRetentionDays,
-        });
-        logger.info("[AISessionCleanup] Lifecycle run", result);
-      } catch (err) {
-        logger.error("[AISessionCleanup] Job failed", { error: err.message });
-      }
+    scheduleJob("aiSessionLifecycle", "AI session lifecycle", async () => {
+      const result = await runSessionLifecycle({
+        archiveAfterDays: aiConfig.sessionArchiveDays,
+        retentionDays: aiConfig.sessionRetentionDays,
+      });
+      logger.info("[AISessionCleanup] Lifecycle run", result);
     });
-    logger.info("✅ AI session lifecycle cron scheduled at 03:00 daily");
 
     // Start listening
     server = app.listen(config.app.port, () => {
