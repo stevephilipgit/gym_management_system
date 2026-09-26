@@ -1,5 +1,11 @@
 import dotenv from 'dotenv';
+import { applyDnsServerOverride } from './dnsResolver.js';
 dotenv.config();
+
+// Pin Node's internal (c-ares) resolver when DNS_SERVERS is set. Required on
+// networks where c-ares falls back to 127.0.0.1 and every `mongodb+srv://`
+// SRV/TXT lookup fails with `querySrv ECONNREFUSED` (see dnsResolver.js).
+applyDnsServerOverride();
 
 const config = {
   env: process.env.NODE_ENV || 'development',
