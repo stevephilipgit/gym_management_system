@@ -20,6 +20,20 @@ const __dirname = path.dirname(__filename);
 const MS_DAY = 1000 * 60 * 60 * 24;
 const GENDER_PREFIX = { Male: "M", Female: "F", Transgender: "F" };
 
+// Fields that represent money or membership state. They may only be written by
+// the billing endpoints (register / renew), which persist the matching
+// PaymentLog + FinanceLog + DailySummary records in the same transaction.
+// A profile edit must never change them, or revenue is silently lost.
+const BILLING_OWNED_FIELDS = [
+  "paymentStatus",
+  "paymentMode",
+  "currentPaymentDate",
+  "oldPaymentDate",
+  "validityEnd",
+  "gymPlan",
+  "dietIncludedInLastBilling",
+];
+
 // Internal sentinel thrown from inside the renewal transaction when the
 // optimistic-concurrency update matched no member. It separates "not found /
 // version conflict" (which must surface as 404/409) from a genuine write
@@ -422,6 +436,16 @@ export const memberController = {
     delete data.version; // never write version via the update payload
     if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
       throw new ValidationError("version is required for update. Please reload the member and try again.");
+    }
+
+    // Guard against mass assignment of billing fields. The update payload is
+    // otherwise forwarded verbatim to $set, so a client could mark a member
+    // "paid" or extend validity with no PaymentLog/FinanceLog/DailySummary
+    // record — financial drift. These are dropped rather than rejected because
+    // the edit form round-trips the whole member object, so the values are
+    // echoed back unchanged on every normal save.
+    for (const field of BILLING_OWNED_FIELDS) {
+      delete data[field];
     }
 
     // Handle photo upload
