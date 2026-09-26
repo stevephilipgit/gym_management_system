@@ -5,7 +5,6 @@ import systemSettingsService from '../services/systemSettingsService.js';
 import { auditActions } from '../utils/auditLog.js';
 import logger from '../core/logger.js';
 import attendanceLogger from '../core/attendanceLogger.js';
-import { shouldSyncToSheets, syncAttendanceToSheets } from "../services/attendanceSyncService.js";
 import scopeResolver from "../core/scopeResolver.js";
 import {
   sanitizeInput,
@@ -17,16 +16,6 @@ import {
 
 const Attendance = mongoose.model('Attendance');
 const Member = mongoose.model('Member');
-
-async function syncAttendanceIfConnected(attendanceRecord, memberData) {
-  try {
-    const canSync = await shouldSyncToSheets();
-    if (!canSync) return;
-    await syncAttendanceToSheets(attendanceRecord, memberData);
-  } catch (syncError) {
-    logger.error("Attendance sync failed (non-blocking)", { error: syncError.message });
-  }
-}
 
 // sanitizeInput, validateSearchInput, isWithinBusinessHours, isLateEntry
 // are imported from the shared utils/attendanceInput.js module.
@@ -207,7 +196,6 @@ export const searchPunch = async (req, res) => {
         } else {
           attendanceLogger.info(`Check-In | MemberID=${member.gymId} | Time=${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} | Status=Inside Gym`, requestMeta);
         }
-        await syncAttendanceIfConnected(attendance, member);
       } else if (existingRecord.checkInTime && !existingRecord.checkOutTime) {
         // SCENARIO B: Already inside, entering again — Check-out (atomic).
         isCheckOut = true;
@@ -215,7 +203,6 @@ export const searchPunch = async (req, res) => {
         attendance = result.attendance;
 
         attendanceLogger.info(`Check-Out | MemberID=${member.gymId} | Time=${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} | Status=${attendance.state === 'late' ? 'Late' : 'Visited'}`, requestMeta);
-        await syncAttendanceIfConnected(attendance, member);
       } else {
         // Already completed today
         attendanceLogger.warn(`Already Completed | MemberID=${member.gymId}`, requestMeta);
@@ -328,7 +315,6 @@ export const markAttendance = async (req, res) => {
 
     // Get member details
     member = await Member.findById(memberId).lean();
-    await syncAttendanceIfConnected(attendance, member);
 
     // Audit log
     await auditActions.attendanceMarked(req, memberId, new Date());
@@ -413,7 +399,6 @@ export const handleLatePunchManual = async (req, res) => {
         throw punchError;
       }
       const daysLeft = attendanceService.calculateDaysLeft(member.validityEnd);
-      await syncAttendanceIfConnected(attendance, member);
 
       await auditActions.attendanceMarked(req, memberId, new Date());
 
@@ -459,7 +444,6 @@ export const handleLatePunchManual = async (req, res) => {
       }
 
       const daysLeft = attendanceService.calculateDaysLeft(member.validityEnd);
-      await syncAttendanceIfConnected(attendance, member);
 
       await auditActions.attendanceMarked(req, memberId, new Date());
 

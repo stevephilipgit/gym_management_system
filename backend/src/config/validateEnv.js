@@ -15,9 +15,9 @@ export function validateEnv() {
     console.warn('[Config] Partial SMTP config detected. Email will be disabled.');
   }
 
-  const googleKeys = ['GOOGLE_CLIENT_EMAIL', 'GOOGLE_PRIVATE_KEY', 'GOOGLE_SHEET_ID'];
-  const googleSet = googleKeys.filter((k) => process.env[k]);
-  if (googleSet.length > 0 && googleSet.length < googleKeys.length) {
-    console.warn('[Config] Partial Google config detected. Sheets sync will be disabled.');
+  // Kiosk selection-token HMAC secret. Not fatal (config falls back to the JWT
+  // access secret) but key separation is recommended — warn at startup.
+  if (!process.env.KIOSK_SELECTION_SECRET) {
+    console.warn('[Config] KIOSK_SELECTION_SECRET is not set. Falling back to JWT_ACCESS_SECRET for kiosk selection tokens; set a dedicated secret in production.');
   }
 }

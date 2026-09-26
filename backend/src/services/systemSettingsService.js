@@ -56,6 +56,9 @@ class SystemSettingsService {
       social_youtube: '',
       social_google_reviews: '',
       // Integrations
+      // @deprecated sheets_* retained (see models/SystemSettings.js) so legacy
+      // documents and the settings payload shape stay unchanged; not writable
+      // through the settings API anymore.
       sheets_enabled: false,
       sheets_email: '',
       sheets_default_name: 'Giri Gym Enquiries',

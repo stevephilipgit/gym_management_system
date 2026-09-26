@@ -8,6 +8,7 @@
 // One shared kiosk serves Male, Female and Transgender customers; customer
 // identity is resolved at punch time (never via kiosk scope).
 
+import crypto from "crypto";
 import express from "express";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import kioskAuth from "../middleware/kioskAuth.js";
@@ -43,7 +44,11 @@ const kioskFailedIdLimiter = rateLimit({
   max: 20,
   keyGenerator: (req) => {
     const input = String(req.body?.input || "").replace(/\D/g, "");
-    return `kiosk-fail:${ipKey(req)}:${input}`;
+    // PRIVACY: hash the member-entered identifier before it becomes a Redis key,
+    // so raw phone numbers / Gym IDs are never persisted at rest. The same input
+    // still maps to the same bucket, so the throttle semantics are unchanged.
+    const digest = crypto.createHash("sha256").update(input).digest("hex").slice(0, 16);
+    return `kiosk-fail:${ipKey(req)}:${digest}`;
   },
   message: { status: "rate_limited", message: "Too many attempts. Please wait." },
   standardHeaders: true,

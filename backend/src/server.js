@@ -70,7 +70,6 @@ import kioskAdminRoutes from "./routes/kioskAdminRoutes.js";
 import deviceRoutes from "./routes/deviceRoutes.js";
 import reportsRoutes from "./routes/reportsRoutes.js";
 import systemSettingsRoutes from "./routes/systemSettingsRoutes.js";
-import connectorsRoutes from "./routes/connectorsRoutes.js";
 import notificationRoutes, { exportDownloadRouter } from "./routes/notificationRoutes.js";
 
 // ✅ NEW: Enquiry System
@@ -204,7 +203,6 @@ app.use("/api/attendance/kiosk", kioskRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/settings", systemSettingsRoutes);
-app.use("/api/connectors", connectorsRoutes);
 
 // ✅ Superadmin-only kiosk device management (create/rotate/disable/revoke).
 // Kiosk principals are separate from admin principals; only a superadmin can
