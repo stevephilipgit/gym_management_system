@@ -54,6 +54,11 @@ const systemSettingsSchema = new mongoose.Schema(
     social_google_reviews: { type: String, default: '', maxlength: 300 },
 
     // ── INTEGRATIONS ─────────────────────────────────────────
+    // @deprecated Google Sheets sync was removed (it added third-party API
+    // latency + 2-3 extra queries to every kiosk punch). These fields are kept
+    // ONLY so legacy settings documents keep validating and stored values are
+    // not silently dropped; they are no longer writable via the settings API
+    // (see systemSettingsController ALLOWED_FIELDS). Remove in a later release.
     sheets_enabled: { type: Boolean, default: false },
     sheets_email: { type: String, default: '', maxlength: 120 },
     sheets_default_name: { type: String, default: 'Giri Gym Enquiries', maxlength: 100 },

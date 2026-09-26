@@ -8,7 +8,6 @@ import logger from '../core/logger.js';
 import scopeResolver from '../core/scopeResolver.js';
 import { sendEnquiryNotification } from '../services/emailService.js';
 import systemSettingsService from '../services/systemSettingsService.js';
-import * as googleSheetsService from '../services/googleSheetsService.js';
 
 // Sanitize helper — strips html/script tags and collapses whitespace
 function sanitize(str = '') {
@@ -128,36 +127,6 @@ export const submitEnquiry = async (req, res) => {
       }
     } catch (emailErr) {
       logger.error('[Enquiry] Email trigger failed', { error: emailErr.message });
-    }
-
-    // ── Google Sheets Integration (non-blocking) ─────────────
-    try {
-      const settings = await systemSettingsService.getSettings();
-      if (settings?.sheets_enabled && settings?.sheets_email) {
-        const connector = await googleSheetsService.getConnector(settings.sheets_email);
-        if (connector && connector.isConnected && connector.accessToken) {
-          const tokens = {
-            access_token: connector.accessToken,
-            refresh_token: connector.refreshToken,
-          };
-          const enquiryData = {
-            date: new Date(enquiry.createdAt).toLocaleString('en-IN'),
-            name: cleanName,
-            email: cleanEmail,
-            phone: cleanPhone,
-            branch: cleanBranch,
-            reason: cleanReason,
-            message: cleanMessage,
-          };
-          googleSheetsService.addEnquiryEntry(tokens, connector.spreadsheetId, enquiryData).then((res) => {
-            logger.info('[Enquiry] Synced to Google Sheets', { rowIndex: res.rowIndex });
-          }).catch((err) => {
-            logger.error('[Enquiry] Google Sheets sync failed', { error: err.message });
-          });
-        }
-      }
-    } catch (sheetErr) {
-      logger.error('[Enquiry] Google Sheets trigger failed', { error: sheetErr.message });
     }
 
     // ── Response ────────────────────────────────────────────

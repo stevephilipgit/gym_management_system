@@ -52,11 +52,12 @@ const config = {
     pass: process.env.SMTP_PASS,
     from: process.env.SMTP_FROM || process.env.SMTP_USER,
   },
-  google: {
-    enabled: !!(process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY && process.env.GOOGLE_SHEET_ID),
-    clientEmail: process.env.GOOGLE_CLIENT_EMAIL,
-    privateKey: process.env.GOOGLE_PRIVATE_KEY,
-    sheetId: process.env.GOOGLE_SHEET_ID,
+  kiosk: {
+    // Dedicated HMAC secret for kiosk selection tokens. Falling back to the JWT
+    // access secret keeps existing deployments working, but a dedicated secret
+    // is preferred (key separation between JWT signing and token binding).
+    // validateEnv() logs a startup warning when KIOSK_SELECTION_SECRET is unset.
+    selectionSecret: process.env.KIOSK_SELECTION_SECRET || process.env.JWT_ACCESS_SECRET,
   },
   ai: {
     enabled: String(process.env.AI_ENABLED).toLowerCase() === 'true',

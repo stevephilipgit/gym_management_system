@@ -24,7 +24,6 @@ import attendanceService, { AttendanceStateError } from "./attendanceService.js"
 import { evaluateMemberPunch } from "./attendanceEligibilityService.js";
 import systemSettingsService from "./systemSettingsService.js";
 import { validateSearchInput, normalizeDate, buildPunchResponse } from "../utils/attendanceInput.js";
-import { shouldSyncToSheets, syncAttendanceToSheets } from "./attendanceSyncService.js";
 import config from "../config/index.js";
 import { GENDERS_FOR_SCOPE } from "./deviceRegistrationService.js";
 
@@ -52,6 +51,13 @@ export class KioskError extends Error {
 // The server re-loads the current Member and runs eligibility at punch time.
 const SELECTION_TOKEN_TTL_MS = 2 * 60 * 1000; // 2 minutes
 
+// Dedicated HMAC secret (config.kiosk.selectionSecret), falling back to the JWT
+// access secret when KIOSK_SELECTION_SECRET is unset (validateEnv warns at
+// startup). Key separation matters: this key only binds a member selection to
+// the issuing kiosk — it must never be the same key an attacker could use to
+// forge an admin session token.
+const SELECTION_TOKEN_SECRET = config.kiosk?.selectionSecret || config.jwt.accessSecret;
+
 function issueSelectionToken({ kioskId, memberId }) {
   const payload = {
     kind: "kiosk_selection",
@@ -62,7 +68,7 @@ function issueSelectionToken({ kioskId, memberId }) {
   };
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const sig = crypto
-    .createHmac("sha256", config.jwt.accessSecret)
+    .createHmac("sha256", SELECTION_TOKEN_SECRET)
     .update(body)
     .digest("base64url");
   return `${body}.${sig}`;
@@ -73,7 +79,7 @@ function verifySelectionToken(token, kioskId) {
     if (typeof token !== "string" || !token.includes(".")) return null;
     const [body, sig] = token.split(".");
     const expected = crypto
-      .createHmac("sha256", config.jwt.accessSecret)
+      .createHmac("sha256", SELECTION_TOKEN_SECRET)
       .update(body)
       .digest("base64url");
     // Timing-safe compare.
@@ -289,17 +295,11 @@ async function executePunchForMember(member, now = new Date()) {
     throw new KioskError(503, "Member cannot punch at this time. Please contact the gym staff.", { status: "unavailable" });
   }
 
-  // Non-blocking Google Sheets sync (legacy, best-effort).
-  try {
-    const canSync = await shouldSyncToSheets();
-    if (canSync) {
-      await syncAttendanceToSheets(attendance, member);
-    }
-  } catch (syncError) {
-    logger.warn("Kiosk attendance sync to sheets failed (non-blocking)", {
-      error: syncError.message,
-    });
-  }
+  // PERF: Punch path must remain strictly local DB operations (0 third-party I/O).
+  // Attendance mirroring/exports happen OUT of band (daily export job / reports);
+  // never add a network call (Sheets, webhooks, analytics) to this path — it
+  // would put a third party's latency and availability in front of every
+  // customer punch at the counter.
 
   return buildPunchResponse({
     attendance,
