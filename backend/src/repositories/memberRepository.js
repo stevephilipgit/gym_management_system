@@ -96,7 +96,9 @@ class MemberRepository {
   }
 
   // Update by Gym ID with optimistic concurrency and optional scope.
-  // opts = { allowedGenders, memberCode }
+  // opts = { allowedGenders, memberCode, session }
+  //   session — when supplied the update joins the caller's transaction, so a
+  //   later failure rolls the member change back with the rest of the flow.
   async updateByGymId(gymId, updateData, expectedVersion, opts = {}) {
     const parsedGymId = this.normalizeGymId(gymId);
     if (!parsedGymId) return null;
@@ -118,7 +120,7 @@ class MemberRepository {
     return Member.findOneAndUpdate(
       filter,
       { ...updateData, $inc: { version: 1 } },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true, session: opts.session }
     ).populate("dietId");
   }
 

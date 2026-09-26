@@ -20,6 +20,17 @@ const __dirname = path.dirname(__filename);
 const MS_DAY = 1000 * 60 * 60 * 24;
 const GENDER_PREFIX = { Male: "M", Female: "F", Transgender: "F" };
 
+// Internal sentinel thrown from inside the renewal transaction when the
+// optimistic-concurrency update matched no member. It separates "not found /
+// version conflict" (which must surface as 404/409) from a genuine write
+// failure, without committing a partial renewal.
+class MemberUpdateRejected extends Error {
+  constructor() {
+    super("member-update-rejected");
+    this.name = "MemberUpdateRejected";
+  }
+}
+
 // Sort mapping for the member list. "daysLeft" is a derived value (validityEnd
 // minus today), so it maps to validityEnd for server-side sorting. Unknown or
 // missing keys fall back to newest-first (createdAt desc).
@@ -633,64 +644,92 @@ export const memberController = {
       newValidityEnd.setDate(newValidityEnd.getDate() + parsedExtraDays);
     }
 
-    // Update member
-    const updatedMember = await memberRepository.updateByGymId(lookupGymId, {
-      oldPaymentDate: existingMember.currentPaymentDate,
-      currentPaymentDate: new Date(),
-      validityEnd: newValidityEnd,
-      paymentStatus: "paid",
-      paymentMode: selectedPaymentMode,
-      status: "active",
-      gymPlan: selectedPlan,
-      trainingType: trainingType || existingMember.trainingType,
-      dietId: dietId || existingMember.dietId || null,
-      dietName: dietName || existingMember.dietName || null,
-      dietIncludedInLastBilling: dietIncludedInLastBilling === "true" || Boolean(dietIncludedInLastBilling),
-    }, expectedVersion, {
-      allowedGenders: scopeResolver.getScopeAllowedGenders(req),
-      memberCode,
-    });
+    // Money movement is all-or-nothing. The member extension, both ledger writes
+    // and the daily summary share one transaction, so a failure at any step — for
+    // example a plan label outside the FinanceLog enum — rolls the member back
+    // too. Previously the member was updated first and the logs written after, so
+    // a failed log write left the member extended with the revenue recorded
+    // nowhere, and a client retry then extended the member a second time.
+    const session = await mongoose.startSession();
+    let updatedMember = null;
 
-    if (!updatedMember) {
-      // Distinguish "member deleted" (404) from "another admin edited it" (409)
-      const stillExists = await memberRepository.findByGymId(lookupGymId, {
-        allowedGenders: scopeResolver.getScopeAllowedGenders(req),
-        memberCode,
-      });
-      if (stillExists) {
-        throw new ConflictError(
-          "This member was modified by another user. Please reload the member and try again."
+    try {
+      await session.withTransaction(async () => {
+        updatedMember = await memberRepository.updateByGymId(
+          lookupGymId,
+          {
+            oldPaymentDate: existingMember.currentPaymentDate,
+            currentPaymentDate: new Date(),
+            validityEnd: newValidityEnd,
+            paymentStatus: "paid",
+            paymentMode: selectedPaymentMode,
+            status: "active",
+            gymPlan: selectedPlan,
+            trainingType: trainingType || existingMember.trainingType,
+            dietId: dietId || existingMember.dietId || null,
+            dietName: dietName || existingMember.dietName || null,
+            dietIncludedInLastBilling: dietIncludedInLastBilling === "true" || Boolean(dietIncludedInLastBilling),
+          },
+          expectedVersion,
+          {
+            allowedGenders: scopeResolver.getScopeAllowedGenders(req),
+            memberCode,
+            session,
+          }
         );
+
+        if (!updatedMember) {
+          throw new MemberUpdateRejected();
+        }
+
+        // FinanceLog vocabulary is "renew"; PaymentLog uses "renewal".
+        const financeLog = new FinanceLog({
+          gymId: updatedMember.gymId,
+          memberName: updatedMember.fullName,
+          amount: selectedAmount,
+          plan: selectedPlan,
+          trainingType: trainingType || existingMember.trainingType,
+          type: "renew",
+          date: new Date(),
+        });
+        await financeLog.save({ session });
+
+        const paymentLog = new PaymentLog({
+          gymId: updatedMember.gymId,
+          name: updatedMember.fullName,
+          amount: selectedAmount,
+          plan: selectedPlan,
+          trainingType: trainingType || existingMember.trainingType,
+          paidAt: new Date(),
+          paymentMode: selectedPaymentMode,
+          type: "renewal",
+          dietId: dietId || null,
+          dietName: dietName || null,
+        });
+        await paymentLog.save({ session });
+
+        // updateTodaySummary is session-aware, so the daily totals commit and
+        // roll back together with both ledgers.
+        await updateTodaySummary(financeLog, session);
+      });
+    } catch (error) {
+      if (error instanceof MemberUpdateRejected) {
+        // Distinguish "member deleted" (404) from "another admin edited it" (409)
+        const stillExists = await memberRepository.findByGymId(lookupGymId, {
+          allowedGenders: scopeResolver.getScopeAllowedGenders(req),
+          memberCode,
+        });
+        if (stillExists) {
+          throw new ConflictError(
+            "This member was modified by another user. Please reload the member and try again."
+          );
+        }
+        throw new NotFoundError("Member not found");
       }
-      throw new NotFoundError("Member not found");
+      throw error;
+    } finally {
+      await session.endSession().catch(() => {});
     }
-
-    // Log payment and finance
-    const financeLog = await FinanceLog.create({
-      gymId: updatedMember.gymId,
-      memberName: updatedMember.fullName,
-      amount: selectedAmount,
-      plan: selectedPlan,
-      trainingType: trainingType || existingMember.trainingType,
-      type: "renew",
-      date: new Date(),
-    });
-
-    await PaymentLog.create({
-      gymId: updatedMember.gymId,
-      name: updatedMember.fullName,
-      amount: selectedAmount,
-      plan: selectedPlan,
-      trainingType: trainingType || existingMember.trainingType,
-      paidAt: new Date(),
-      paymentMode: selectedPaymentMode,
-      type: "renewal",
-      dietId: dietId || null,
-      dietName: dietName || null,
-    });
-
-    // Update daily summary
-    await updateTodaySummary(financeLog);
 
     return res.json({ success: true, data: updatedMember });
   }),
