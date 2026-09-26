@@ -1,6 +1,6 @@
 // controllers/analyticsController.js - Analytics and reporting
 import analyticsService from "../services/analyticsService.js";
-import PDFGenerator from "../utils/pdfGenerator.js";
+import { generatePDFInWorker } from "../utils/pdfWorkerPool.js";
 import { asyncHandler, ValidationError } from "../core/errorHandler.js";
 
 export const analyticsController = {
@@ -33,10 +33,15 @@ export const analyticsController = {
     const start = startDate || new Date().toISOString().split("T")[0];
     const end = endDate || new Date().toISOString().split("T")[0];
 
+    const dateRange = { startDate: start, endDate: end };
+
+    // dateRange was never passed to the generator, so rendering the report
+    // header threw 'Cannot read properties of undefined' and every export
+    // request returned HTTP 500.
     const metrics = await analyticsService.getAnalyticsMetrics(start, end);
 
-    // Generate PDF
-    const pdfBuffer = await PDFGenerator.generateAnalyticsPDF(metrics);
+    // CPU-bound pdfkit layout and font subsetting now runs on a worker thread.
+    const pdfBuffer = await generatePDFInWorker(metrics, dateRange);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
@@ -44,6 +49,7 @@ export const analyticsController = {
       `attachment; filename="analytics-${start}-to-${end}.pdf"`
     );
     res.send(pdfBuffer);
+    return;
   }),
 
   // Get member statistics
