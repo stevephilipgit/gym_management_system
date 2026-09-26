@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { expect } from "chai";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
@@ -16,10 +16,14 @@ import { generateActivation, redeemActivation } from "../services/deviceActivati
 
 describe("Direct device activation flow", function () {
   this.timeout(60000);
+  // redeemActivation wraps its writes in a mongoose transaction, so this suite
+  // needs a real replica set. Note: MongoMemoryServer.create() ignores a
+  // top-level `replSet` option (it boots a standalone) — MongoMemoryReplSet is
+  // the API that actually creates one.
   let mongoServer;
 
   before(async function () {
-    mongoServer = await MongoMemoryServer.create({
+    mongoServer = await MongoMemoryReplSet.create({
       replSet: { count: 1, storageEngine: "wiredTiger" },
     });
     const uri = mongoServer.getUri();
@@ -86,23 +90,25 @@ describe("Direct device activation flow", function () {
 
     const activation = await generateActivation({
       trainerId: trainer._id,
-      kioskId: kiosk.kioskId,
       createdBy: superAdmin._id,
     });
 
     expect(activation.code).to.match(/^\d{6}$/);
-    expect(activation.kioskId).to.equal(kiosk.kioskId);
+    // generateActivation binds the Trainer + scope only; the device is bound
+    // at redemption (kioskId = browserDeviceId), so no kioskId here.
+    expect(activation.trainerId).to.equal(String(trainer._id));
+    expect(activation.scope).to.equal("male");
 
     const result = await redeemActivation({
       trainerId: trainer._id,
-      kioskId: kiosk.kioskId,
       browserDeviceId: "new-browser",
       code: activation.code,
       password: "pass123",
     });
 
     expect(result.registration.active).to.equal(true);
-    expect(result.registration.kioskId).to.equal(kiosk.kioskId);
+    // Redemption binds the device identity, not the Kiosk document's id.
+    expect(result.registration.kioskId).to.equal("new-browser");
 
     const activeCount = await DeviceRegistration.countDocuments({ trainerId: trainer._id, active: true });
     expect(activeCount).to.equal(1);
