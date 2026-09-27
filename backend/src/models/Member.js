@@ -4,6 +4,14 @@ import { generateFormattedName } from "../utils/nameFormatter.js";
 
 const memberSchema = new mongoose.Schema(
   {
+    // Multi-tenancy root: every member belongs to exactly one branch.
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      required: true,
+      index: true,
+    },
+
     gymId: { type: Number, required: true },
 
     fullName: { type: String, required: true },
@@ -146,19 +154,24 @@ memberSchema.index({ status: 1 });
 memberSchema.index({ dob: 1, createdAt: 1 });
 memberSchema.index({ gymPlan: 1, createdAt: 1 });
 
-// ✅ Feature 3: Membership check by phone (UNIQUE for Feature 4)
-memberSchema.index({ phone: 1 }, { unique: true });
+// ✅ Feature 3: Membership check by phone. Unique PER BRANCH — the same
+// phone may legitimately exist in two branches; public/kiosk phone lookups
+// handle the cross-branch ambiguity (see memberController.checkPublicValidity).
+memberSchema.index({ branchId: 1, phone: 1 }, { unique: true, name: "idx_members_branch_phone_unique" });
 memberSchema.index({ phone: 1, validityEnd: 1 });
 
-// Primary member-list query: gender-scoped, sorted by most recent.
+// Primary member-list query: branch- and gender-scoped, sorted by most recent.
 // Without this compound index, MongoDB sorts by createdAt then filters by
 // gender in memory (or vice versa) — slow at scale.
-memberSchema.index({ gender: 1, createdAt: -1 });
+memberSchema.index({ branchId: 1, gender: 1, createdAt: -1 });
 
-// Identity: a numeric gymId is only unique WITHIN a gender (male gym "101"
-// and female gym "101" are distinct members). The global gymId unique index
-// was removed — the compound unique below is the correct uniqueness boundary.
-// NOTE: the old global index must be dropped by scripts/migrate-member-identity.js.
-memberSchema.index({ gymId: 1, gender: 1 }, { unique: true });
+// Identity: a numeric gymId (the keypad/serial number printed on bills and
+// kiosks) is unique within (branch, gender). Male gym "101" and female gym
+// "101" in the SAME branch are distinct, and the same number may recur in a
+// different branch. This compound unique is the correctness boundary.
+memberSchema.index(
+  { branchId: 1, gender: 1, gymId: 1 },
+  { unique: true, name: "idx_members_branch_gender_gym_unique" }
+);
 
 export default mongoose.model("Member", memberSchema);

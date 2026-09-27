@@ -27,6 +27,7 @@ import DeviceActivation from "../models/DeviceActivation.js";
 import { deactivateRegistration, revokeRegistration, rotateRegistration, reassignKioskScope, reactivateRegistration, lockRegistration, unlockRegistration } from "../services/deviceRegistrationService.js";
 import { generateActivation, redeemActivation } from "../services/deviceActivationService.js";
 import kioskAuth from "../middleware/kioskAuth.js";
+import { seedTestBranch } from "./utils/branchFixture.js";
 
 const DB_URI = process.env.MONGO_URI || "mongodb://localhost:27017/gym_test";
 
@@ -48,6 +49,7 @@ async function callKioskAuth(kioskId, apiKey) {
 describe("Device Lifecycle — registration invariants (integration)", function () {
   this.timeout(30000);
   let connected = false;
+  let branch;
   let trainerA, trainerB, superAdmin;
   let kiosk;
 
@@ -55,27 +57,28 @@ describe("Device Lifecycle — registration invariants (integration)", function 
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
+      branch = await seedTestBranch();
       await Admin.deleteMany({});
       await Kiosk.deleteMany({});
       await DeviceRegistration.deleteMany({});
       await DeviceActivation.deleteMany({});
 
       trainerA = (await Admin.create({
-        fullName: "Lifecycle A", username: `lc_a_${crypto.randomUUID().slice(0, 8)}`,
+        fullName: "Lifecycle A", branchId: branch._id, username: `lc_a_${crypto.randomUUID().slice(0, 8)}`,
         email: `lc_a_${crypto.randomUUID().slice(0, 8)}@test.local`, role: "trainer", scope: "male",
         passwordHash: await bcrypt.hash("pass", 4), status: "active", tokenVersion: 0,
       }))._id;
       trainerB = (await Admin.create({
-        fullName: "Lifecycle B", username: `lc_b_${crypto.randomUUID().slice(0, 8)}`,
+        fullName: "Lifecycle B", branchId: branch._id, username: `lc_b_${crypto.randomUUID().slice(0, 8)}`,
         email: `lc_b_${crypto.randomUUID().slice(0, 8)}@test.local`, role: "trainer", scope: "male",
         passwordHash: await bcrypt.hash("pass", 4), status: "active", tokenVersion: 0,
       }))._id;
       superAdmin = (await Admin.create({
-        fullName: "Lifecycle Super", username: `lc_sa_${crypto.randomUUID().slice(0, 8)}`,
+        fullName: "Lifecycle Super", branchId: branch._id, username: `lc_sa_${crypto.randomUUID().slice(0, 8)}`,
         email: `lc_sa_${crypto.randomUUID().slice(0, 8)}@test.local`, role: "superadmin", scope: "all",
         passwordHash: await bcrypt.hash("pass", 4), status: "active", tokenVersion: 0,
       }))._id;
-      kiosk = await Kiosk.create({ kioskId: "lifecycle-test", name: "Lifecycle Kiosk", scope: "male", enabled: true });
+      kiosk = await Kiosk.create({ kioskId: "lifecycle-test", name: "Lifecycle Kiosk", scope: "male", enabled: true, branchId: branch._id });
     } catch (err) {
       this.skip();
     }
@@ -201,33 +204,35 @@ describe("Device Lifecycle — registration invariants (integration)", function 
 describe("Device Lifecycle — trainer deactivation → reactivation (integration)", function () {
   this.timeout(30000);
   let connected = false;
+  let branch;
   let trainerA, trainerB, superAdmin;
 
   before(async function () {
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
+      branch = await seedTestBranch();
       await Admin.deleteMany({});
       await Kiosk.deleteMany({});
       await DeviceRegistration.deleteMany({});
       await DeviceActivation.deleteMany({});
 
       trainerA = (await Admin.create({
-        fullName: "Reactive A", username: `ra_a_${crypto.randomUUID().slice(0, 8)}`,
+        fullName: "Reactive A", branchId: branch._id, username: `ra_a_${crypto.randomUUID().slice(0, 8)}`,
         email: `ra_a_${crypto.randomUUID().slice(0, 8)}@test.local`, role: "trainer", scope: "male",
         passwordHash: await bcrypt.hash("pass", 4), status: "active", tokenVersion: 0,
       }))._id;
       trainerB = (await Admin.create({
-        fullName: "Reactive B", username: `ra_b_${crypto.randomUUID().slice(0, 8)}`,
+        fullName: "Reactive B", branchId: branch._id, username: `ra_b_${crypto.randomUUID().slice(0, 8)}`,
         email: `ra_b_${crypto.randomUUID().slice(0, 8)}@test.local`, role: "trainer", scope: "male",
         passwordHash: await bcrypt.hash("pass", 4), status: "active", tokenVersion: 0,
       }))._id;
       superAdmin = (await Admin.create({
-        fullName: "Reactive Super", username: `ra_sa_${crypto.randomUUID().slice(0, 8)}`,
+        fullName: "Reactive Super", branchId: branch._id, username: `ra_sa_${crypto.randomUUID().slice(0, 8)}`,
         email: `ra_sa_${crypto.randomUUID().slice(0, 8)}@test.local`, role: "superadmin", scope: "all",
         passwordHash: await bcrypt.hash("pass", 4), status: "active", tokenVersion: 0,
       }))._id;
-      await Kiosk.create({ kioskId: "lifecycle-test", name: "Lifecycle Kiosk", scope: "male", enabled: true });
+      await Kiosk.create({ kioskId: "lifecycle-test", name: "Lifecycle Kiosk", scope: "male", enabled: true, branchId: branch._id });
     } catch (err) {
       this.skip();
     }

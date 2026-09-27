@@ -13,6 +13,7 @@ import Admin from "../models/Admin.js";
 import Kiosk from "../models/Kiosk.js";
 import DeviceRegistration from "../models/DeviceRegistration.js";
 import { generateActivation, redeemActivation } from "../services/deviceActivationService.js";
+import { seedTestBranch } from "./utils/branchFixture.js";
 
 describe("Direct device activation flow", function () {
   this.timeout(60000);
@@ -21,6 +22,7 @@ describe("Direct device activation flow", function () {
   // top-level `replSet` option (it boots a standalone) — MongoMemoryReplSet is
   // the API that actually creates one.
   let mongoServer;
+  let branch;
 
   before(async function () {
     mongoServer = await MongoMemoryReplSet.create({
@@ -28,6 +30,7 @@ describe("Direct device activation flow", function () {
     });
     const uri = mongoServer.getUri();
     await mongoose.connect(uri, { dbName: "gym_test" });
+    branch = await seedTestBranch();
     await Kiosk.deleteMany({});
     await Admin.deleteMany({});
     await DeviceRegistration.deleteMany({});
@@ -50,6 +53,7 @@ describe("Direct device activation flow", function () {
   it("generates a code, activates the device, and deactivates prior registrations", async () => {
     const superAdmin = await Admin.create({
       fullName: "Super Admin",
+      branchId: branch._id,
       username: `sa_${crypto.randomUUID().slice(0, 8)}`,
       email: `${crypto.randomUUID()}@example.com`,
       role: "superadmin",
@@ -61,6 +65,7 @@ describe("Direct device activation flow", function () {
 
     const trainer = await Admin.create({
       fullName: "Trainer One",
+      branchId: branch._id,
       username: `trainer_${crypto.randomUUID().slice(0, 8)}`,
       email: `${crypto.randomUUID()}@example.com`,
       role: "trainer",
@@ -75,6 +80,7 @@ describe("Direct device activation flow", function () {
       name: "Male Kiosk",
       scope: "male",
       enabled: true,
+      branchId: branch._id,
     });
 
     const first = await DeviceRegistration.create({

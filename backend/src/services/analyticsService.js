@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import PaymentLog from "../models/PaymentLog.js";
 import Member from "../models/Member.js";
 import Package from "../models/Package.js";
@@ -5,10 +6,16 @@ import logger from "../core/logger.js";
 
 class AnalyticsService {
   /**
-   * Get aggregated analytics metrics for a date range
-   * Reusable by both Dashboard API and PDF export
+   * Get aggregated analytics metrics for a date range, scoped to ONE branch.
+   * Reusable by both Dashboard API and PDF export.
+   *
+   * @param {Date|string} startDate
+   * @param {Date|string} endDate
+   * @param {mongoose.Types.ObjectId|string|null} branchId - tenant key.
+   *   Aggregation $match does not cast, so a string id is converted here;
+   *   null/undefined omits the partition (internal/cross-branch callers only).
    */
-  async getAnalyticsMetrics(startDate, endDate) {
+  async getAnalyticsMetrics(startDate, endDate, branchId = null) {
     try {
       const start = new Date(startDate);
       const end = new Date(endDate);
@@ -20,6 +27,10 @@ class AnalyticsService {
           $lte: end,
         },
       };
+      if (branchId) {
+        // $match stages don't run mongoose casting — convert explicitly.
+        filters.branchId = new mongoose.Types.ObjectId(String(branchId));
+      }
 
       // Total Revenue & Transactions
       const totalStats = await PaymentLog.aggregate([
@@ -79,6 +90,7 @@ class AnalyticsService {
           startDate: startDate,
           endDate: endDate,
         },
+        branchId: branchId ? String(branchId) : null,
         totalRevenue: total?.totalRevenue || 0,
         totalTransactions: total?.totalTransactions || 0,
         newJoiningRevenue: newRevenue?.amount || 0,

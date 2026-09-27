@@ -25,6 +25,7 @@ import { deactivateRegistration, revokeRegistration, rotateRegistration, reassig
 import adminAttendanceAuth from "../middleware/adminAttendanceAuth.js";
 import jwt from "jsonwebtoken";
 import config from "../config/index.js";
+import { seedTestBranch } from "./utils/branchFixture.js";
 
 const DB_URI = process.env.MONGO_URI || "mongodb://localhost:27017/gym_test";
 const TRAINER_PASSWORD = "pass";
@@ -36,6 +37,7 @@ const Attendance = mongoose.model("Attendance");
 describe("Phase 4 — Security + Concurrency + Integrity (integration)", function () {
   this.timeout(60000);
   let connected = false;
+  let branch;
   let trainerA, trainerB, trainerC, trainerScopeChange, superAdmin;
   let memberSeq = 0;
 
@@ -43,7 +45,7 @@ describe("Phase 4 — Security + Concurrency + Integrity (integration)", functio
     memberSeq += 1;
     const prefix = gender === "Male" ? "M" : "F";
     return Member.create({
-      fullName: `P4 ${gender} ${gymId}`, fatherName: "Test", dob: new Date("1990-01-01"),
+      fullName: `P4 ${gender} ${gymId}`, branchId: branch._id, fatherName: "Test", dob: new Date("1990-01-01"),
       bloodGroup: "O+", gender, address: "T", occupation: "Student",
       aadhar: String(100000000000 + Math.floor(Math.random() * 900000000000)),
       phone: `9${String(7000000000 + Math.floor(Math.random() * 2000000000))}`.slice(0, 10),
@@ -58,7 +60,7 @@ describe("Phase 4 — Security + Concurrency + Integrity (integration)", functio
 
   const mkTrainer = async (scope = "male") => {
     const a = await Admin.create({
-      fullName: "P4 T", username: `p4t_${crypto.randomBytes(4).toString("hex")}`,
+      fullName: "P4 T", branchId: branch._id, username: `p4t_${crypto.randomBytes(4).toString("hex")}`,
       email: `${crypto.randomBytes(4).toString("hex")}@p4.local`, role: "trainer", scope,
       passwordHash: await bcrypt.hash(TRAINER_PASSWORD, 4), status: "active", tokenVersion: 0,
     });
@@ -69,6 +71,7 @@ describe("Phase 4 — Security + Concurrency + Integrity (integration)", functio
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
+      branch = await seedTestBranch();
       // Build indexes so DB invariants are enforced during tests.
       await DeviceRegistration.init();
       await Kiosk.init();
@@ -90,7 +93,7 @@ describe("Phase 4 — Security + Concurrency + Integrity (integration)", functio
       trainerC = await mkTrainer("female_plus_transgender");
       trainerScopeChange = await mkTrainer("male");
       superAdmin = (await Admin.create({
-        fullName: "P4 SA", username: `p4sa_${crypto.randomBytes(4).toString("hex")}`,
+        fullName: "P4 SA", branchId: branch._id, username: `p4sa_${crypto.randomBytes(4).toString("hex")}`,
         email: `${crypto.randomBytes(4).toString("hex")}@p4.local`, role: "superadmin", scope: "all",
         passwordHash: await bcrypt.hash(TRAINER_PASSWORD, 4), status: "active", tokenVersion: 0,
       }))._id;

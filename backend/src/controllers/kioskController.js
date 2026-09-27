@@ -104,6 +104,8 @@ export const kioskPunch = async (req, res) => {
       memberCode: payload.mode === "memberCode" ? payload.value : undefined,
       selectionToken: payload.mode === "selectionToken" ? payload.value : undefined,
       scope: req.kiosk?.scope,
+      // The device's branch — server-derived from the Kiosk doc by kioskAuth.
+      branchId: req.kiosk?.branchId,
       principal: { type: "kiosk", kioskId: req.kiosk?.kioskId },
     });
 

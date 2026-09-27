@@ -11,11 +11,20 @@ import mongoose from "mongoose";
 const dailySummarySchema = new mongoose.Schema(
   {
     // ========== KEY FIELDS ==========
-    // Compound unique key: date (00:00:00) - only one summary per day
+    // Multi-tenancy root: one summary per (branch, day).
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      required: true,
+      index: true,
+    },
+
+    // Compound unique key: branchId + date (00:00:00) — one summary per branch
+    // per day. The date-only unique index was removed by the multi-branch
+    // migration (scripts/migrate-add-branches.js).
     date: {
       type: Date,
       required: true,
-      unique: true,
       index: true,
       set: (v) => {
         // Store only date part, ignore time
@@ -97,6 +106,12 @@ const dailySummarySchema = new mongoose.Schema(
     timestamps: true,
     // Prevent summary modification once daily midnight passes
   }
+);
+
+// Compound unique: exactly one summary per branch per day.
+dailySummarySchema.index(
+  { branchId: 1, date: 1 },
+  { unique: true, name: "idx_dailysummary_branch_date_unique" }
 );
 
 // Compound index for efficient lookups of recent summaries

@@ -37,12 +37,17 @@ export const createKiosk = async (req, res) => {
       return res.status(400).json({ success: false, message: "kioskId is required (letters, numbers, - and _ only)" });
     }
 
-    const existing = await Kiosk.findOne({ kioskId });
+    // kioskId is unique PER BRANCH — the same physical label may exist in
+    // another branch without colliding.
+    const dupFilter = { kioskId };
+    if (req.branchId) dupFilter.branchId = req.branchId;
+    const existing = await Kiosk.findOne(dupFilter);
     if (existing) {
       return res.status(409).json({ success: false, message: "A kiosk with this kioskId already exists" });
     }
 
     const kiosk = await Kiosk.create({
+      branchId: req.branchId,
       kioskId: String(kioskId).trim(),
       name: String(name).trim(),
       scope,
@@ -68,7 +73,9 @@ export const createKiosk = async (req, res) => {
  */
 export const listKiosks = async (req, res) => {
   try {
-    const kiosks = await Kiosk.find().sort({ createdAt: -1 }).lean();
+    const kiosks = await Kiosk.find(req.branchId ? { branchId: req.branchId } : {})
+      .sort({ createdAt: -1 })
+      .lean();
     return res.json({ success: true, kiosks: kiosks.map(toPublicKiosk) });
   } catch (err) {
     logger.error("Error listing kiosks", { error: err.message });
@@ -82,7 +89,10 @@ export const listKiosks = async (req, res) => {
  */
 export const updateKiosk = async (req, res) => {
   try {
-    const kiosk = await Kiosk.findById(req.params.id);
+    const kiosk = await Kiosk.findOne({
+      _id: req.params.id,
+      ...(req.branchId ? { branchId: req.branchId } : {}),
+    });
     if (!kiosk) {
       return res.status(404).json({ success: false, message: "Kiosk not found" });
     }
@@ -110,7 +120,10 @@ export const updateKiosk = async (req, res) => {
  */
 export const deleteKiosk = async (req, res) => {
   try {
-    const kiosk = await Kiosk.findByIdAndDelete(req.params.id);
+    const kiosk = await Kiosk.findOneAndDelete({
+      _id: req.params.id,
+      ...(req.branchId ? { branchId: req.branchId } : {}),
+    });
     if (!kiosk) {
       return res.status(404).json({ success: false, message: "Kiosk not found" });
     }

@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import Admin from "../src/models/Admin.js";
+import { seedDefaultBranch } from "./migrate-add-branches.js";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -28,6 +29,10 @@ async function createAdmin() {
 
     console.log("✅ Connected to MongoDB Atlas!\n");
 
+    // Admins are branch-bound (branchId required): attach the default branch,
+    // creating it if this is a fresh database.
+    const branch = await seedDefaultBranch();
+
     // ========================================================================
     // NEW ADMIN CREDENTIALS
     // ========================================================================
@@ -48,6 +53,7 @@ async function createAdmin() {
 
     // Create admin
     const admin = new Admin({
+      branchId: branch._id,
       fullName: newAdmin.fullName,
       username: newAdmin.username,
       email: newAdmin.email,

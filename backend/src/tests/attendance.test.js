@@ -18,6 +18,7 @@ import '../models/SystemSettings.js';
 import attendanceService, { AttendanceStateError } from '../services/attendanceService.js';
 import systemSettingsService from '../services/systemSettingsService.js';
 import scopeResolver from '../core/scopeResolver.js';
+import { seedTestBranch } from './utils/branchFixture.js';
 
 const Attendance = mongoose.model('Attendance');
 const Member = mongoose.model('Member');
@@ -44,6 +45,11 @@ describe('Attendance atomic primitives (unit)', () => {
     if (typeof Attendance.create === 'function') {
       original = Attendance.create;
     }
+    let originalMemberFindById;
+    if (typeof Member.findById === 'function') {
+      originalMemberFindById = Member.findById;
+    }
+    Member.findById = () => ({ select: () => ({ lean: async () => ({ branchId: '64b000000000000000000001' }) }) });
     Attendance.create = async () => { throw dupError; };
     try {
       await attendanceService.punchIn('507f1f77bcf86cd799439011', new Date(), { state: 'inside' });
@@ -54,6 +60,7 @@ describe('Attendance atomic primitives (unit)', () => {
       expect(err.status).to.equal(409);
     } finally {
       Attendance.create = original;
+      Member.findById = originalMemberFindById;
     }
   });
 
@@ -62,6 +69,11 @@ describe('Attendance atomic primitives (unit)', () => {
     if (typeof Attendance.create === 'function') {
       original = Attendance.create;
     }
+    let originalMemberFindById;
+    if (typeof Member.findById === 'function') {
+      originalMemberFindById = Member.findById;
+    }
+    Member.findById = () => ({ select: () => ({ lean: async () => ({ branchId: '64b000000000000000000001' }) }) });
     Attendance.create = async () => { throw new Error('connection lost'); };
     try {
       await attendanceService.punchIn('507f1f77bcf86cd799439011', new Date(), { state: 'inside' });
@@ -71,6 +83,7 @@ describe('Attendance atomic primitives (unit)', () => {
       expect(err.message).to.equal('connection lost');
     } finally {
       Attendance.create = original;
+      Member.findById = originalMemberFindById;
     }
   });
 
@@ -127,11 +140,13 @@ describe('Attendance scope resolution (unit)', () => {
 describe('Attendance identity + scope + concurrency (integration)', function () {
   this.timeout(30000);
   let connected = false;
+  let branch;
 
   before(async function () {
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
+      branch = await seedTestBranch();
       await Attendance.deleteMany({});
       await Member.deleteMany({});
       await SystemSettings.deleteMany({});
@@ -151,6 +166,7 @@ describe('Attendance identity + scope + concurrency (integration)', function () 
   const makeMember = async (gender, gymId, overrides = {}) =>
     Member.create({
       fullName: `Test ${gender} ${gymId}`,
+      branchId: branch._id,
       fatherName: 'Test',
       dob: new Date('1990-01-01'),
       bloodGroup: 'O+',
@@ -186,6 +202,7 @@ describe('Attendance identity + scope + concurrency (integration)', function () 
     today.setHours(0, 0, 0, 0);
 
     const record = await Attendance.create({
+      branchId: branch._id,
       memberId: male._id,
       date: today,
       checkInTime: new Date(),
@@ -377,6 +394,7 @@ describe('Attendance identity + scope + concurrency (integration)', function () 
     yesterday.setHours(0, 0, 0, 0);
 
     await Attendance.create({
+      branchId: branch._id,
       memberId: member._id,
       date: yesterday,
       checkInTime: new Date(yesterday.getTime() + 9 * 60 * 60 * 1000),

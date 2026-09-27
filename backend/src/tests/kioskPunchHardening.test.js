@@ -29,6 +29,7 @@ import kioskAuth from "../middleware/kioskAuth.js";
 import { kioskPunch, validatePunchPayload } from "../controllers/kioskController.js";
 import config from "../config/index.js";
 import systemSettingsService from "../services/systemSettingsService.js";
+import { seedTestBranch } from "./utils/branchFixture.js";
 
 const KIOSK_ID = "kiosk-hardening-test";
 const KIOSK_KEY = crypto.randomBytes(32).toString("base64url");
@@ -212,6 +213,7 @@ describe("Kiosk punch integration — zero third-party I/O + fail-closed paths",
   this.timeout(60000);
 
   let mongoServer;
+  let branch;
   let maleMember;
   let femaleMember;
   const noop = () => {};
@@ -234,7 +236,9 @@ describe("Kiosk punch integration — zero third-party I/O + fail-closed paths",
     });
     await mongoose.connect(mongoServer.getUri(), { dbName: "gym_kiosk_hardening" });
 
-    await Kiosk.create({ kioskId: KIOSK_ID, name: "Hardening Kiosk", scope: "male", enabled: true });
+    branch = await seedTestBranch();
+
+    await Kiosk.create({ kioskId: KIOSK_ID, name: "Hardening Kiosk", scope: "male", enabled: true, branchId: branch._id });
 
     await DeviceRegistration.create({
       registrationId: crypto.randomUUID(),
@@ -259,6 +263,7 @@ describe("Kiosk punch integration — zero third-party I/O + fail-closed paths",
 
     const baseMember = (overrides) => ({
       fullName: "Hardening Member",
+      branchId: branch._id,
       fatherName: "Test Father",
       dob: new Date("1995-01-01"),
       bloodGroup: "O+",

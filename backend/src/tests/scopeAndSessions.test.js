@@ -34,6 +34,7 @@ import Counter from '../services/atomicCounter.js';
 import DraftRegistration from '../models/DraftRegistration.js';
 import config from '../config/index.js';
 import redisClient from '../config/redis.js';
+import { seedTestBranch } from './utils/branchFixture.js';
 
 const DB_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/gym_test';
 
@@ -41,11 +42,13 @@ describe('Gender scope + per-device sessions (integration)', function () {
   this.timeout(30000);
 
   let connected = false;
+  let branch;
 
   before(async function () {
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
+      branch = await seedTestBranch();
       // Keep the DB clean for repeatable runs (isolated test database).
       await AdminSession.deleteMany({});
       await Admin.deleteMany({});
@@ -68,6 +71,7 @@ describe('Gender scope + per-device sessions (integration)', function () {
   const makeAdmin = async (role, scope) => {
     const admin = await Admin.create({
       fullName: `Scope Test ${role} ${scope}`,
+      branchId: branch._id,
       username: `scope_test_${role}_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
       email: `scope_test_${Date.now()}${Math.floor(Math.random() * 1000)}@example.com`,
       role,
@@ -138,6 +142,7 @@ describe('Gender scope + per-device sessions (integration)', function () {
     today.setHours(0, 0, 0, 0);
 
     const maleMember = await Member.create({
+      branchId: branch._id,
       gymId: 10101,
       fullName: 'Scope Test Male',
       fatherName: 'Father',
@@ -155,6 +160,7 @@ describe('Gender scope + per-device sessions (integration)', function () {
       status: 'active',
     });
     const femaleMember = await Member.create({
+      branchId: branch._id,
       gymId: 10102,
       fullName: 'Scope Test Female',
       fatherName: 'Father',
@@ -173,8 +179,8 @@ describe('Gender scope + per-device sessions (integration)', function () {
     });
 
     await Attendance.create([
-      { memberId: maleMember._id, date: today, checkInTime: new Date(), state: 'inside' },
-      { memberId: femaleMember._id, date: today, checkInTime: new Date(), state: 'inside' },
+      { branchId: branch._id, memberId: maleMember._id, date: today, checkInTime: new Date(), state: 'inside' },
+      { branchId: branch._id, memberId: femaleMember._id, date: today, checkInTime: new Date(), state: 'inside' },
     ]);
 
     const maleScopeIds = await scopeResolver.getScopedMemberIds({ admin: { scope: 'male' } }, Member);
@@ -196,17 +202,20 @@ describe('adminAuth — STRICT per-session contract (integration)', function () 
   let connected = false;
   let admin;
   let session;
+  let branch;
 
   before(async function () {
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
+      branch = await seedTestBranch();
       config.jwt.accessSecret = 'test-access-secret';
       config.jwt.refreshSecret = 'test-refresh-secret';
       await AdminSession.deleteMany({});
       await Admin.deleteMany({ username: { $regex: /^auth_test_/ } });
       admin = await Admin.create({
         fullName: 'Auth Test Admin',
+        branchId: branch._id,
         username: `auth_test_${Date.now()}`,
         email: `auth_test_${Date.now()}@example.com`,
         role: 'trainer',
@@ -329,6 +338,7 @@ describe('adminAuth — STRICT per-session contract (integration)', function () 
   it('8. session belonging to a different admin → rejected', async () => {
     const otherAdmin = await Admin.create({
       fullName: 'Other Admin',
+      branchId: branch._id,
       username: `auth_test_other_${Date.now()}`,
       email: `auth_test_other_${Date.now()}@example.com`,
       role: 'trainer',
@@ -357,6 +367,7 @@ describe('member filtering + pagination + trainer scope (integration)', function
   this.timeout(30000);
 
   let connected = false;
+  let branch;
   const testGymIds = [];
 
   const mockRes = () => {
@@ -372,6 +383,7 @@ describe('member filtering + pagination + trainer scope (integration)', function
     return Member.create({
       gymId,
       fullName: `Filter Test ${gender} ${prefix}`,
+      branchId: branch._id,
       fatherName: 'Father',
       dob: new Date(1992, 3, 10),
       bloodGroup: 'O+',
@@ -392,6 +404,7 @@ describe('member filtering + pagination + trainer scope (integration)', function
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
+      branch = await seedTestBranch();
       // Deterministic counts: getAllMembers is DB-wide, so clear ALL members
       // (and attendance) in the isolated test DB before seeding.
       await Member.deleteMany({});
@@ -511,6 +524,7 @@ describe('member identity: duplicate gymId + scope-aware lookup + atomic counter
   this.timeout(30000);
 
   let connected = false;
+  let branch;
 
   const mockRes = () => {
     const res = { statusCode: 200, body: null };
@@ -523,6 +537,7 @@ describe('member identity: duplicate gymId + scope-aware lookup + atomic counter
     Member.create({
       gymId,
       fullName: `Identity ${gender} ${gymId}`,
+      branchId: branch._id,
       fatherName: 'Father',
       dob: new Date(1990, 1, 1),
       bloodGroup: 'O+',
@@ -543,6 +558,7 @@ describe('member identity: duplicate gymId + scope-aware lookup + atomic counter
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
+      branch = await seedTestBranch();
       await Member.deleteMany({ gymId: { $gte: 55000, $lte: 55999 } });
       await Counter.deleteMany({ key: { $in: ['gym_id_TEST'] } });
       // Pre-create members needed by the tests
@@ -661,6 +677,7 @@ describe('register member: scope matrix + M/F counter + idempotency + draft isol
   this.timeout(40000);
 
   let connected = false;
+  let branch;
 
   const mockRes = () => {
     const res = { statusCode: 200, body: null };
@@ -690,6 +707,7 @@ describe('register member: scope matrix + M/F counter + idempotency + draft isol
       ...overrides,
     },
     file: null,
+    branchId: branch._id,
     admin: { id: new mongoose.Types.ObjectId(), username: 'regtest', role, scope },
     sessionId: `ses-${scope}-${Math.random().toString(36).slice(2, 8)}`,
     ip: '127.0.0.1',
@@ -716,6 +734,7 @@ describe('register member: scope matrix + M/F counter + idempotency + draft isol
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
+      branch = await seedTestBranch();
       await Member.deleteMany({ fullName: /^Reg / });
       await DraftRegistration.deleteMany({});
     } catch (err) {

@@ -2,6 +2,14 @@ import mongoose from "mongoose";
 
 const PackageSchema = new mongoose.Schema(
   {
+    // Multi-tenancy root: packages are defined per branch.
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      required: true,
+      index: true,
+    },
+
     name: { type: String, required: true },
     months: { type: Number, required: true },
 

@@ -1,4 +1,5 @@
 // controllers/paymentController.js - Payment and finance operations
+import mongoose from "mongoose";
 import paymentRepository from "../repositories/paymentRepository.js";
 import memberRepository from "../repositories/memberRepository.js";
 import { auditActions } from "../utils/auditLog.js";
@@ -10,6 +11,11 @@ import Member from "../models/Member.js";
 import { updateTodaySummary } from "../services/summaryService.js";
 import { executeFinanceReconciliation } from "../jobs/financeReconcileJob.js";
 import { CRON_CONFIG } from "../config/cronConfig.js";
+
+// Aggregation $match does not cast — convert branchId to ObjectId explicitly.
+// undefined (not {}) so an internal cross-branch caller adds no predicate.
+const branchMatch = (branchId) =>
+  branchId ? { branchId: new mongoose.Types.ObjectId(String(branchId)) } : undefined;
 
 const toPlainObject = (value) => {
   if (!value) return {};
@@ -60,8 +66,9 @@ export const paymentController = {
       throw new ValidationError("Missing required fields");
     }
 
-    // Create finance log
+    // Create finance log — stamped with the admin's branch (tenancy root).
     const financeLog = await paymentRepository.createFinance({
+      branchId: req.branchId,
       gymId: Number(gymId),
       memberName: name,
       amount: Number(amount),
@@ -73,6 +80,7 @@ export const paymentController = {
 
     // Create payment log
     const paymentLog = await paymentRepository.createPayment({
+      branchId: req.branchId,
       gymId: Number(gymId),
       name,
       plan,
@@ -105,7 +113,7 @@ export const paymentController = {
   getPayments: asyncHandler(async (req, res) => {
     const { page = 1, pageSize = 10, gymId, startDate, endDate } = req.query;
 
-    const filters = {};
+    const filters = { branchId: req.branchId };
     if (gymId) filters.gymId = Number(gymId);
 
     if (startDate && endDate) {
@@ -151,7 +159,10 @@ export const paymentController = {
   getPaymentsByMember: asyncHandler(async (req, res) => {
     const { gymId } = req.params;
 
-    const payments = await paymentRepository.findPaymentsByMember(Number(gymId));
+    const payments = await paymentRepository.findPaymentsByMember(
+      Number(gymId),
+      req.branchId
+    );
 
     return res.json({
       success: true,
@@ -166,7 +177,8 @@ export const paymentController = {
 
     const metrics = await paymentRepository.getRevenueMetrics(
       range.start,
-      range.end
+      range.end,
+      req.branchId
     );
 
     return res.json({
@@ -181,7 +193,8 @@ export const paymentController = {
 
     const revenue = await paymentRepository.getTotalRevenue(
       range.start,
-      range.end
+      range.end,
+      req.branchId
     );
 
     return res.json({
@@ -196,7 +209,8 @@ export const paymentController = {
 
     const revenue = await paymentRepository.getRevenueByMode(
       range.start,
-      range.end
+      range.end,
+      req.branchId
     );
 
     return res.json({
@@ -213,8 +227,10 @@ export const paymentController = {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const [summary, logs] = await Promise.all([
-      DailySummary.findOne({ date: today }),
-      FinanceLog.find({ date: { $gte: today, $lt: tomorrow } }).sort({ date: -1 }).lean(),
+      DailySummary.findOne({ branchId: req.branchId, date: today }),
+      FinanceLog.find({ branchId: req.branchId, date: { $gte: today, $lt: tomorrow } })
+        .sort({ date: -1 })
+        .lean(),
     ]);
 
     const payload = normalizeSummaryPayload(summary || {}, logs);
@@ -229,7 +245,12 @@ export const paymentController = {
     }
 
     const { start, end } = range;
-    const logs = await FinanceLog.find({ date: { $gte: start, $lte: end } }).sort({ date: -1 }).lean();
+    const logs = await FinanceLog.find({
+      branchId: req.branchId,
+      date: { $gte: start, $lte: end },
+    })
+      .sort({ date: -1 })
+      .lean();
 
     const payload = {
       totalAmount: 0,
@@ -254,6 +275,7 @@ export const paymentController = {
     const memberCountAgg = await Member.aggregate([
       {
         $match: {
+          ...branchMatch(req.branchId),
           paymentStatus: "paid",
           createdAt: { $gte: start, $lte: end },
         },
@@ -278,7 +300,7 @@ export const paymentController = {
   // Dashboard chart: Age buckets
   getAgeDistribution: asyncHandler(async (req, res) => {
     const range = buildDateRange(req.query);
-    const matchStage = {};
+    const matchStage = { ...branchMatch(req.branchId) };
     if (range) {
       matchStage.createdAt = { $gte: range.start, $lte: range.end };
     }
@@ -320,7 +342,7 @@ export const paymentController = {
   // Dashboard chart: Payment mode contribution
   getSourceContribution: asyncHandler(async (req, res) => {
     const range = buildDateRange(req.query);
-    const matchStage = {};
+    const matchStage = { ...branchMatch(req.branchId) };
     if (range) {
       matchStage.paidAt = { $gte: range.start, $lte: range.end };
     }
@@ -348,7 +370,7 @@ export const paymentController = {
   // Dashboard chart: Plan contribution
   getPlanDistribution: asyncHandler(async (req, res) => {
     const range = buildDateRange(req.query);
-    const matchStage = {};
+    const matchStage = { ...branchMatch(req.branchId) };
     if (range) {
       matchStage.date = { $gte: range.start, $lte: range.end };
     }
@@ -387,12 +409,20 @@ export const paymentController = {
       throw new NotFoundError("Payment not found");
     }
 
+    // Cross-branch refund protection: an admin may only refund within their
+    // own branch (a payment id from another branch reads as "not found").
+    if (req.branchId && String(payment.branchId) !== String(req.branchId)) {
+      throw new NotFoundError("Payment not found");
+    }
+
     if (refundAmount > payment.amount) {
       throw new ValidationError("Refund amount cannot exceed original payment amount");
     }
 
-    // Update payment log (add refund record)
+    // Update payment log (add refund record). The refund inherits the
+    // ORIGINAL payment's branch — a refund can never land in another branch.
     await PaymentLog.create({
+      branchId: payment.branchId,
       gymId: payment.gymId,
       name: payment.name,
       plan: payment.plan,
@@ -422,7 +452,7 @@ export const paymentController = {
   getFinanceLogs: asyncHandler(async (req, res) => {
     const { page = 1, pageSize = 10, startDate, endDate } = req.query;
 
-    const filters = {};
+    const filters = { branchId: req.branchId };
 
     if (startDate && endDate) {
       const logs = await paymentRepository.findByDateRange(
@@ -458,7 +488,7 @@ export const paymentController = {
 
   // Delete payment
   deletePayment: asyncHandler(async (req, res) => {
-    const payment = await paymentRepository.deletePayment(req.params.id);
+    const payment = await paymentRepository.deletePayment(req.params.id, req.branchId);
 
     if (!payment) {
       throw new NotFoundError("Payment not found");
@@ -487,9 +517,13 @@ export const paymentController = {
         ? Math.min(requested, lookbackDays)
         : lookbackDays;
 
+    // The admin's on-demand run is scoped to THEIR branch (admins are
+    // branch-bound); the nightly cron passes branchId: null and iterates
+    // every active branch inside the service.
     const report = await executeFinanceReconciliation({
       lookbackDays: days,
       driftAlertThreshold,
+      branchId: req.branchId ?? null,
     });
 
     return res.json({

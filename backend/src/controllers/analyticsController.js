@@ -12,7 +12,8 @@ export const analyticsController = {
     const start = startDate || new Date().toISOString().split("T")[0];
     const end = endDate || new Date().toISOString().split("T")[0];
 
-    const metrics = await analyticsService.getAnalyticsMetrics(start, end);
+    // Branch partition attached by branchContext — metrics never cross branches.
+    const metrics = await analyticsService.getAnalyticsMetrics(start, end, req.branchId);
 
     return res.json({
       success: true,
@@ -38,7 +39,7 @@ export const analyticsController = {
     // dateRange was never passed to the generator, so rendering the report
     // header threw 'Cannot read properties of undefined' and every export
     // request returned HTTP 500.
-    const metrics = await analyticsService.getAnalyticsMetrics(start, end);
+    const metrics = await analyticsService.getAnalyticsMetrics(start, end, req.branchId);
 
     // CPU-bound pdfkit layout and font subsetting now runs on a worker thread.
     const pdfBuffer = await generatePDFInWorker(metrics, dateRange);

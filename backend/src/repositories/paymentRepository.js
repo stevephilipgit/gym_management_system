@@ -1,6 +1,12 @@
 // repositories/paymentRepository.js - Data access layer for payments
+import mongoose from "mongoose";
 import PaymentLog from "../models/PaymentLog.js";
 import FinanceLog from "../models/FinanceLog.js";
+
+// Aggregation $match does not run mongoose casting — convert explicitly.
+// Returns undefined when branchId is null (internal/cross-branch callers only).
+const branchMatch = (branchId) =>
+  branchId ? { branchId: new mongoose.Types.ObjectId(String(branchId)) } : {};
 
 class PaymentRepository {
   // ============= PAYMENT LOG METHODS =============
@@ -41,14 +47,20 @@ class PaymentRepository {
     }).populate("dietId");
   }
 
-  // Delete payment
-  async deletePayment(id) {
-    return PaymentLog.findByIdAndDelete(id);
+  // Delete payment — scoped to one branch when branchId is given, so an
+  // admin can never delete another branch's record by id.
+  async deletePayment(id, branchId = null) {
+    const filter = { _id: id };
+    if (branchId) filter.branchId = branchId;
+    return PaymentLog.findOneAndDelete(filter);
   }
 
-  // Find payments by member (gym ID)
-  async findPaymentsByMember(gymId) {
-    return PaymentLog.find({ gymId }).sort({ paidAt: -1 }).populate("dietId");
+  // Find payments by member (gym ID) — scoped to one branch when given
+  // (gymId can legitimately repeat across branches).
+  async findPaymentsByMember(gymId, branchId = null) {
+    const filter = { gymId };
+    if (branchId) filter.branchId = branchId;
+    return PaymentLog.find(filter).sort({ paidAt: -1 }).populate("dietId");
   }
 
   // Find payments by date range
@@ -61,12 +73,13 @@ class PaymentRepository {
       .populate("dietId");
   }
 
-  // Get revenue metrics
-  async getRevenueMetrics(startDate, endDate) {
+  // Get revenue metrics (per branch when branchId is given)
+  async getRevenueMetrics(startDate, endDate, branchId = null) {
     const payments = await PaymentLog.aggregate([
       {
         $match: {
           paidAt: { $gte: startDate, $lte: endDate },
+          ...branchMatch(branchId),
         },
       },
       {
@@ -82,12 +95,13 @@ class PaymentRepository {
     return payments;
   }
 
-  // Get revenue by payment mode
-  async getRevenueByMode(startDate, endDate) {
+  // Get revenue by payment mode (per branch when branchId is given)
+  async getRevenueByMode(startDate, endDate, branchId = null) {
     return PaymentLog.aggregate([
       {
         $match: {
           paidAt: { $gte: startDate, $lte: endDate },
+          ...branchMatch(branchId),
         },
       },
       {
@@ -100,12 +114,13 @@ class PaymentRepository {
     ]);
   }
 
-  // Get total revenue
-  async getTotalRevenue(startDate, endDate) {
+  // Get total revenue (per branch when branchId is given)
+  async getTotalRevenue(startDate, endDate, branchId = null) {
     const result = await PaymentLog.aggregate([
       {
         $match: {
           paidAt: { $gte: startDate, $lte: endDate },
+          ...branchMatch(branchId),
         },
       },
       {

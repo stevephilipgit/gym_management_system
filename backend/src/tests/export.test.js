@@ -30,6 +30,7 @@ import { toCsvLine, toCsv, escapeField } from "../utils/csvSafety.js";
 import { buildPunchResponse } from "../utils/attendanceInput.js";
 import { generateDailyExport } from "../services/attendanceExportService.js";
 import { notifyExportReady } from "../services/notificationService.js";
+import { seedTestBranch } from "./utils/branchFixture.js";
 
 const Attendance = mongoose.model("Attendance");
 const Member = mongoose.model("Member");
@@ -118,11 +119,13 @@ describe("punch response DTO (unit)", () => {
 describe("Daily attendance export (integration)", function () {
   this.timeout(30000);
   let connected = false;
+  let branch;
 
   before(async function () {
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
+      branch = await seedTestBranch();
       await Attendance.deleteMany({});
       await Member.deleteMany({});
       await AttendanceExport.deleteMany({});
@@ -149,6 +152,7 @@ describe("Daily attendance export (integration)", function () {
     const prefix = gender === "Male" ? "M" : "F";
     return Member.create({
       fullName: `Test ${gender} ${gymId}`,
+      branchId: branch._id,
       fatherName: "Test",
       dob: new Date("1990-01-01"),
       bloodGroup: "O+",
@@ -170,6 +174,7 @@ describe("Daily attendance export (integration)", function () {
 
   const makeAttendance = async (memberId, date, checkInTime, checkOutTime = null, state = "inside") =>
     Attendance.create({
+      branchId: branch._id,
       memberId,
       date,
       checkInTime,

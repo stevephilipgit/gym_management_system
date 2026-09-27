@@ -2,6 +2,16 @@ import mongoose from 'mongoose';
 
 const enquirySchema = new mongoose.Schema(
   {
+    // Multi-tenancy root: resolved from preferred_branch at creation
+    // (Mathur -> MATHUR, Vepery -> VEPERY when that branch exists,
+    // "Any Branch"/unmapped -> first active branch).
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Branch',
+      required: true,
+      index: true,
+    },
+
     name: {
       type: String,
       required: true,

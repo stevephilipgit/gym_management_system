@@ -130,21 +130,26 @@ function isSameSequenceIntegrityViolation(matches) {
 }
 
 /**
- * Resolve a Gym ID / phone input within the DEVICE's scope.
+ * Resolve a Gym ID / phone input within the DEVICE's scope and branch.
  *
  * Phase 4: the physical device carries a fixed server-controlled scope. A Male
  * device only ever resolves Male members; a Female/T device only resolves
  * Female + Transgender. A member outside the device scope is indistinguishable
  * from "not found" (no cross-gender leakage).
  *
+ * Multi-branch: phone and gymId are only unique WITHIN a branch, so every
+ * query is additionally filtered by the device's branchId. A kiosk can never
+ * resolve a member of another branch (cross-branch → not found, no leak).
+ *
  * @param {string} input  raw gym-id or phone
  * @param {string} [scope] device scope from the parent Kiosk ("male" |
  *                         "female_plus_transgender"); when absent, all genders
  *                         are searched (legacy/no-scope path only)
+ * @param {string} [branchId] device branch — scopes both queries
  * @returns {Promise<{ type: string, value, matches: object[] }>}
  * @throws {KioskError}
  */
-async function resolveMembersByInput(input, scope) {
+async function resolveMembersByInput(input, scope, branchId = null) {
   const { type, value, error } = validateSearchInput(input);
   if (error) {
     throw new KioskError(400, "Invalid input. Enter Gym ID or Phone Number.");
@@ -154,15 +159,18 @@ async function resolveMembersByInput(input, scope) {
 
   let matches;
   if (type === "phone") {
-    // Phone is globally unique — resolve directly, then verify the member is
-    // within the device scope. Out-of-scope phone → not found (no leak).
-    const member = await Member.findOne({ phone: value }).lean();
+    // Phone is unique per branch — scoped resolve, then verify the member is
+    // within the device scope. Out-of-scope / wrong branch → not found (no leak).
+    const phoneFilter = { phone: value };
+    if (branchId) phoneFilter.branchId = branchId;
+    const member = await Member.findOne(phoneFilter).lean();
     matches = member ? (allowedGenders && !allowedGenders.includes(member.gender) ? [] : [member]) : [];
   } else {
-    // gymId is only unique within a gender. Search WITHIN the device scope so
-    // legitimate cross-gym collisions (Male 192 + Female 192) never mix on one
-    // physical device. Indexed ({gymId, gender} compound unique).
+    // gymId is only unique within a (branch, gender). Search WITHIN the device
+    // scope + branch so legitimate collisions (Male 192 + Female 192, or the
+    // same number in another branch) never mix on one physical device.
     const filter = { gymId: value };
+    if (branchId) filter.branchId = branchId;
     if (allowedGenders) {
       filter.gender = { $in: allowedGenders };
     }
@@ -189,8 +197,8 @@ async function resolveMembersByInput(input, scope) {
  *   member?, matches?, candidates?, integrity?: boolean
  * }>}
  */
-async function resolveForInput(input, kioskId, scope) {
-  const { type, value, matches } = await resolveMembersByInput(input, scope);
+async function resolveForInput(input, kioskId, scope, branchId = null) {
+  const { type, value, matches } = await resolveMembersByInput(input, scope, branchId);
 
   if (matches.length === 0) {
     return { status: "not_found", type, value };
@@ -379,19 +387,23 @@ async function executePunchUnderLock(member, now) {
  * @param {string} [params.selectionToken]  post-picker selection token
  * @param {string} params.scope             server-authoritative scope ("male" |
  *                                          "female_plus_transgender")
+ * @param {string} [params.branchId]        device/admin branch — all member
+ *                                          resolution is scoped to it
  * @param {object} params.principal         { type, kioskId?|adminId }
  * @returns {Promise<object>} response payload
  */
-export async function performKioskPunch({ input, memberCode, selectionToken, scope, principal, now }) {
+export async function performKioskPunch({ input, memberCode, selectionToken, scope, principal, branchId = null, now }) {
   // Principal identity used to bind selection tokens (stable per attendance
   // context). kioskId for trainer devices; adminId for Super Admin.
   const principalId = principal?.type === "superadmin" ? `superadmin:${principal.adminId}` : principal?.kioskId || null;
   const allowedGenders = scope ? GENDERS_FOR_SCOPE[scope] || null : null;
   const clock = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
 
-  // A member within the device scope? (defense-in-depth on exact paths)
+  // A member within the device scope AND branch? (defense-in-depth on exact
+  // paths — the branch check reads as "not found", never leaking existence).
   const inScope = (member) =>
-    !allowedGenders || (member && allowedGenders.includes(member.gender));
+    (!allowedGenders || (member && allowedGenders.includes(member.gender))) &&
+    (!branchId || (member && String(member.branchId) === String(branchId)));
 
   // ── Mode: selection token ─────────────────────────────────────────────────
   if (selectionToken) {
@@ -408,7 +420,9 @@ export async function performKioskPunch({ input, memberCode, selectionToken, sco
 
   // ── Mode: memberCode (post-picker exact selection) ────────────────────────
   if (memberCode) {
-    const member = await Member.findOne({ memberCode }).lean();
+    const codeFilter = { memberCode };
+    if (branchId) codeFilter.branchId = branchId;
+    const member = await Member.findOne(codeFilter).lean();
     if (!member || !inScope(member)) {
       throw new KioskError(404, "Member not found.");
     }
@@ -417,7 +431,7 @@ export async function performKioskPunch({ input, memberCode, selectionToken, sco
 
   // ── Mode: input (normal customer path — resolve then act) ─────────────────
   if (input) {
-    const resolution = await resolveForInput(input, principalId, scope);
+    const resolution = await resolveForInput(input, principalId, scope, branchId);
 
     switch (resolution.status) {
       case "not_found":

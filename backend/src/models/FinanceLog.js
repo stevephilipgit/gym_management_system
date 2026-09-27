@@ -3,6 +3,14 @@ import mongoose from "mongoose";
 
 const financeLogSchema = new mongoose.Schema(
   {
+    // Multi-tenancy root: the branch this transaction was recorded in.
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      required: true,
+      index: true,
+    },
+
     gymId: {
       type: Number,
       required: true,

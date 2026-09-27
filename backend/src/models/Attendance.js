@@ -2,6 +2,13 @@ import mongoose from 'mongoose';
 
 const attendanceSchema = new mongoose.Schema(
   {
+    // Multi-tenancy root: derived from the member's branch at punch time.
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Branch',
+      required: true,
+      index: true,
+    },
     memberId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Member',

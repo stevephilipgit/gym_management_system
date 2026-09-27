@@ -29,6 +29,7 @@ import { errorHandler } from "./core/errorHandler.js";
 // ✅ Import models early to register them with Mongoose
 import "./models/Attendance.js";
 import "./models/SystemSettings.js";
+import "./models/Branch.js";
 import "./models/Member.js";
 import "./models/Enquiry.js";
 import "./models/ChatSession.js";

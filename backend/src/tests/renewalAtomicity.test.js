@@ -24,6 +24,7 @@ import FinanceLog from "../models/FinanceLog.js";
 import DailySummary from "../models/DailySummary.js";
 import { memberController } from "../controllers/memberController.js";
 import { memberRenewSchema } from "../schemas/memberSchema.js";
+import { seedTestBranch } from "./utils/branchFixture.js";
 
 // Minimal req/res harness — asyncHandler routes rejected promises to next().
 const makeRes = () => {
@@ -55,9 +56,11 @@ const superAdminReq = (body, params = {}) => ({
 });
 
 let gymIdSeq = 0;
+let branch;
 
 const makeMember = (overrides = {}) =>
   Member.create({
+    branchId: branch._id,
     gymId: (gymIdSeq += 1),
     memberCode: `M${String(gymIdSeq).padStart(4, "0")}`,
     fullName: "Ravi Kumar",
@@ -97,6 +100,7 @@ describe("P0 financial drift guards — renewMember / updateMember", function ()
       replSet: { count: 1, storageEngine: "wiredTiger" },
     });
     await mongoose.connect(mongoServer.getUri(), { dbName: "gym_test" });
+    branch = await seedTestBranch();
   });
 
   after(async function () {

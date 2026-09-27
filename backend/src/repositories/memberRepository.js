@@ -25,10 +25,12 @@ class MemberRepository {
   }
 
   // Find by Gym ID with optional scope + disambiguation.
-  // opts = { allowedGenders, memberCode }
-  //   memberCode · globally unique — exact match, ignores scope.
+  // opts = { allowedGenders, memberCode, branchId }
+  //   memberCode · globally unique — exact match, ignores gender scope
+  //                (branch scoping below still applies when given).
   //   allowedGenders · scoped lookup (trainer resolve).
-  //   neither · backward-compatible unscoped lookup.
+  //   branchId · tenancy filter — when given the member must belong to it.
+  //   neither · backward-compatible unscoped lookup (internal/legacy callers).
   async findByGymId(gymId, opts = {}) {
     const parsedGymId = this.normalizeGymId(gymId);
     if (!parsedGymId) return null;
@@ -38,14 +40,19 @@ class MemberRepository {
     } else if (opts.allowedGenders && opts.allowedGenders.length > 0) {
       filter.gender = { $in: opts.allowedGenders };
     }
+    if (opts.branchId) filter.branchId = opts.branchId;
     return Member.findOne(filter).populate("dietId");
   }
 
-  // Find all members with a given gymId (for superadmin disambiguation).
-  async findAllByGymId(gymId) {
+  // Find all members with a given gymId (for public disambiguation).
+  // branchId (optional) scopes the lookup to one branch; when omitted the
+  // search spans ALL branches and the caller must handle multiple matches.
+  async findAllByGymId(gymId, branchId = null) {
     const parsed = this.normalizeGymId(gymId);
     if (!parsed) return [];
-    return Member.find({ gymId: parsed }).populate("dietId").lean();
+    const filter = { gymId: parsed };
+    if (branchId) filter.branchId = branchId;
+    return Member.find(filter).populate("dietId").lean();
   }
 
   // Find by phone with optional scope
@@ -57,6 +64,17 @@ class MemberRepository {
       filter.gender = { $in: allowedGenders };
     }
     return Member.findOne(filter).populate("dietId");
+  }
+
+  // Find ALL members with a given phone. Phone is unique per BRANCH, so an
+  // unscoped search can return several records (one per branch) — the caller
+  // resolves or reports ambiguity instead of silently picking one.
+  async findAllByPhone(phone, branchId = null) {
+    const normalizedPhone = String(phone ?? "").replace(/\D/g, "");
+    if (!normalizedPhone) return [];
+    const filter = { phone: normalizedPhone };
+    if (branchId) filter.branchId = branchId;
+    return Member.find(filter).populate("dietId").lean();
   }
 
   // Find all members with filters
@@ -96,9 +114,10 @@ class MemberRepository {
   }
 
   // Update by Gym ID with optimistic concurrency and optional scope.
-  // opts = { allowedGenders, memberCode, session }
+  // opts = { allowedGenders, memberCode, session, branchId }
   //   session — when supplied the update joins the caller's transaction, so a
   //   later failure rolls the member change back with the rest of the flow.
+  //   branchId — tenancy filter (same semantics as findByGymId).
   async updateByGymId(gymId, updateData, expectedVersion, opts = {}) {
     const parsedGymId = this.normalizeGymId(gymId);
     if (!parsedGymId) return null;
@@ -109,6 +128,7 @@ class MemberRepository {
     } else if (opts.allowedGenders && opts.allowedGenders.length > 0) {
       filter.gender = { $in: opts.allowedGenders };
     }
+    if (opts.branchId) filter.branchId = opts.branchId;
     if (typeof expectedVersion === "number" && Number.isInteger(expectedVersion)) {
       if (expectedVersion === 0) {
         filter.$or = [{ version: 0 }, { version: { $exists: false } }];
@@ -124,7 +144,8 @@ class MemberRepository {
     ).populate("dietId");
   }
 
-  // Delete by Gym ID with optional scope
+  // Delete by Gym ID with optional scope. opts = { allowedGenders,
+  // memberCode, branchId } — branchId is the same tenancy filter as above.
   async deleteByGymId(gymId, opts = {}) {
     const parsedGymId = this.normalizeGymId(gymId);
     if (!parsedGymId) return null;
@@ -134,10 +155,12 @@ class MemberRepository {
     } else if (opts.allowedGenders && opts.allowedGenders.length > 0) {
       filter.gender = { $in: opts.allowedGenders };
     }
+    if (opts.branchId) filter.branchId = opts.branchId;
     return Member.findOneAndDelete(filter);
   }
 
-  // Find expired members
+  // Find expired members. genderFilter comes from scopeResolver.buildGenderFilter,
+  // which now carries { gender?, branchId? } — both are honoured.
   async findExpiredMembers(genderFilter = {}) {
     const now = new Date();
     const query = {
@@ -146,6 +169,9 @@ class MemberRepository {
     };
     if (genderFilter.gender) {
       query.gender = genderFilter.gender;
+    }
+    if (genderFilter.branchId) {
+      query.branchId = genderFilter.branchId;
     }
     return Member.find(query).populate("dietId");
   }
@@ -202,9 +228,12 @@ class MemberRepository {
     };
   }
 
-  // Update member status
-  async updateStatus(id, status) {
-    return Member.findByIdAndUpdate(id, { status }, { new: true }).populate("dietId");
+  // Update member status — scoped to one branch when branchId is given, so an
+  // admin can never flip another branch's member by id.
+  async updateStatus(id, status, branchId = null) {
+    const filter = { _id: id };
+    if (branchId) filter.branchId = branchId;
+    return Member.findOneAndUpdate(filter, { status }, { new: true }).populate("dietId");
   }
 
   // Get members with pagination

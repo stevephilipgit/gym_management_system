@@ -26,6 +26,7 @@ import {
 import { executeFinanceReconciliation } from "../jobs/financeReconcileJob.js";
 import { CRON_CONFIG } from "../config/cronConfig.js";
 import { paymentController } from "../controllers/paymentController.js";
+import { seedTestBranch } from "./utils/branchFixture.js";
 
 const makeRes = () => {
   const res = {
@@ -74,10 +75,12 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
   this.timeout(60000);
 
   let mongoServer;
+  let branch;
 
   before(async function () {
     mongoServer = await MongoMemoryServer.create();
     await mongoose.connect(mongoServer.getUri(), { dbName: "gym_reconcile_test" });
+    branch = await seedTestBranch();
   });
 
   after(async function () {
@@ -127,6 +130,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
 
       await FinanceLog.create([
         {
+          branchId: branch._id,
           gymId: 101,
           memberName: "Alice",
           amount: 3000,
@@ -136,6 +140,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
           date: new Date(start.getTime() + 2 * 3600 * 1000)
         },
         {
+          branchId: branch._id,
           gymId: 102,
           memberName: "Bob",
           amount: 6000,
@@ -147,6 +152,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
       ]);
 
       await Member.create({
+        branchId: branch._id,
         gymId: 101,
         memberCode: "M0101",
         fullName: "Alice",
@@ -164,7 +170,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
         createdAt: new Date(start.getTime() + 2 * 3600 * 1000)
       });
 
-      const summary = await rebuildSummaryForDate(target);
+      const summary = await rebuildSummaryForDate(target, branch._id);
 
       expect(summary.totalRevenue).to.equal(9000);
       expect(summary.newJoiningRevenue).to.equal(3000);
@@ -184,6 +190,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
       const { start } = dayWindow(past);
 
       await FinanceLog.create({
+        branchId: branch._id,
         gymId: 103,
         memberName: "Hank",
         amount: 1200,
@@ -193,7 +200,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
         date: new Date(start.getTime() + 3600000)
       });
 
-      const summary = await rebuildTodaySummary(past);
+      const summary = await rebuildTodaySummary(past, branch._id);
 
       expect(summary.date.getTime()).to.equal(start.getTime());
       expect(summary.totalRevenue).to.equal(1200);
@@ -209,6 +216,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
       const { start } = dayWindow(target);
 
       await DailySummary.create({
+        branchId: branch._id,
         date: start,
         totalRevenue: 5000,
         totalTransactions: 1,
@@ -219,6 +227,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
 
       await FinanceLog.create([
         {
+          branchId: branch._id,
           gymId: 201,
           memberName: "Charlie",
           amount: 8000,
@@ -229,7 +238,11 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
         }
       ]);
 
-      const report = await reconcileDailySummaries({ lookbackDays: 1, driftAlertThreshold: 0.01 });
+      const report = await reconcileDailySummaries({
+        lookbackDays: 1,
+        driftAlertThreshold: 0.01,
+        branchId: branch._id
+      });
 
       expect(report.processedDays).to.equal(1);
       expect(report.driftDetectedCount).to.equal(1);
@@ -249,6 +262,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
       const { start } = dayWindow(target);
 
       await FinanceLog.create({
+        branchId: branch._id,
         gymId: 202,
         memberName: "Dave",
         amount: 4000,
@@ -258,7 +272,10 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
         date: new Date(start.getTime() + 3600000)
       });
 
-      const report = await reconcileDailySummaries({ lookbackDays: 1 });
+      const report = await reconcileDailySummaries({
+        lookbackDays: 1,
+        branchId: branch._id
+      });
 
       expect(report.processedDays).to.equal(1);
       expect(report.createdCount).to.equal(1);
@@ -273,7 +290,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
 
   describe("Per-day Error Isolation", () => {
     it("rebuilds every day of the window when no failure occurs", async () => {
-      const results = await rebuildLastSevenDays(3);
+      const results = await rebuildLastSevenDays(3, branch._id);
       expect(results).to.be.an("array").with.lengthOf(3);
       for (const res of results) {
         expect(res.ok).to.equal(true);
@@ -286,7 +303,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
 
       const restore = patchFinanceFindForDay(failingDay);
       try {
-        const results = await rebuildLastSevenDays(3);
+        const results = await rebuildLastSevenDays(3, branch._id);
 
         expect(results).to.have.lengthOf(3);
         expect(results.filter((r) => r.ok)).to.have.lengthOf(2);
@@ -309,6 +326,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
       // Today's stored summary is wrong and must still be healed, even though
       // yesterday's rebuild throws mid-run.
       await DailySummary.create({
+        branchId: branch._id,
         date: start,
         totalRevenue: 100,
         totalTransactions: 1,
@@ -317,6 +335,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
         lastUpdatedAt: new Date(Date.now() - 3600000)
       });
       await FinanceLog.create({
+        branchId: branch._id,
         gymId: 401,
         memberName: "Frank",
         amount: 4500,
@@ -329,7 +348,11 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
       const restore = patchFinanceFindForDay(failingDay);
       let report;
       try {
-        report = await reconcileDailySummaries({ lookbackDays: 3, driftAlertThreshold: 0.01 });
+        report = await reconcileDailySummaries({
+          lookbackDays: 3,
+          driftAlertThreshold: 0.01,
+          branchId: branch._id
+        });
       } finally {
         restore();
       }
@@ -365,6 +388,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
       const { start } = dayWindow(target);
 
       await DailySummary.create({
+        branchId: branch._id,
         date: start,
         totalRevenue: 5000,
         totalTransactions: 1,
@@ -373,6 +397,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
         lastUpdatedAt: new Date(Date.now() - 3600000)
       });
       await FinanceLog.create({
+        branchId: branch._id,
         gymId: 501,
         memberName: "Grace",
         amount: 8000,
@@ -409,6 +434,7 @@ describe("Financial Reconciliation & DailySummary Self-Healing", function () {
       const { start } = dayWindow(target);
 
       await FinanceLog.create({
+        branchId: branch._id,
         gymId: 301,
         memberName: "Eve",
         amount: 2500,
