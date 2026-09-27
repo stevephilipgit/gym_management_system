@@ -23,6 +23,9 @@ export const packageController = {
   getAllPackages: asyncHandler(async (req, res) => {
     const allowed = allowedPackageGenders(req);
     const filter = { gender: { $in: allowed } };
+    // Admin callers are branch-bound; the PUBLIC marketing route has no branch
+    // context and stays unscoped (it only renders names/prices).
+    if (req.branchId) filter.branchId = req.branchId;
 
     // Superadmin-only narrowing filter (never widens a trainer scope).
     const { gender } = req.query;
@@ -49,6 +52,7 @@ export const packageController = {
     if (gender && allowedPackageGenders(req).includes(gender)) {
       filters.gender = gender;
     }
+    if (req.branchId) filters.branchId = req.branchId;
 
     const result = await packageRepository.getPaginated(Number(page), Number(pageSize), filters);
 
@@ -60,7 +64,7 @@ export const packageController = {
 
   // Get package by ID
   getPackageById: asyncHandler(async (req, res) => {
-    const pkg = await packageRepository.findById(req.params.id);
+    const pkg = await packageRepository.findById(req.params.id, req.branchId);
 
     if (!pkg) {
       throw new NotFoundError("Package not found");
@@ -101,6 +105,7 @@ export const packageController = {
     }
 
     const pkg = await packageRepository.create({
+      branchId: req.branchId,
       name,
       months: Number(months),
       priceWeightLoss: Number(priceWeightLoss),
@@ -122,7 +127,7 @@ export const packageController = {
       throw new ValidationError("Invalid gender. Must be All, Male, Female, or Transgender");
     }
 
-    const pkg = await packageRepository.update(req.params.id, updates);
+    const pkg = await packageRepository.update(req.params.id, updates, req.branchId);
 
     if (!pkg) {
       throw new NotFoundError("Package not found");
@@ -136,7 +141,7 @@ export const packageController = {
 
   // Delete package (superadmin only via route)
   deletePackage: asyncHandler(async (req, res) => {
-    const pkg = await packageRepository.delete(req.params.id);
+    const pkg = await packageRepository.delete(req.params.id, req.branchId);
 
     if (!pkg) {
       throw new NotFoundError("Package not found");
@@ -152,7 +157,10 @@ export const packageController = {
   getByTrainingType: asyncHandler(async (req, res) => {
     const { trainingType } = req.params;
 
-    const packages = await packageRepository.findByTrainingType(trainingType);
+    const packages = await packageRepository.findByTrainingType(
+      trainingType,
+      req.branchId
+    );
 
     return res.json({
       success: true,

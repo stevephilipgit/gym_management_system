@@ -2,9 +2,12 @@
 import Package from "../models/Package.js";
 
 class PackageRepository {
-  // Find package by ID
-  async findById(id) {
-    return Package.findById(id);
+  // Find package by ID — scoped to one branch when branchId is given
+  // (cross-branch ids read as "not found", same as a bad id).
+  async findById(id, branchId = null) {
+    const filter = { _id: id };
+    if (branchId) filter.branchId = branchId;
+    return Package.findOne(filter);
   }
 
   // Find all packages
@@ -35,27 +38,35 @@ class PackageRepository {
     return pkg.save();
   }
 
-  // Update package
-  async update(id, updateData) {
-    return Package.findByIdAndUpdate(id, updateData, {
+  // Update package — branch-scoped when branchId is given
+  async update(id, updateData, branchId = null) {
+    const filter = { _id: id };
+    if (branchId) filter.branchId = branchId;
+    return Package.findOneAndUpdate(filter, updateData, {
       new: true,
       runValidators: true,
     });
   }
 
-  // Delete package
-  async delete(id) {
-    return Package.findByIdAndDelete(id);
+  // Delete package — branch-scoped when branchId is given
+  async delete(id, branchId = null) {
+    const filter = { _id: id };
+    if (branchId) filter.branchId = branchId;
+    return Package.findOneAndDelete(filter);
   }
 
-  // Find package by name
-  async findByName(name) {
-    return Package.findOne({ name });
+  // Find package by name (within a branch when branchId is given)
+  async findByName(name, branchId = null) {
+    const filter = { name };
+    if (branchId) filter.branchId = branchId;
+    return Package.findOne(filter);
   }
 
-  // Find packages by training type
-  async findByTrainingType(trainingType) {
-    return Package.find({ trainingType });
+  // Find packages by training type (within a branch when branchId is given)
+  async findByTrainingType(trainingType, branchId = null) {
+    const filter = { trainingType };
+    if (branchId) filter.branchId = branchId;
+    return Package.find(filter);
   }
 
   // Get paginated packages

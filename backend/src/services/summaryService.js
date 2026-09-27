@@ -1,45 +1,65 @@
 /**
- * Summary Service: Manages daily financial summary updates
+ * Summary Service: Manages daily financial summary updates (PER BRANCH)
  * 
  * Key Functions:
- * - getTodaySummary(): Get or create today's summary
- * - updateTodaySummary(): Atomically add transaction to summary
+ * - getTodaySummary(): Get or create today's summary for a branch
+ * - updateTodaySummary(): Atomically add a branch's transaction to its summary
  * - rebuildTodaySummary(): Recalculate from FinanceLog (rebuild after corruption)
  * - markPreviousDayComplete(): Lock yesterday's data (immutable)
+ * - reconcileDailySummaries(): Nightly audit over EVERY active branch
+ * 
+ * Tenancy contract (docs/architecture/27-multi-branch-refactor.md §2.7):
+ * every DailySummary is keyed { branchId, date }. There is NO cross-branch
+ * aggregation path: branchId is required on every primitive, and the
+ * reconciliation loop iterates Branch.find({ isActive: true }) itself.
  * 
  * Usage:
  * ------
  * import { updateTodaySummary } from "../services/summaryService.js";
  * 
- * // After creating transaction
+ * // After creating a transaction (FinanceLog.branchId stamped from req.branchId)
  * await updateTodaySummary(financeLogEntry);
  */
 
+import mongoose from "mongoose";
 import DailySummary from "../models/DailySummary.js";
 import FinanceLog from "../models/FinanceLog.js";
 import Member from "../models/Member.js";
+import Branch from "../models/Branch.js";
 import logger from "../core/logger.js";
 
+/** Fail closed: a missing branchId must never become an unscoped query. */
+const requireBranchId = (branchId, fn) => {
+  if (!branchId) {
+    throw new Error(`${fn} requires a branchId (multi-branch summaries are never cross-branch).`);
+  }
+  return branchId;
+};
+
 /**
- * Gets today's summary, creating if not exists
+ * Gets today's summary FOR A BRANCH, creating if not exists
  * Called when: Dashboard loads, transaction created, or check period
  * 
- * Returns: DailySummary document for today
+ * @param {mongoose.Types.ObjectId|string} branchId - required tenant key
+ * @param {mongoose.ClientSession|null} session - optional transaction session
+ * Returns: DailySummary document for today in that branch
  */
-export async function getTodaySummary(session = null) {
+export async function getTodaySummary(branchId, session = null) {
+  requireBranchId(branchId, "getTodaySummary");
   try {
     const now = new Date();
     const today = new Date(now);
     today.setHours(0, 0, 0, 0); // Start of day (00:00:00)
 
-    // Try to find existing summary
+    // Try to find existing summary for THIS branch
     let summary = session
-      ? await DailySummary.findOne({ date: today }).session(session)
-      : await DailySummary.findOne({ date: today });
+      ? await DailySummary.findOne({ branchId, date: today }).session(session)
+      : await DailySummary.findOne({ branchId, date: today });
 
-    // If not found, create new summary for today
+    // If not found, create new summary for today in this branch
     if (!summary) {
       summary = new DailySummary({
+        branchId,
         date: today,
         totalRevenue: 0,
         newJoiningRevenue: 0,
@@ -69,7 +89,12 @@ export async function getTodaySummary(session = null) {
  * - Member renewal (type="renew")
  * - Manual transaction added
  * 
+ * The target branch is read from the transaction itself — FinanceLog.branchId
+ * is stamped at write time from req.branchId, so the summary can never drift
+ * onto another branch's ledger.
+ * 
  * @param {Object} transactionLog - FinanceLog document with fields:
+ *   - branchId: REQUIRED (tenant key)
  *   - amount: transaction amount
  *   - type: "new" or "renew"
  *   - plan: package plan (e.g., "1 Month", "3 Months")
@@ -77,7 +102,11 @@ export async function getTodaySummary(session = null) {
  */
 export async function updateTodaySummary(transactionLog, session = null) {
   try {
-    const summary = await getTodaySummary(session);
+    const branchId = requireBranchId(
+      transactionLog?.branchId,
+      "updateTodaySummary(transactionLog)"
+    );
+    const summary = await getTodaySummary(branchId, session);
 
     const amount = Number(transactionLog.amount) || 0;
     const plan = transactionLog.plan || "Unknown";
@@ -129,30 +158,39 @@ export async function updateTodaySummary(transactionLog, session = null) {
 }
 
 /**
- * Marks yesterday's summary as completed (immutable)
+ * Marks yesterday's summaries as completed (immutable)
  * After midnight, yesterday's data shouldn't change
  * 
  * Called at: Midnight, or app startup (checks if date changed)
+ * 
+ * @param {mongoose.Types.ObjectId|string|null} branchId - scope to one branch;
+ *   omit to lock EVERY branch's yesterday (used by the midnight task).
  * 
  * Why lock yesterday?
  * - Prevents accidental edits to historical data
  * - Ensures consistency for reporting
  * - Allows safe archival/backup
  */
-export async function markPreviousDayComplete() {
+export async function markPreviousDayComplete(branchId = null) {
   try {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     yesterday.setHours(0, 0, 0, 0);
 
-    const result = await DailySummary.findOneAndUpdate(
-      { date: yesterday },
-      { isCompleted: true },
-      { upsert: false } // Don't create if doesn't exist
+    const filter = { date: yesterday };
+    if (branchId) filter.branchId = branchId;
+
+    // updateMany: with no branchId this locks EVERY branch's yesterday in
+    // one operation (findOneAndUpdate would silently lock only one branch).
+    const result = await DailySummary.updateMany(
+      filter,
+      { $set: { isCompleted: true } }
     );
 
-    if (result) {
-      logger.info(`🔒 Locked yesterday's summary (${yesterday.toISOString().split('T')[0]})`);
+    if (result.modifiedCount > 0) {
+      logger.info(
+        `🔒 Locked ${result.modifiedCount} yesterday summary(ies) (${yesterday.toISOString().split('T')[0]})`
+      );
     }
 
     return result;
@@ -202,7 +240,7 @@ export function businessDateKey(targetDate = new Date()) {
 }
 
 /**
- * Recompute ONE business day's DailySummary from the source records.
+ * Recompute ONE business day's DailySummary for ONE branch from source records.
  *
  * This is the single rebuild primitive — `rebuildTodaySummary`,
  * `rebuildLastSevenDays` and the nightly reconciliation all delegate here, so
@@ -212,13 +250,21 @@ export function businessDateKey(targetDate = new Date()) {
  * `lastUpdatedAt` (both of which the previous 7-day rebuild silently omitted).
  *
  * @param {Date|string|number} targetDate - any instant inside the target day.
+ * @param {mongoose.Types.ObjectId|string} branchId - REQUIRED tenant key; the
+ *   FinanceLog window, the member-count aggregate and the upsert key
+ *   ({ date, branchId }) are all scoped to it. Omitting it would silently
+ *   aggregate across branches, so it throws instead.
  * @returns {Promise<Object>} the upserted DailySummary document.
  */
-export async function rebuildSummaryForDate(targetDate = new Date()) {
+export async function rebuildSummaryForDate(targetDate = new Date(), branchId) {
+  requireBranchId(branchId, "rebuildSummaryForDate");
   const { start, end } = dayWindow(targetDate);
   const dateKey = businessDateKey(start);
 
-  const transactions = await FinanceLog.find({ date: { $gte: start, $lt: end } });
+  const transactions = await FinanceLog.find({
+    branchId,
+    date: { $gte: start, $lt: end },
+  });
 
   let totalRevenue = 0;
   let newRevenue = 0;
@@ -245,8 +291,15 @@ export async function rebuildSummaryForDate(targetDate = new Date()) {
 
   // Member counts are derived from Member.createdAt (registration time), NOT
   // from FinanceLog — a renewal must not inflate the "members joined" count.
+  // Scoped to the branch so a neighboring branch's joiners never leak in.
   const memberCountAgg = await Member.aggregate([
-    { $match: { paymentStatus: 'paid', createdAt: { $gte: start, $lt: end } } },
+    {
+      $match: {
+        branchId: new mongoose.Types.ObjectId(String(branchId)),
+        paymentStatus: 'paid',
+        createdAt: { $gte: start, $lt: end },
+      },
+    },
     { $group: { _id: '$trainingType', count: { $sum: 1 } } },
   ]);
 
@@ -261,7 +314,7 @@ export async function rebuildSummaryForDate(targetDate = new Date()) {
   );
 
   return DailySummary.findOneAndUpdate(
-    { date: start },
+    { branchId, date: start },
     {
       $set: {
         totalRevenue,
@@ -279,24 +332,29 @@ export async function rebuildSummaryForDate(targetDate = new Date()) {
 }
 
 /**
- * Recalculates a summary from scratch (defaults to today).
+ * Recalculates a branch's summary from scratch (defaults to today).
  * Back-compatible wrapper — use rebuildSummaryForDate for a specific day.
+ *
+ * @param {Date|string|number} targetDate
+ * @param {mongoose.Types.ObjectId|string} branchId - REQUIRED.
  */
-export async function rebuildTodaySummary(targetDate = new Date()) {
-  return rebuildSummaryForDate(targetDate);
+export async function rebuildTodaySummary(targetDate = new Date(), branchId) {
+  return rebuildSummaryForDate(targetDate, branchId);
 }
 
 /**
- * Rebuilds the last `days` business days (today inclusive).
+ * Rebuilds the last `days` business days for ONE branch (today inclusive).
  *
  * Each day is isolated: a failure on one date is recorded and the remaining
  * days still run, so a single bad day can never leave the week half-rebuilt
  * with no record of which days completed.
  *
  * @param {number} days - lookback window size, default 7.
+ * @param {mongoose.Types.ObjectId|string} branchId - REQUIRED tenant key.
  * @returns {Promise<Array<{date:string, ok:boolean, totalRevenue?:number, error?:string}>>}
  */
-export async function rebuildLastSevenDays(days = 7) {
+export async function rebuildLastSevenDays(days = 7, branchId) {
+  requireBranchId(branchId, "rebuildLastSevenDays");
   const results = [];
 
   for (let i = days - 1; i >= 0; i -= 1) {
@@ -305,7 +363,7 @@ export async function rebuildLastSevenDays(days = 7) {
     const dateKey = businessDateKey(target);
 
     try {
-      const summary = await rebuildSummaryForDate(target);
+      const summary = await rebuildSummaryForDate(target, branchId);
       results.push({
         date: dateKey,
         ok: true,
@@ -323,31 +381,36 @@ export async function rebuildLastSevenDays(days = 7) {
 }
 
 /**
- * Nightly self-healing reconciliation.
+ * Nightly self-healing reconciliation — RUN ONCE PER ACTIVE BRANCH.
  *
  * DailySummary is a denormalised cache maintained by $inc on the write path.
  * Any write that skips `updateTodaySummary` (bulk import, a profile edit, a
  * crash between the ledger write and the increment) leaves it permanently
  * wrong — and the pre-existing rebuild helpers were never invoked by anything.
- * This walks the lookback window, recomputes each day from FinanceLog, and
- * reports exactly what it corrected.
+ * This walks the lookback window for EVERY active branch, recomputes each day
+ * from that branch's FinanceLog, and reports exactly what it corrected.
  *
- * Errors are isolated per day. Shared by the nightly cron and the manual admin
- * endpoint so both paths run one implementation.
+ * Errors are isolated per branch + per day: a bad branch/day never aborts the
+ * rest of the run. Shared by the nightly cron, the manual admin endpoint and
+ * initDailyTasks so all three run one implementation.
  *
  * @param {object} options
- * @param {number} options.lookbackDays - days to reconcile, including today.
+ * @param {number} options.lookbackDays - days to reconcile per branch, including today.
  * @param {number} options.driftAlertThreshold - absolute delta above which a
  *   correction is reported as drift (guards against float noise).
- * @returns {Promise<object>} audit report.
+ * @param {string|null} options.branchId - reconcile ONLY this branch (admin
+ *   on-demand path); omit to iterate all active branches (cron path).
+ * @returns {Promise<object>} audit report with per-branch details.
  */
 export async function reconcileDailySummaries({
   lookbackDays = 7,
   driftAlertThreshold = 0.01,
+  branchId = null,
 } = {}) {
   const report = {
     startedAt: new Date(),
     lookbackDays,
+    branchesProcessed: 0,
     processedDays: 0,
     driftDetectedCount: 0,
     createdCount: 0,
@@ -356,70 +419,96 @@ export async function reconcileDailySummaries({
     errors: [],
   };
 
-  for (let i = lookbackDays - 1; i >= 0; i -= 1) {
-    const target = new Date();
-    target.setDate(target.getDate() - i);
-    const dateKey = businessDateKey(target);
+  // Active branches are the tenancy enumeration — never a hardcoded list.
+  const branchFilter = { isActive: true };
+  if (branchId) branchFilter._id = branchId;
+  const branches = await Branch.find(branchFilter).sort({ code: 1 }).lean();
 
-    try {
-      const { start } = dayWindow(target);
-      const before = await DailySummary.findOne({ date: start }).lean();
+  if (branches.length === 0) {
+    logger.warn(
+      "Financial reconciliation: no active branches found — nothing to reconcile."
+    );
+  }
 
-      const previousRevenue = Number(before?.totalRevenue || 0);
-      const previousTransactions = Number(before?.totalTransactions || 0);
+  for (const branch of branches) {
+    report.branchesProcessed += 1;
+    const branchKey = { branchId: branch._id, branchCode: branch.code };
 
-      const summary = await rebuildSummaryForDate(target);
+    for (let i = lookbackDays - 1; i >= 0; i -= 1) {
+      const target = new Date();
+      target.setDate(target.getDate() - i);
+      const dateKey = businessDateKey(target);
 
-      const newRevenue = Number(summary?.totalRevenue || 0);
-      const newTransactions = Number(summary?.totalTransactions || 0);
-      const delta = Math.abs(newRevenue - previousRevenue);
-      const hasDrift = delta > driftAlertThreshold;
+      try {
+        const { start } = dayWindow(target);
+        const before = await DailySummary.findOne({
+          branchId: branch._id,
+          date: start,
+        }).lean();
 
-      if (hasDrift) {
-        report.driftDetectedCount += 1;
-        report.totalDrift += delta;
-        logger.warn(
-          `Drift reconciled for ${dateKey}: stored ${previousRevenue} -> actual ` +
-          `${newRevenue} (delta ${delta}${before ? '' : ', summary was missing'})`
+        const previousRevenue = Number(before?.totalRevenue || 0);
+        const previousTransactions = Number(before?.totalTransactions || 0);
+
+        const summary = await rebuildSummaryForDate(target, branch._id);
+
+        const newRevenue = Number(summary?.totalRevenue || 0);
+        const newTransactions = Number(summary?.totalTransactions || 0);
+        const delta = Math.abs(newRevenue - previousRevenue);
+        const hasDrift = delta > driftAlertThreshold;
+
+        if (hasDrift) {
+          report.driftDetectedCount += 1;
+          report.totalDrift += delta;
+          logger.warn(
+            `Drift reconciled for [${branch.code}] ${dateKey}: stored ${previousRevenue} -> actual ` +
+            `${newRevenue} (delta ${delta}${before ? '' : ', summary was missing'})`
+          );
+        }
+        if (!before) report.createdCount += 1;
+
+        report.details.push({
+          ...branchKey,
+          date: dateKey,
+          hadSummary: Boolean(before),
+          previousRevenue,
+          newRevenue,
+          delta,
+          previousTransactions,
+          newTransactions,
+          hasDrift,
+        });
+        report.processedDays += 1;
+      } catch (err) {
+        logger.error(
+          `Reconciliation failed for [${branch.code}] ${dateKey}:`, err.message
         );
+        report.errors.push({ ...branchKey, date: dateKey, error: err.message });
       }
-      if (!before) report.createdCount += 1;
-
-      report.details.push({
-        date: dateKey,
-        hadSummary: Boolean(before),
-        previousRevenue,
-        newRevenue,
-        delta,
-        previousTransactions,
-        newTransactions,
-        hasDrift,
-      });
-      report.processedDays += 1;
-    } catch (err) {
-      logger.error(`Reconciliation failed for ${dateKey}:`, err.message);
-      report.errors.push({ date: dateKey, error: err.message });
     }
   }
 
   report.completedAt = new Date();
   logger.info(
-    `Financial reconciliation complete: ${report.processedDays} days processed, ` +
+    `Financial reconciliation complete: ${report.branchesProcessed} branch(es), ` +
+    `${report.processedDays} days processed, ` +
     `${report.driftDetectedCount} drifted, ${report.errors.length} failed`
   );
   return report;
 }
 
 /**
- * Diagnose summary health
- * Returns info about today's summary
+ * Diagnose summary health for ONE branch
+ * Returns info about today's summary in that branch
+ * 
+ * @param {mongoose.Types.ObjectId|string} branchId - REQUIRED tenant key.
  */
-export async function getDiagnostics() {
+export async function getDiagnostics(branchId) {
   try {
+    requireBranchId(branchId, "getDiagnostics");
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const summary = await DailySummary.findOne({ date: today });
+    const summary = await DailySummary.findOne({ branchId, date: today });
 
     if (!summary) {
       return { status: "MISSING", message: "No summary for today" };
@@ -468,14 +557,22 @@ export function initDailyTasks() {
       if (currentDate !== lastCheckDate) {
         logger.info("🌙 Date changed! Executing midnight tasks...");
 
-        // Mark yesterday as complete
-        await markPreviousDayComplete();
-
-        // Initialize today's summary
-        await getTodaySummary();
+        // One pass PER ACTIVE BRANCH: lock yesterday's summary and create
+        // today's. A failure in one branch never skips the others.
+        const branches = await Branch.find({ isActive: true }).select("_id code").lean();
+        for (const branch of branches) {
+          try {
+            await markPreviousDayComplete(branch._id);
+            await getTodaySummary(branch._id);
+          } catch (err) {
+            logger.error(
+              `❌ Midnight task failed for branch ${branch.code}:`, err.message
+            );
+          }
+        }
 
         lastCheckDate = currentDate;
-        logger.info("✅ Midnight tasks complete");
+        logger.info(`✅ Midnight tasks complete (${branches.length} branch(es))`);
       }
     } catch (err) {
       logger.error("❌ Error in daily task:", err.message);

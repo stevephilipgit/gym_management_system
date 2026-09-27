@@ -18,11 +18,21 @@ import mongoose from "mongoose";
 
 const kioskSchema = new mongoose.Schema(
   {
+    // Multi-tenancy root: a physical kiosk belongs to exactly one branch.
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      required: true,
+      index: true,
+    },
+
     // Stable identifier, e.g. "male-tablet-01". Sent as X-Kiosk-Id.
+    // Unique PER BRANCH — the compound unique below is the constraint; the
+    // old global kioskId unique index was dropped by the multi-branch
+    // migration (scripts/migrate-add-branches.js).
     kioskId: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
       match: [/^[a-zA-Z0-9_-]+$/, "kioskId may only contain letters, numbers, - and _"],
     },
@@ -82,7 +92,12 @@ const kioskSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// kioskId unique index is created by the schema field `unique: true`.
+// Compound unique: one kioskId per branch (the physical device is
+// branch-bound; identical local names may exist at different locations).
+kioskSchema.index(
+  { branchId: 1, kioskId: 1 },
+  { unique: true, name: "idx_kiosks_branch_kiosk_unique" }
+);
 kioskSchema.index({ scope: 1, enabled: 1 }, { name: "idx_kiosks_scope_enabled" });
 
 export default mongoose.model("Kiosk", kioskSchema);

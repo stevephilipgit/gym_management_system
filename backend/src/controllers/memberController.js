@@ -11,6 +11,7 @@ import { auditActions } from "../utils/auditLog.js";
 import { asyncHandler, ValidationError, NotFoundError, ForbiddenError, ConflictError } from "../core/errorHandler.js";
 import PaymentLog from "../models/PaymentLog.js";
 import FinanceLog from "../models/FinanceLog.js";
+import Branch from "../models/Branch.js";
 import Counter from "../services/atomicCounter.js";
 import scopeResolver from "../core/scopeResolver.js";
 
@@ -85,24 +86,40 @@ const calculateDaysLeft = (date) => {
   return Math.ceil(diffTime / MS_DAY);
 };
 
-// Per-gender atomic gymId generation. Sequential per-gender numbering starting
-// from 1 (gym manual-register standard): Male -> 1, 2, 3...; Female and
-// transgender share the F-series (same gym) -> 1, 2, 3....
+// Per-gender atomic gymId generation, scoped per branch. Sequential
+// per-gender numbering starting from 1 (gym manual-register standard): Male ->
+// 1, 2, 3...; Female and transgender share the F-series (same gym) -> 1, 2, 3....
+// Each branch runs its own M/F series, so gymId alone is only unique WITHIN a
+// branch (enforced by the {branchId, gender, gymId} unique index).
 // Existing members' gymId values are never changed.
 //
-// The counter is always seeded from the highest existing gymId for that gender,
-// so new allocations continue from max+1 and historical IDs (including
-// imported ones) are never reused. When a gender has zero members the counter
-// restarts at 1. Allocation itself is an atomic $inc (concurrency-safe).
-const getNextGymId = async (gender) => {
+// Counter key: gym_id_${branchCode}_${M|F} — keyed by the human-readable
+// branch code so the migration can seed/rekey counters without a Branch join.
+//
+// The counter is always seeded from the highest existing gymId for that gender
+// IN THIS BRANCH, so new allocations continue from max+1 and historical IDs
+// (including imported ones) are never reused. When a gender has zero members
+// the counter restarts at 1. Allocation itself is an atomic $inc.
+const getNextGymId = async (gender, branchId) => {
+  if (!branchId) {
+    throw new ValidationError("branchId is required to allocate a gym ID");
+  }
   const prefix = GENDER_PREFIX[gender] || "M";
-  const key = `gym_id_${prefix}`;
 
-  const maxDoc = await Member.findOne({ gender }).sort({ gymId: -1 }).select("gymId").lean();
+  const branch = await Branch.findById(branchId).select("code").lean();
+  if (!branch) {
+    throw new ValidationError("Cannot allocate gym ID: branch not found");
+  }
+  const key = `gym_id_${branch.code}_${prefix}`;
+
+  const maxDoc = await Member.findOne({ branchId, gender })
+    .sort({ gymId: -1 })
+    .select("gymId")
+    .lean();
   const seed = maxDoc?.gymId || 0;
 
   if (seed === 0) {
-    // No members for this gender — restart the series from 1.
+    // No members for this gender in this branch — restart the series from 1.
     await Counter.updateOne({ key }, { $set: { seq: 0 } }, { upsert: true });
   } else {
     // Raise the counter to the highest existing gymId (never lowers it, so
@@ -116,18 +133,25 @@ const getNextGymId = async (gender) => {
 // Resolve a member by gymId with the current admin's scope, returning either
 // the single member or a disambiguation list when multiple matches exist.
 // Used by getMemberByGymId, updateMember, deleteMember, renewMember.
+// All lookups are additionally scoped to req.branchId — admins are
+// branch-bound, so a member from another branch reads as "not found".
 const resolveMemberForAdmin = async (req, gymId, { memberCode } = {}) => {
-  // memberCode is globally unique — exact resolution, ignores scope.
+  // memberCode is globally unique — exact resolution, ignores gender scope.
   if (memberCode) {
-    const member = await memberRepository.findByGymId(gymId, { memberCode });
+    const member = await memberRepository.findByGymId(gymId, {
+      memberCode,
+      branchId: req.branchId,
+    });
     return member ? { member } : { member: null };
   }
 
   // Superadmin: never silently pick one of several duplicate numeric gymIds.
   if (req.admin?.scope === "all") {
-    const matches = await memberRepository.findAllByGymId(gymId);
+    const matches = await memberRepository.findAllByGymId(gymId, req.branchId);
     if (matches.length === 1) {
-      const member = await memberRepository.findByGymId(gymId);
+      const member = await memberRepository.findByGymId(gymId, {
+        branchId: req.branchId,
+      });
       return member ? { member } : { member: null };
     }
     if (matches.length > 1) {
@@ -136,9 +160,12 @@ const resolveMemberForAdmin = async (req, gymId, { memberCode } = {}) => {
     return { member: null };
   }
 
-  // Trainer: resolve within authorized scope.
+  // Trainer: resolve within authorized scope (gender AND branch).
   const allowedGenders = scopeResolver.getScopeAllowedGenders(req);
-  const member = await memberRepository.findByGymId(gymId, { allowedGenders });
+  const member = await memberRepository.findByGymId(gymId, {
+    allowedGenders,
+    branchId: req.branchId,
+  });
   return member ? { member } : { member: null };
 };
 
@@ -200,8 +227,9 @@ export const memberController = {
       }
     }
 
-    // Generate next per-gender Gym ID (atomic, never reuses deleted numbers)
-    const gymId = await getNextGymId(data.gender);
+    // Generate next per-branch, per-gender Gym ID (atomic, never reuses
+    // deleted numbers; numbering restarts per branch)
+    const gymId = await getNextGymId(data.gender, req.branchId);
 
     // Generate atomic member code.
     // Business rule: Male → M-series, Female → F-series, Transgender → F-series
@@ -229,6 +257,7 @@ export const memberController = {
     }
 
     const memberData = {
+      branchId: req.branchId,
       gymId,
       memberCode,
       ...data,
@@ -255,6 +284,7 @@ export const memberController = {
 
       if (paymentStatus === "paid") {
         const financeLog = new FinanceLog({
+          branchId: req.branchId,
           gymId,
           memberName: member.fullName,
           amount: Number(data.amount) || 0,
@@ -266,6 +296,7 @@ export const memberController = {
         await financeLog.save({ session });
 
         const paymentLog = new PaymentLog({
+          branchId: req.branchId,
           gymId,
           name: member.fullName,
           amount: Number(data.amount) || 0,
@@ -316,10 +347,14 @@ export const memberController = {
     const { page = 1, pageSize = 10, status, search, gender, paymentStatus, sortBy, sortOrder } = req.query;
     const filters = {};
 
-    // Gender-scope enforcement (centralized via scopeResolver).
+    // Gender-scope enforcement (centralized via scopeResolver). The result
+    // carries BOTH the gender constraint and this admin's branch — copy both.
     const genderFilter = scopeResolver.buildGenderFilter(req);
     if (genderFilter.gender) {
       filters.gender = genderFilter.gender;
+    }
+    if (genderFilter.branchId) {
+      filters.branchId = genderFilter.branchId;
     }
 
     // Superadmin-only narrowing filter: a valid ?gender= query narrows the
@@ -366,7 +401,9 @@ export const memberController = {
   // Get member by ID
   getMemberById: asyncHandler(async (req, res) => {
     const lookupGymId = req.params.gymId || req.params.id;
-    const member = await memberRepository.findByGymId(lookupGymId);
+    const member = await memberRepository.findByGymId(lookupGymId, {
+      branchId: req.branchId,
+    });
 
     if (!member) {
       throw new NotFoundError("Member not found");
@@ -462,7 +499,11 @@ export const memberController = {
       lookupGymId,
       data,
       expectedVersion,
-      { allowedGenders: scopeResolver.getScopeAllowedGenders(req), memberCode }
+      {
+        allowedGenders: scopeResolver.getScopeAllowedGenders(req),
+        memberCode,
+        branchId: req.branchId,
+      }
     );
 
     if (!member) {
@@ -470,6 +511,7 @@ export const memberController = {
       const stillExists = await memberRepository.findByGymId(lookupGymId, {
         allowedGenders: scopeResolver.getScopeAllowedGenders(req),
         memberCode,
+        branchId: req.branchId,
       });
       if (stillExists) {
         throw new ConflictError(
@@ -504,6 +546,7 @@ export const memberController = {
     const member = await memberRepository.deleteByGymId(lookupGymId, {
       allowedGenders: scopeResolver.getScopeAllowedGenders(req),
       memberCode,
+      branchId: req.branchId,
     });
 
     if (!member) {
@@ -530,11 +573,42 @@ export const memberController = {
     });
   }),
 
-  // Public validity check
+  // Public validity check — shared by BOTH aliases:
+  //   GET /api/members/public-validity/:gymId   (memberRoutes.js)
+  //   GET /api/public/check-member              (publicRoutes.js)
+  //
+  // Branch resolution (multi-branch STEP 4): the caller may identify its
+  // branch via the `x-branch-id` device header or a `?branchId=` query param.
+  // Invalid/absent branch ⇒ the lookup spans ALL branches and multiple
+  // matches are reported as ambiguous instead of silently resolving one.
   checkPublicValidity: asyncHandler(async (req, res) => {
     const gymIdFromParam = req.params.gymId;
     const gymIdFromQuery = req.query.gymId;
     const phoneFromQuery = req.query.phone;
+
+    // 24-hex ObjectId only; anything else is treated as "no branch" (the
+    // client is never trusted to shape a query operator).
+    const rawBranch = String(req.get("x-branch-id") || req.query.branchId || "").trim();
+    const branchId = /^[0-9a-fA-F]{24}$/.test(rawBranch) ? rawBranch : null;
+
+    const ambiguous = (message) =>
+      res.json({
+        success: true,
+        data: {
+          found: false,
+          status: "ambiguous",
+          message,
+        },
+      });
+
+    const notFound = () =>
+      res.json({
+        success: true,
+        data: {
+          found: false,
+          message: "No membership found",
+        },
+      });
 
     const gymId = gymIdFromParam || gymIdFromQuery;
     let member = null;
@@ -544,42 +618,38 @@ export const memberController = {
       if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
         throw new ValidationError("Invalid phone format");
       }
-      member = await memberRepository.findByPhone(cleanPhone);
+      // Phone is unique PER BRANCH: scoped search resolves directly;
+      // unscoped search must count matches before picking one.
+      const phoneMatches = await memberRepository.findAllByPhone(cleanPhone, branchId);
+      if (phoneMatches.length === 1) {
+        member = phoneMatches[0];
+      } else if (phoneMatches.length > 1) {
+        return ambiguous("Multiple members found across branches.");
+      }
     } else if (gymId) {
       const cleanGymId = String(gymId).replace(/\D/g, "");
       if (!/^\d{4,6}$/.test(cleanGymId)) {
         throw new ValidationError("Invalid Gym ID format");
       }
-      // Public lookup has no admin scope: if the numeric gymId is ambiguous
-      // (duplicate across genders), return "not found" rather than silently
-      // resolving an arbitrary member.
-      const matches = await memberRepository.findAllByGymId(cleanGymId);
+      // Public lookup has no admin scope: if the keypad number matches more
+      // than one record (cross-branch, or M/F collision within one branch),
+      // return "ambiguous" rather than silently resolving an arbitrary member.
+      const matches = await memberRepository.findAllByGymId(cleanGymId, branchId);
       if (matches.length === 1) {
         member = matches[0];
-      } else if (matches.length === 0) {
-        member = null;
-      } else {
-        return res.json({
-          success: true,
-          data: {
-            found: false,
-            ambiguous: true,
-            message: "Multiple members share this gym ID. Use phone or contact the gym.",
-          },
-        });
+      } else if (matches.length > 1) {
+        return ambiguous(
+          branchId
+            ? "Multiple members share this gym ID. Use phone or contact the gym."
+            : "Multiple members found across branches."
+        );
       }
     } else {
       throw new ValidationError("Provide gymId or phone");
     }
 
     if (!member) {
-      return res.json({
-        success: true,
-        data: {
-          found: false,
-          message: "No membership found",
-        },
-      });
+      return notFound();
     }
 
     const daysLeft = calculateDaysLeft(member.validityEnd);
@@ -611,7 +681,11 @@ export const memberController = {
       throw new ValidationError("Invalid status value");
     }
 
-    const member = await memberRepository.updateStatus(req.params.id, status);
+    const member = await memberRepository.updateStatus(
+      req.params.id,
+      status,
+      req.branchId
+    );
 
     if (!member) {
       throw new NotFoundError("Member not found");
@@ -698,6 +772,7 @@ export const memberController = {
           {
             allowedGenders: scopeResolver.getScopeAllowedGenders(req),
             memberCode,
+            branchId: req.branchId,
             session,
           }
         );
@@ -707,7 +782,10 @@ export const memberController = {
         }
 
         // FinanceLog vocabulary is "renew"; PaymentLog uses "renewal".
+        // A renewal lands in the member's own branch — which is also the
+        // admin's branch (resolveMemberForAdmin scoped the lookup above).
         const financeLog = new FinanceLog({
+          branchId: existingMember.branchId,
           gymId: updatedMember.gymId,
           memberName: updatedMember.fullName,
           amount: selectedAmount,
@@ -719,6 +797,7 @@ export const memberController = {
         await financeLog.save({ session });
 
         const paymentLog = new PaymentLog({
+          branchId: existingMember.branchId,
           gymId: updatedMember.gymId,
           name: updatedMember.fullName,
           amount: selectedAmount,
@@ -742,6 +821,7 @@ export const memberController = {
         const stillExists = await memberRepository.findByGymId(lookupGymId, {
           allowedGenders: scopeResolver.getScopeAllowedGenders(req),
           memberCode,
+          branchId: req.branchId,
         });
         if (stillExists) {
           throw new ConflictError(
@@ -794,6 +874,14 @@ export const memberController = {
 
     const GENDERS = ["Male", "Female", "Transgender"];
     const prefixOf = { Male: "M", Female: "F", Transgender: "F" };
+
+    // Imports are branch-scoped: every row lands in the importing admin's
+    // branch, duplicates are checked within that branch only, and the
+    // per-branch gymId counters are re-seeded from the imported max.
+    const branch = await Branch.findById(req.branchId).select("code").lean();
+    if (!branch) {
+      throw new ValidationError("Cannot import: branch not found");
+    }
 
     // ── 1. Normalize + validate each row (no invented values) ──────────────
     const seenInFile = new Set(); // `${gender}:${gymId}`
@@ -854,6 +942,7 @@ export const memberController = {
         if (!trainingType) throw rowError("trainingType", `Training type is required (row ${rowNum})`);
 
         const m = {
+          branchId: req.branchId,
           gymId,
           gender,
           fullName,
@@ -896,9 +985,16 @@ export const memberController = {
     }
 
     // ── 2. Duplicate detection against existing database records ───────────
+    // Scoped to this branch: {branchId, gender, gymId} is the unique key, so
+    // the same gymId may legitimately exist in ANOTHER branch.
     const gendersInImport = [...new Set(normalized.map((m) => m.gender))];
     const existing = gendersInImport.length
-      ? await Member.find({ gender: { $in: gendersInImport } }).select("gender gymId").lean()
+      ? await Member.find({
+          branchId: req.branchId,
+          gender: { $in: gendersInImport },
+        })
+          .select("gender gymId")
+          .lean()
       : [];
     const existingKeys = new Set(existing.map((m) => `${m.gender}:${m.gymId}`));
 
@@ -950,6 +1046,7 @@ export const memberController = {
         // insertMany({ ordered:false }) throws on ANY failure but still inserts
         // the non-conflicting documents. Reconcile against actual DB state.
         const insertedGyms = await Member.find({
+          branchId: req.branchId,
           gymId: { $in: toInsert.map((m) => m.gymId) },
           gender: { $in: gendersInImport },
         }).countDocuments();
@@ -961,7 +1058,7 @@ export const memberController = {
       }
     }
 
-    // ── 5. Seed per-gender gymId counters from the imported max ────────────
+    // ── 5. Seed per-branch, per-gender gymId counters from the imported max ──
     if (inserted > 0) {
       const maxByGender = {};
       for (const m of toInsert) {
@@ -969,7 +1066,10 @@ export const memberController = {
         maxByGender[m.gender] = Math.max(maxByGender[m.gender], m.gymId);
       }
       for (const gender of Object.keys(maxByGender)) {
-        await Counter.ensureMin(`gym_id_${prefixOf[gender]}`, maxByGender[gender]);
+        await Counter.ensureMin(
+          `gym_id_${branch.code}_${prefixOf[gender]}`,
+          maxByGender[gender]
+        );
       }
     }
 

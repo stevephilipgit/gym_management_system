@@ -3,6 +3,14 @@ import mongoose from "mongoose";
 
 const paymentLogSchema = new mongoose.Schema(
   {
+    // Multi-tenancy root: the branch this payment was recorded in.
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      required: true,
+      index: true,
+    },
+
     gymId: { type: Number, required: true },
     name: { type: String, required: true },
 

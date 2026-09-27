@@ -20,6 +20,11 @@ const Member = mongoose.model('Member');
 // sanitizeInput, validateSearchInput, isWithinBusinessHours, isLateEntry
 // are imported from the shared utils/attendanceInput.js module.
 
+// Branch tenancy filter for member lookups. Admin routes run behind
+// branchContext, which guarantees req.branchId; the conditional keeps direct
+// handler calls (unit tests) working with their historical unscoped behaviour.
+const memberScope = (req) => (req.branchId ? { branchId: req.branchId } : {});
+
 // POST /api/attendance/search-punch
 export const searchPunch = async (req, res) => {
   try {
@@ -48,15 +53,21 @@ export const searchPunch = async (req, res) => {
     if (type === 'phone') {
       // Scope-aware phone lookup: trainers only resolve phones within their
       // allowed genders; out-of-scope members still surface as "not found".
+      // Phone is unique per branch — the branch filter keeps the lookup inside
+      // this admin's branch (another branch's same number is "not found").
       const allowedGenders = scopeResolver.getScopeAllowedGenders(req);
-      const phoneFilter = { phone: value };
+      const phoneFilter = { phone: value, ...memberScope(req) };
       if (allowedGenders.length > 0 && allowedGenders.length < 3) {
         phoneFilter.gender = { $in: allowedGenders };
       }
       member = await Member.findOne(phoneFilter).lean();
     } else if (req.body.memberCode) {
       // Superadmin disambiguation: an explicit memberCode resolves exactly.
-      member = await Member.findOne({ gymId: value, memberCode: req.body.memberCode }).lean();
+      member = await Member.findOne({
+        gymId: value,
+        memberCode: req.body.memberCode,
+        ...memberScope(req),
+      }).lean();
     } else {
       const allowedGenders = scopeResolver.getScopeAllowedGenders(req);
       if (allowedGenders.length > 0 && allowedGenders.length < 3) {
@@ -65,6 +76,7 @@ export const searchPunch = async (req, res) => {
         const matches = await Member.find({
           gymId: value,
           gender: { $in: allowedGenders },
+          ...memberScope(req),
         }).select('gymId memberCode fullName gender').lean();
         if (matches.length === 1) {
           member = matches[0];
@@ -83,8 +95,12 @@ export const searchPunch = async (req, res) => {
           });
         }
       } else {
-        // Superadmin (all): resolve all matches; never silently pick one.
-        const matches = await Member.find({ gymId: value }).select('gymId memberCode fullName gender').lean();
+        // Superadmin (all): resolve all matches WITHIN THIS BRANCH; never
+        // silently pick one. gymId repeats across branches, so the branch
+        // filter is what keeps the match set unambiguous here.
+        const matches = await Member.find({ gymId: value, ...memberScope(req) })
+          .select('gymId memberCode fullName gender')
+          .lean();
         if (matches.length === 1) {
           member = matches[0];
         } else if (matches.length > 1) {
@@ -250,8 +266,8 @@ export const markAttendance = async (req, res) => {
     const { memberId } = req.body;
     const adminId = req.admin?.id || null;
 
-    // Load member and verify admin scope
-    let member = await Member.findById(memberId).select("gender");
+    // Load member (branch-scoped) and verify admin scope
+    let member = await Member.findOne({ _id: memberId, ...memberScope(req) }).select("gender");
     if (!member) {
       return res.status(404).json({
         success: false,
@@ -358,11 +374,13 @@ export const handleLatePunchManual = async (req, res) => {
       });
     }
 
-    // Gender-scope enforcement: load the member and verify the trainer is
-    // authorized to punch this member.
+    // Gender-scope enforcement: load the member (branch-scoped) and verify the
+    // trainer is authorized to punch this member.
     let member = null;
     if (memberId && action !== 'cancel') {
-      member = await Member.findById(memberId).select("gender gymId fullName validityEnd status");
+      member = await Member.findOne({ _id: memberId, ...memberScope(req) }).select(
+        "branchId gender gymId fullName validityEnd status"
+      );
       if (!member) {
         return res.status(404).json({
           success: false,
@@ -422,9 +440,11 @@ export const handleLatePunchManual = async (req, res) => {
       const now = new Date();
 
       // Atomic create; the unique { memberId, date } index prevents duplicates.
+      // branchId is stamped from the member (tenancy source of truth).
       let attendance;
       try {
         attendance = await Attendance.create({
+          branchId: member.branchId,
           memberId,
           date: normalizedDate,
           checkInTime: new Date(normalizedDate.getTime() - 60 * 60 * 1000), // Assume came 1h ago
@@ -475,8 +495,8 @@ export const getAttendanceHistory = async (req, res) => {
     const limit = parseInt(req.query.limit) || 30;
     const skip = parseInt(req.query.skip) || 0;
 
-    // Load member and verify admin scope
-    const member = await Member.findById(memberId).select("gender");
+    // Load member (branch-scoped) and verify admin scope
+    const member = await Member.findOne({ _id: memberId, ...memberScope(req) }).select("gender");
     if (!member) {
       return res.status(404).json({
         success: false,
@@ -518,14 +538,15 @@ export const getAttendanceHistory = async (req, res) => {
 export const getTodayStats = async (req, res) => {
   try {
     // Gender-scoped: trainers only see counts for their allowed genders.
-    // Superadmin (scope=all) sees everything.
+    // Both paths are additionally scoped to THIS admin's branch — stats never
+    // span branches (getScopedMemberIds already carries branchId too).
     const allowed = scopeResolver.getScopeAllowedGenders(req);
     let stats;
     if (allowed.length === 0 || allowed.length >= 3) {
-      stats = await attendanceService.getTodayStats();
+      stats = await attendanceService.getTodayStats(null, req.branchId);
     } else {
       const memberIds = await scopeResolver.getScopedMemberIds(req, Member);
-      stats = await attendanceService.getTodayStats(memberIds || []);
+      stats = await attendanceService.getTodayStats(memberIds || [], req.branchId);
     }
     res.json({
       success: true,
@@ -575,6 +596,9 @@ export const searchAttendanceLogs = async (req, res) => {
     }
 
     memberFilter.gender = { $in: allowedGenders };
+    // Branch tenancy: the candidate member set (and therefore the attendance
+    // records joined from it) is restricted to this admin's branch.
+    if (req.branchId) memberFilter.branchId = req.branchId;
 
     const search = String(q).trim();
     if (search) {
@@ -733,6 +757,9 @@ export const adminKioskPunch = async (req, res) => {
       memberCode: modes[0] === 'memberCode' ? value : undefined,
       selectionToken: modes[0] === 'selectionToken' ? value : undefined,
       scope: principal.scope,
+      // The admin's branch (DB-derived by adminAttendanceAuth) — the super
+      // admin punch is branch-bound just like every other admin action.
+      branchId: principal.branchId,
       principal: { type: 'superadmin', adminId: principal.adminId },
     });
 

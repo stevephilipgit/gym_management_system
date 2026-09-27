@@ -30,12 +30,14 @@ import config from "../config/index.js";
 import adminAuth from "../middleware/adminAuth.js";
 import requireRole from "../middleware/requireRole.js";
 import reportsRoutes from "../routes/reportsRoutes.js";
+import { seedTestBranch } from "./utils/branchFixture.js";
 
 const DB_URI = process.env.MONGO_URI || "mongodb://localhost:27017/gym_test";
 
 describe("Reports RBAC authorization (integration)", function () {
   this.timeout(30000);
   let connected = false;
+  let branch;
   let superadmin, trainerMale, trainerFemale;
   let saSession, trainerSession;
   let saToken, trainerToken;
@@ -44,6 +46,7 @@ describe("Reports RBAC authorization (integration)", function () {
     const username = `report_${role}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     return Admin.create({
       fullName: `Report ${role}`,
+      branchId: branch._id,
       username,
       email: `${username}@example.com`,
       role,
@@ -100,6 +103,7 @@ describe("Reports RBAC authorization (integration)", function () {
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
+      branch = await seedTestBranch();
       config.jwt.accessSecret = "test-access-secret";
       await AdminSession.deleteMany({});
       await Admin.deleteMany({ username: { $regex: /^report_/ } });

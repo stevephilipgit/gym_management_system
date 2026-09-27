@@ -37,6 +37,7 @@ import { makeActive } from "./utils/deviceRequestHelper.js";
 
 const TRAINER_TEST_PASSWORD = "pass";
 import systemSettingsService from "../services/systemSettingsService.js";
+import { seedTestBranch } from "./utils/branchFixture.js";
 
 const DB_URI = process.env.MONGO_URI || "mongodb://localhost:27017/gym_test";
 const IN_HOURS = new Date("2026-08-30T10:00:00");
@@ -49,6 +50,7 @@ const AttendanceExport = mongoose.model("AttendanceExport");
 describe("Phase 5 — Security + Concurrency + Regression (integration)", function () {
   this.timeout(60000);
   let connected = false;
+  let branch;
   let memberSeq = 0;
   let trainerIdA, trainerIdB, superAdminId;
 
@@ -57,6 +59,7 @@ describe("Phase 5 — Security + Concurrency + Regression (integration)", functi
     const prefix = gender === "Male" ? "M" : "F";
     return Member.create({
       fullName: `Test ${gender} ${gymId}`,
+      branchId: branch._id,
       fatherName: "Test", dob: new Date("1990-01-01"), bloodGroup: "O+",
       gender, address: "Test Address", occupation: "Student",
       aadhar: String(100000000000 + Math.floor(Math.random() * 900000000000)),
@@ -71,7 +74,7 @@ describe("Phase 5 — Security + Concurrency + Regression (integration)", functi
   const fp = (key) => crypto.createHash("sha256").update(key).digest("hex");
 
   const regDevice = async (kioskId, scope, trainerId = trainerIdA) => {
-    const kiosk = await Kiosk.create({ kioskId, name: kioskId, scope, enabled: true });
+    const kiosk = await Kiosk.create({ kioskId, name: kioskId, scope, enabled: true, branchId: branch._id });
     const apiKey = crypto.randomBytes(32).toString("base64url");
     await DeviceRegistration.create({
       registrationId: `reg-${kioskId}-${Date.now()}`,
@@ -103,6 +106,7 @@ describe("Phase 5 — Security + Concurrency + Regression (integration)", functi
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
+      branch = await seedTestBranch();
       await Kiosk.deleteMany({});
       await DeviceRegistration.deleteMany({});
       await Admin.deleteMany({});
@@ -115,17 +119,17 @@ describe("Phase 5 — Security + Concurrency + Regression (integration)", functi
       systemSettingsService.invalidateCache();
 
       trainerIdA = (await Admin.create({
-        fullName: "Sec A", username: `sec_a_${crypto.randomBytes(4).toString("hex")}`,
+        fullName: "Sec A", branchId: branch._id, username: `sec_a_${crypto.randomBytes(4).toString("hex")}`,
         email: `${crypto.randomBytes(4).toString("hex")}@sec.local`, role: "trainer", scope: "male",
         passwordHash: await bcrypt.hash("pass", 4), status: "active", tokenVersion: 0,
       }))._id;
       trainerIdB = (await Admin.create({
-        fullName: "Sec B", username: `sec_b_${crypto.randomBytes(4).toString("hex")}`,
+        fullName: "Sec B", branchId: branch._id, username: `sec_b_${crypto.randomBytes(4).toString("hex")}`,
         email: `${crypto.randomBytes(4).toString("hex")}@sec.local`, role: "trainer", scope: "male",
         passwordHash: await bcrypt.hash("pass", 4), status: "active", tokenVersion: 0,
       }))._id;
       superAdminId = (await Admin.create({
-        fullName: "Sec Super", username: `sec_sa_${crypto.randomBytes(4).toString("hex")}`,
+        fullName: "Sec Super", branchId: branch._id, username: `sec_sa_${crypto.randomBytes(4).toString("hex")}`,
         email: `${crypto.randomBytes(4).toString("hex")}@sec.local`, role: "superadmin", scope: "all",
         passwordHash: await bcrypt.hash("pass", 4), status: "active", tokenVersion: 0,
       }))._id;

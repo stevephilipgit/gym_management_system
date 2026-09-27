@@ -17,6 +17,7 @@
 
 import mongoose from "mongoose";
 import Kiosk from "../src/models/Kiosk.js";
+import { seedDefaultBranch } from "./migrate-add-branches.js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -48,13 +49,19 @@ async function createKiosk() {
     await mongoose.connect(MONGO_URI);
     console.log("✅ Connected to MongoDB\n");
 
-    const existing = await Kiosk.findOne({ kioskId });
+    // Kiosks are branch-bound (branchId required): attach the default branch,
+    // creating it if this is a fresh database. kioskId is only unique WITHIN
+    // a branch ({branchId, kioskId} unique compound).
+    const branch = await seedDefaultBranch();
+
+    const existing = await Kiosk.findOne({ branchId: branch._id, kioskId });
     if (existing) {
-      console.error(`❌ ERROR: A kiosk with kioskId "${kioskId}" already exists.`);
+      console.error(`❌ ERROR: A kiosk with kioskId "${kioskId}" already exists in branch "${branch.name}".`);
       process.exit(1);
     }
 
     const kiosk = await Kiosk.create({
+      branchId: branch._id,
       kioskId,
       name,
       scope,

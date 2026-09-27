@@ -110,7 +110,8 @@ export const exportAttendanceCSV = async (req, res) => {
     }
 
     // Gender-scope enforcement: trainers may only export attendance belonging
-    // to their allowed genders. Superadmin (all) is unrestricted.
+    // to their allowed genders. Superadmin (all) is gender-unrestricted but
+    // still branch-bound — the branch filter applies to BOTH paths.
     const allowedGenders = scopeResolver.getScopeAllowedGenders(req);
     if (allowedGenders.length > 0 && allowedGenders.length < 3) {
       const memberIds = await scopeResolver.getScopedMemberIds(req, Member);
@@ -119,6 +120,7 @@ export const exportAttendanceCSV = async (req, res) => {
       }
       filter.memberId = { $in: memberIds };
     }
+    if (req.branchId) filter.branchId = req.branchId;
 
     const records = await Attendance.find(filter)
       .populate('memberId', 'fullName phone gymId')
@@ -157,9 +159,12 @@ export const exportMembersCSV = async (req, res) => {
       filter.status = status;
     }
 
-    // Apply gender scope filter (no-op for superadmin/all)
+    // Apply gender + branch scope filter (no-op for superadmin/all genders)
     if (genderFilter.gender) {
       filter.gender = genderFilter.gender;
+    }
+    if (genderFilter.branchId) {
+      filter.branchId = genderFilter.branchId;
     }
 
     const members = await Member.find(filter)

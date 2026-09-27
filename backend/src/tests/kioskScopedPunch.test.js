@@ -43,6 +43,7 @@ import { performKioskPunch, KioskError } from "../services/kioskService.js";
 import systemSettingsService from "../services/systemSettingsService.js";
 import { deactivateRegistration, revokeRegistration, reassignKioskScope } from "../services/deviceRegistrationService.js";
 import kioskAuth from "../middleware/kioskAuth.js";
+import { seedTestBranch } from "./utils/branchFixture.js";
 
 const Member = mongoose.model("Member");
 const Attendance = mongoose.model("Attendance");
@@ -55,6 +56,7 @@ const OUT_OF_HOURS = new Date("2026-08-30T23:30:00");
 describe("Phase 4 Scoped Kiosk Punch (integration)", function () {
   this.timeout(60000);
   let connected = false;
+  let branch;
 
   let memberSeq = 0;
   const makeMember = async (gender, gymId, overrides = {}) => {
@@ -62,6 +64,7 @@ describe("Phase 4 Scoped Kiosk Punch (integration)", function () {
     const prefix = gender === "Male" ? "M" : "F";
     return Member.create({
       fullName: `Test ${gender} ${gymId}`,
+      branchId: branch._id,
       fatherName: "Test",
       dob: new Date("1990-01-01"),
       bloodGroup: "O+",
@@ -85,7 +88,7 @@ describe("Phase 4 Scoped Kiosk Punch (integration)", function () {
 
   // Create a scoped Kiosk + an active DeviceRegistration with a known key.
   const provisionDevice = async (kioskId, scope, trainerId) => {
-    const kiosk = await Kiosk.create({ kioskId, name: kioskId, scope, enabled: true });
+    const kiosk = await Kiosk.create({ kioskId, name: kioskId, scope, enabled: true, branchId: branch._id });
     const apiKey = crypto.randomBytes(32).toString("base64url");
     await DeviceRegistration.create({
       registrationId: `reg-${kioskId}`,
@@ -103,6 +106,7 @@ describe("Phase 4 Scoped Kiosk Punch (integration)", function () {
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
+      branch = await seedTestBranch();
       await Kiosk.deleteMany({});
       await DeviceRegistration.deleteMany({});
       await Member.deleteMany({});

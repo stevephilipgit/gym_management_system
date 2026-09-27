@@ -39,6 +39,7 @@ import DeviceRegistration from "../models/DeviceRegistration.js";
 import kioskAuth from "../middleware/kioskAuth.js";
 import { performKioskPunch, KioskError } from "../services/kioskService.js";
 import systemSettingsService from "../services/systemSettingsService.js";
+import { seedTestBranch } from "./utils/branchFixture.js";
 
 const AttendanceModel = mongoose.model("Attendance");
 const MemberModel = mongoose.model("Member");
@@ -94,6 +95,7 @@ describe("Kiosk input validation (unit)", () => {
 describe("Kiosk auth + punch (integration)", function () {
   this.timeout(30000);
   let connected = false;
+  let branch;
 
   let mainKiosk;
   let disabledKiosk;
@@ -105,6 +107,7 @@ describe("Kiosk auth + punch (integration)", function () {
     try {
       await mongoose.connect(DB_URI, { serverSelectionTimeoutMS: 3000 });
       connected = true;
+      branch = await seedTestBranch();
       await Kiosk.deleteMany({});
       await DeviceRegistration.deleteMany({});
       await Member.deleteMany({});
@@ -118,12 +121,14 @@ describe("Kiosk auth + punch (integration)", function () {
         name: "Main Test Kiosk",
         scope: "male",
         enabled: true,
+        branchId: branch._id,
       });
       disabledKiosk = await Kiosk.create({
         kioskId: "kiosk-disabled-test",
         name: "Disabled Test Kiosk",
         scope: "male",
         enabled: false,
+        branchId: branch._id,
       });
 
       // Browser/device registrations bound to the physical Kiosks.
@@ -173,6 +178,7 @@ describe("Kiosk auth + punch (integration)", function () {
     const prefix = gender === "Male" ? "M" : "F";
     return Member.create({
       fullName: `Test ${gender} ${gymId}`,
+      branchId: branch._id,
       fatherName: "Test",
       dob: new Date("1990-01-01"),
       bloodGroup: "O+",

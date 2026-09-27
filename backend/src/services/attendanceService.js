@@ -42,8 +42,19 @@ class AttendanceService {
     normalizedDate.setHours(0, 0, 0, 0);
     const now = new Date();
 
+    // The member is the tenancy source of truth: the attendance record inherits
+    // the member's branch. Fail closed — a member without a branch (unmigrated
+    // data) must never produce an unscoped attendance record.
+    const member = await Member.findById(memberId).select('branchId').lean();
+    if (!member || !member.branchId) {
+      throw new Error(
+        `Cannot record attendance: member ${memberId} has no branch context`
+      );
+    }
+
     try {
       const attendance = await Attendance.create({
+        branchId: member.branchId,
         memberId,
         date: normalizedDate,
         checkInTime: now,
@@ -268,14 +279,17 @@ class AttendanceService {
   /**
    * Get today's stats (simple counts)
    * When memberIds is provided, only attendance belonging to those members is
-   * counted (gender-scoped query). memberIds = null counts everything (superadmin).
+   * counted (gender+branch-scoped query). memberIds = null counts every member
+   * of `branchId` — branchId is ALWAYS supplied by the admin-facing caller, so
+   * stats can never silently span branches.
    */
-  async getTodayStats(memberIds = null) {
+  async getTodayStats(memberIds = null, branchId = null) {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       const baseFilter = { date: today };
+      if (branchId) baseFilter.branchId = branchId;
       const scopeFilter = Array.isArray(memberIds)
         ? { ...baseFilter, memberId: { $in: memberIds } }
         : baseFilter;

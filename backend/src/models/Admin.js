@@ -3,6 +3,17 @@ import mongoose from "mongoose";
 
 const AdminSchema = new mongoose.Schema(
   {
+    // Multi-tenancy root: admins are BRANCH-BOUND. A superadmin's authority
+    // covers exactly this branch (Branch SuperAdmin); trainers additionally
+    // carry a gender `scope` within it. Required — migration backfills all
+    // existing accounts to the default branch.
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      required: true,
+      index: true,
+    },
+
     fullName: {
       type: String,
       required: true,

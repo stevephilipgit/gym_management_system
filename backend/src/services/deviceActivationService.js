@@ -199,7 +199,7 @@ export async function redeemActivation({ trainerId, browserDeviceId, code, qrSec
 
   // ── Load + verify Trainer ─────────────────────────────────────────────
   const trainer = await Admin.findById(trainerId)
-    .select("role scope status passwordHash")
+    .select("role scope status passwordHash branchId")
     .lean();
   if (!trainer || trainer.role !== "trainer" || trainer.status !== "active") {
     throw new DeviceActivationError(401, "Activation is invalid or expired");
@@ -285,6 +285,7 @@ export async function redeemActivation({ trainerId, browserDeviceId, code, qrSec
             scope: activation.scope,
             enabled: true,
             activeRegistrationCount: 0,
+            branchId: trainer.branchId,
             createdBy: trainer._id,
           }], { session });
           kiosk = kiosk[0];

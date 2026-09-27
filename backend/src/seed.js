@@ -6,6 +6,7 @@ import Package from "./models/Package.js";
 import PaymentLog from "./models/PaymentLog.js";
 import FinanceLog from "./models/FinanceLog.js";
 import DynamicField from "./models/DynamicField.js";
+import Branch from "./models/Branch.js";
 
 // ============================================================================
 // MONGODB ATLAS CONNECTION
@@ -52,17 +53,47 @@ async function seedDatabase() {
     // ========================================================================
     console.log("\n📋 Creating indexes...");
 
+    // ========================================================================
+    // 0. DEFAULT BRANCH (multi-tenancy root — required by every tenant
+    //    collection below). Idempotent upsert.
+    // ========================================================================
+    console.log("\n🌍 Ensuring default branch...");
+    const defaultBranch = await Branch.findOneAndUpdate(
+      { code: "MATHUR" },
+      { $setOnInsert: { name: "Mathur Branch", isActive: true } },
+      { upsert: true, new: true }
+    );
+    console.log(`  ✓ Branch ${defaultBranch.name} (${defaultBranch.code}) -> ${defaultBranch._id}`);
+
     await Admin.collection.createIndex({ username: 1 }, { unique: true });
     await Admin.collection.createIndex({ email: 1 }, { unique: true });
     console.log("  ✓ Admin indexes created");
 
-    await Member.collection.createIndex({ gymId: 1, gender: 1 }, { unique: true });
+    // Drop superseded global uniques before creating the branch-scoped
+    // compounds — a leftover global unique would reject second-branch docs.
+    const dropIfPresent = async (collection, keyPattern) => {
+      const existing = await collection.indexes();
+      const match = existing.find(
+        (idx) => JSON.stringify(idx.key) === JSON.stringify(keyPattern)
+      );
+      if (match && match.name !== "_id_") await collection.dropIndex(match.name);
+    };
+    await dropIfPresent(Member.collection, { gymId: 1, gender: 1 });
+    await dropIfPresent(Member.collection, { phone: 1 });
+
+    await Member.collection.createIndex(
+      { branchId: 1, gender: 1, gymId: 1 },
+      { unique: true, name: "idx_members_branch_gender_gym_unique" }
+    );
+    await Member.collection.createIndex(
+      { branchId: 1, phone: 1 },
+      { unique: true, name: "idx_members_branch_phone_unique" }
+    );
     await Member.collection.createIndex({ memberCode: 1 }, { unique: true, sparse: true });
     await Member.collection.createIndex({ aadhar: 1 }, { unique: true });
-    await Member.collection.createIndex({ phone: 1 }, { unique: true });
     console.log("  ✓ Member indexes created");
 
-    await PaymentLog.collection.createIndex({ gymId: 1 });
+    await PaymentLog.collection.createIndex({ branchId: 1, paidAt: -1 });
     await PaymentLog.collection.createIndex({ paidAt: 1 });
     console.log("  ✓ PaymentLog indexes created");
 
@@ -120,6 +151,7 @@ async function seedDatabase() {
         email: user.email,
         role: user.role,
         scope: user.scope,
+        branchId: defaultBranch._id,
         passwordHash,
         lastLogin: null,
         resetOtp: null,
@@ -140,6 +172,7 @@ async function seedDatabase() {
     if (packageCount === 0) {
       const packages = [
         {
+          branchId: defaultBranch._id,
           name: "1 Month",
           months: 1,
           priceWeightLoss: 2500,
@@ -147,6 +180,7 @@ async function seedDatabase() {
           priceTransformation: 3000,
         },
         {
+          branchId: defaultBranch._id,
           name: "3 Months",
           months: 3,
           priceWeightLoss: 6500,
@@ -154,6 +188,7 @@ async function seedDatabase() {
           priceTransformation: 8000,
         },
         {
+          branchId: defaultBranch._id,
           name: "6 Months",
           months: 6,
           priceWeightLoss: 11000,
@@ -161,6 +196,7 @@ async function seedDatabase() {
           priceTransformation: 13000,
         },
         {
+          branchId: defaultBranch._id,
           name: "12 Months",
           months: 12,
           priceWeightLoss: 18000,

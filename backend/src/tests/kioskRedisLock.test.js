@@ -38,6 +38,7 @@ import redisClient, {
   deleteCache,
 } from "../config/redis.js";
 import systemSettingsService from "../services/systemSettingsService.js";
+import { seedTestBranch } from "./utils/branchFixture.js";
 
 const KIOSK_ID = "kiosk-redis-lock-test";
 const KIOSK_KEY = crypto.randomBytes(32).toString("base64url");
@@ -89,11 +90,13 @@ describe("Kiosk Redis lock + credential cache", function () {
 
   let mongoServer;
   let redisUp = false;
+  let branch;
   let member;
   let otherMember;
 
   const baseMember = (overrides) => ({
     fullName: "Redis Lock Member",
+    branchId: branch._id,
     fatherName: "Test Father",
     dob: new Date("1995-01-01"),
     bloodGroup: "O+",
@@ -118,9 +121,11 @@ describe("Kiosk Redis lock + credential cache", function () {
     mongoServer = await MongoMemoryServer.create();
     await mongoose.connect(mongoServer.getUri(), { dbName: "gym_kiosk_redis_lock" });
 
+    branch = await seedTestBranch();
+
     redisUp = await redisReachable();
 
-    await Kiosk.create({ kioskId: KIOSK_ID, name: "Redis Lock Kiosk", scope: "male", enabled: true });
+    await Kiosk.create({ kioskId: KIOSK_ID, name: "Redis Lock Kiosk", scope: "male", enabled: true, branchId: branch._id });
 
     await DeviceRegistration.create({
       registrationId: crypto.randomUUID(),

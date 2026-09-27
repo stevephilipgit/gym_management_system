@@ -10,16 +10,26 @@ export const collectionIndexes = [
   {
     collection: "members",
     indexes: [
-      // Identity: gymId is only unique WITHIN a gender (male "101" and female
-      // "101" are distinct). The old global gymId unique index was replaced by
-      // this compound unique. Drop the old one via scripts/migrate-member-identity.js.
-      { key: { gymId: 1, gender: 1 }, options: { unique: true, name: "idx_members_gym_gender_unique" } },
+      // Identity: keypad/serial gymId is unique within (branch, gender).
+      // Supersedes the old {gymId,gender} compound (dropped by
+      // scripts/migrate-add-branches.js).
+      { key: { branchId: 1, gender: 1, gymId: 1 }, options: { unique: true, name: "idx_members_branch_gender_gym_unique" } },
+      // Phone is unique PER BRANCH (was globally unique); public/kiosk phone
+      // lookups resolve cross-branch ambiguity explicitly.
+      { key: { branchId: 1, phone: 1 }, options: { unique: true, name: "idx_members_branch_phone_unique" } },
       { key: { memberCode: 1 }, options: { unique: true, sparse: true, name: "idx_members_memberCode_unique" } },
       { key: { aadhar: 1 }, options: { unique: true, name: "idx_members_aadhar_unique" } },
-      { key: { phone: 1 }, options: { unique: true, name: "idx_members_phone_unique" } },
       { key: { paymentStatus: 1, validityEnd: 1 }, options: { name: "idx_members_status_validity" } },
       { key: { status: 1, createdAt: -1 }, options: { name: "idx_members_status_createdAt" } },
-      { key: { gender: 1, createdAt: -1 }, options: { name: "idx_members_gender_createdAt" } },
+      { key: { branchId: 1, gender: 1, createdAt: -1 }, options: { name: "idx_members_branch_gender_createdAt" } },
+    ],
+  },
+  {
+    collection: "dailysummaries",
+    indexes: [
+      // One summary per branch per day (was: one per day, globally unique).
+      { key: { branchId: 1, date: 1 }, options: { unique: true, name: "idx_dailysummary_branch_date_unique" } },
+      { key: { date: 1, isCompleted: 1 }, options: { name: "idx_dailysummaries_date_completed" } },
     ],
   },
   {
@@ -50,7 +60,9 @@ export const collectionIndexes = [
   {
     collection: "kiosks",
     indexes: [
-      // kioskId unique index is created by the schema field `unique: true`.
+      // One kioskId per branch (the old global kioskId unique index is
+      // dropped by scripts/migrate-add-branches.js).
+      { key: { branchId: 1, kioskId: 1 }, options: { unique: true, name: "idx_kiosks_branch_kiosk_unique" } },
       { key: { enabled: 1 }, options: { name: "idx_kiosks_enabled" } },
     ],
   },

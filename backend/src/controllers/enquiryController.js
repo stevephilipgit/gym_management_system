@@ -4,10 +4,15 @@
  * DB is the source of truth — email/sheets failures never block success.
  */
 import Enquiry from '../models/Enquiry.js';
+import Branch from '../models/Branch.js';
 import logger from '../core/logger.js';
 import scopeResolver from '../core/scopeResolver.js';
 import { sendEnquiryNotification } from '../services/emailService.js';
 import systemSettingsService from '../services/systemSettingsService.js';
+
+// Branch tenancy filter for admin queries. Admin routes run behind
+// branchContext (req.branchId guaranteed); public/cron callers have none.
+const branchScope = (req) => (req.branchId ? { branchId: req.branchId } : {});
 
 // Sanitize helper — strips html/script tags and collapses whitespace
 function sanitize(str = '') {
@@ -92,8 +97,28 @@ export const submitEnquiry = async (req, res) => {
       return res.status(400).json({ success: false, message: errors[0], errors });
     }
 
+    // ── Resolve the filing branch (Enquiry.branchId is required) ──────────
+    // The named preference wins when a Branch with that exact name exists.
+    // "Any Branch" (or an unmatched label) falls back to the first active
+    // branch — the enquiry still lands SOMEWHERE valid instead of failing.
+    let branch = await Branch.findOne({ name: cleanBranch }).select('_id').lean();
+    if (!branch) {
+      branch = await Branch.findOne({ isActive: true })
+        .select('_id')
+        .sort({ createdAt: 1 })
+        .lean();
+    }
+    if (!branch) {
+      logger.error('[Enquiry] No branch available to file enquiry', { branch: cleanBranch });
+      return res.status(503).json({
+        success: false,
+        message: 'Enquiry service is temporarily unavailable. Please try again later.',
+      });
+    }
+
     // ── Save to DB (source of truth) ────────────────────────
     const enquiry = await Enquiry.create({
+      branchId: branch._id,
       name: cleanName,
       email: cleanEmail,
       phone: cleanPhone,
@@ -166,6 +191,7 @@ export const getEnquiries = async (req, res) => {
     } = req.query;
 
     const filter = {};
+    if (req.branchId) filter.branchId = req.branchId;
 
     if (status && status !== 'all') filter.status = status;
     if (branch && branch !== 'all') filter.preferred_branch = branch;
@@ -230,7 +256,10 @@ export const getEnquiries = async (req, res) => {
 // ============================================================
 export const getEnquiryById = async (req, res) => {
   try {
-    const enquiry = await Enquiry.findById(req.params.id).lean();
+    const enquiry = await Enquiry.findOne({
+      _id: req.params.id,
+      ...branchScope(req),
+    }).lean();
     if (!enquiry) return res.status(404).json({ success: false, message: 'Enquiry not found.' });
 
     // Verify admin scope against enquiry gender (centralized rule)
@@ -258,7 +287,10 @@ export const updateEnquiryStatus = async (req, res) => {
     }
 
     // Verify admin scope against enquiry gender BEFORE update (centralized rule)
-    const enquiry = await Enquiry.findById(req.params.id).lean();
+    const enquiry = await Enquiry.findOne({
+      _id: req.params.id,
+      ...branchScope(req),
+    }).lean();
     if (!enquiry) return res.status(404).json({ success: false, message: 'Enquiry not found.' });
 
     const allowedGenders = scopeResolver.getScopeAllowedGenders(req);
@@ -269,8 +301,8 @@ export const updateEnquiryStatus = async (req, res) => {
     const updateData = { status };
     if (notes !== undefined) updateData.notes = String(notes).substring(0, 1000);
 
-    const updatedEnquiry = await Enquiry.findByIdAndUpdate(
-      req.params.id,
+    const updatedEnquiry = await Enquiry.findOneAndUpdate(
+      { _id: req.params.id, ...branchScope(req) },
       updateData,
       { new: true }
     ).lean();
@@ -300,7 +332,10 @@ export const deleteEnquiry = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied: only superadmin can delete enquiries' });
     }
 
-    const enquiry = await Enquiry.findByIdAndDelete(req.params.id).lean();
+    const enquiry = await Enquiry.findOneAndDelete({
+      _id: req.params.id,
+      ...branchScope(req),
+    }).lean();
     if (!enquiry) return res.status(404).json({ success: false, message: 'Enquiry not found.' });
 
     logger.info('[Enquiry] Deleted', { id: req.params.id, adminId: req.admin?.id });
@@ -319,6 +354,7 @@ export const exportEnquiriesCSV = async (req, res) => {
   try {
     const { status, branch, dateFrom, dateTo, gender } = req.query;
     const filter = {};
+    if (req.branchId) filter.branchId = req.branchId;
     if (status && status !== 'all') filter.status = status;
     if (branch && branch !== 'all') filter.preferred_branch = branch;
 
