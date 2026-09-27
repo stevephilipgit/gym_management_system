@@ -51,12 +51,14 @@ const revokeAllSessions = async (adminId) => {
 };
 
 // Build access + refresh JWTs for an admin session.
-// Access token carries: id, username, role, scope, email, sid (session id),
-// tv (tokenVersion) and a unique jti. The refresh token carries sid + tv so
-// rotation stays bound to the same session.
+// Access token carries: id, username, role, scope, branchId, email,
+// sid (session id), tv (tokenVersion) and a unique jti. The refresh token
+// carries sid + tv so rotation stays bound to the same session.
+// NOTE: branchId in the token is informational — adminAuth re-reads the
+// admin document each request, so the DB remains authoritative.
 const issueTokens = (admin, sessionId) => {
   const accessToken = jwt.sign(
-    { id: admin._id, username: admin.username, role: admin.role, scope: admin.scope, email: admin.email, sid: sessionId, tv: admin.tokenVersion, jti: crypto.randomUUID() },
+    { id: admin._id, username: admin.username, role: admin.role, scope: admin.scope, branchId: admin.branchId, email: admin.email, sid: sessionId, tv: admin.tokenVersion, jti: crypto.randomUUID() },
     config.jwt.accessSecret,
     { expiresIn: config.jwt.accessExpires }
   );
@@ -184,6 +186,7 @@ export const authController = {
         email: admin.email,
         role: admin.role,
         scope: admin.scope,
+        branchId: admin.branchId,
       },
     });
   }),
@@ -270,6 +273,7 @@ export const authController = {
         email: admin.email,
         role: admin.role,
         scope: admin.scope,
+        branchId: admin.branchId,
       },
     });
   }),
@@ -388,13 +392,15 @@ export const authController = {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create admin
+    // Create admin — bound to the creating superadmin's branch (admins are
+    // branch-bound; there is no cross-branch account creation).
     const admin = new Admin({
       username,
       fullName,
       email,
       role,
       scope,
+      branchId: req.admin.branchId,
       passwordHash,
     });
 
@@ -410,6 +416,7 @@ export const authController = {
         email: admin.email,
         role: admin.role,
         scope: admin.scope,
+        branchId: admin.branchId,
       },
     });
   }),
@@ -419,7 +426,12 @@ export const authController = {
     const { id } = req.params;
     const { fullName, email, role, scope, status } = req.body;
 
-    const admin = await Admin.findById(id);
+    // Branch-scoped: an admin may only manage accounts in their own branch
+    // (a foreign id reads as "Admin not found").
+    const admin = await Admin.findOne({
+      _id: id,
+      ...(req.branchId ? { branchId: req.branchId } : {}),
+    });
 
     if (!admin) {
       throw new ValidationError("Admin not found");
@@ -496,11 +508,14 @@ export const authController = {
     });
   }),
 
-  // Delete admin
+  // Delete admin — branch-scoped (same rule as updateAdmin)
   deleteAdmin: asyncHandler(async (req, res) => {
     const { id } = req.params;
 
-    const admin = await Admin.findByIdAndDelete(id);
+    const admin = await Admin.findOneAndDelete({
+      _id: id,
+      ...(req.branchId ? { branchId: req.branchId } : {}),
+    });
 
     if (!admin) {
       throw new ValidationError("Admin not found");
@@ -515,9 +530,13 @@ export const authController = {
     });
   }),
 
-  // List all admins (superadmin only)
+  // List admins of THIS branch (superadmin only — admins are branch-bound,
+  // so the list never spans branches; direct handler calls without branch
+  // context keep the historical unscoped behaviour).
   listAdmins: asyncHandler(async (req, res) => {
-    const admins = await Admin.find({}).select("-passwordHash").sort({ createdAt: -1 });
+    const admins = await Admin.find(req.branchId ? { branchId: req.branchId } : {})
+      .select("-passwordHash")
+      .sort({ createdAt: -1 });
 
     return res.json({
       success: true,
@@ -570,11 +589,15 @@ export const authController = {
   }),
 
   // Reset password (superadmin only - generates temp password)
+  // Branch-scoped — an admin can only reset accounts in their own branch.
   resetAdminPassword: asyncHandler(async (req, res) => {
     const { id } = req.params;
     const tempPassword = Math.random().toString(36).slice(-8) + "Aa1!";
 
-    const admin = await Admin.findById(id);
+    const admin = await Admin.findOne({
+      _id: id,
+      ...(req.branchId ? { branchId: req.branchId } : {}),
+    });
 
     if (!admin) {
       throw new ValidationError("Admin not found");

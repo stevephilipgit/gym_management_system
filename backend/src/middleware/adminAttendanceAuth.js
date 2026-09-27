@@ -47,16 +47,24 @@ export default async function adminAttendanceAuth(req, res, next) {
       return res.status(401).json({ message: "Attendance scope expired. Please select a scope again." });
     }
 
-    // DB re-check — never trust the role claim alone.
-    const admin = await Admin.findById(decoded.adminId).select("role scope status").lean();
+    // DB re-check — never trust the role claim alone. The admin's CURRENT
+    // branch from the DB is the tenancy root (fail-closed: an admin without a
+    // branch may not punch at all).
+    const admin = await Admin.findById(decoded.adminId)
+      .select("role scope status branchId")
+      .lean();
     if (!admin || admin.role !== "superadmin" || admin.status !== "active") {
       return res.status(403).json({ message: "Access denied: insufficient role" });
+    }
+    if (!admin.branchId) {
+      return res.status(403).json({ message: "Access denied: no branch context" });
     }
 
     req.attendancePrincipal = {
       type: "superadmin",
       adminId: String(admin._id),
       scope: decoded.scope,
+      branchId: admin.branchId,
     };
 
     next();
