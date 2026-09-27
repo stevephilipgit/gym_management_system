@@ -12,12 +12,16 @@
 //      must exist.
 //
 // The decoded identity is attached to req.admin for controllers. All
-// authorization (role + gender scope) is performed downstream from req.admin.
+// authorization (role + branch partition + gender scope) is performed
+// downstream from req.admin: branchContext (invoked at this middleware's
+// tail) attaches req.branchId and enforces the trainer DELETE guard; controllers
+// resolve data scope through core/scopeResolver.js.
 
 import jwt from "jsonwebtoken";
 import Admin from "../models/Admin.js";
 import AdminSession from "../models/AdminSession.js";
 import { accessCookieForSession } from "../utils/sessionCookies.js";
+import branchContext from "./branchContext.js";
 import config from "../config/index.js";
 
 export default async function adminAuth(req, res, next) {
@@ -48,8 +52,10 @@ export default async function adminAuth(req, res, next) {
     const sessionId = decoded.sid;
 
     // 4. Load the admin (light projection) so account lifecycle is authoritative.
+    //    branchId is part of the projection: the DB is the source of truth for
+    //    the tenancy boundary (the JWT claim is informational only).
     const admin = await Admin.findById(decoded.id).select(
-      "username role scope status tokenVersion"
+      "username role scope branchId status tokenVersion"
     );
     if (!admin || admin.status !== "active") {
       return res.status(401).json({ message: "Session expired. Please login again." });
@@ -89,10 +95,13 @@ export default async function adminAuth(req, res, next) {
       username: admin.username,
       role: admin.role,
       scope: admin.scope,
+      branchId: admin.branchId,
     };
     req.sessionId = sessionId;
 
-    next();
+    // Branch context + trainer DELETE guard for EVERY admin-authenticated
+    // route (single wiring point — see middleware/branchContext.js).
+    return branchContext(req, res, next);
   } catch (err) {
     return res.status(401).json({ message: "Session expired. Please login again." });
   }

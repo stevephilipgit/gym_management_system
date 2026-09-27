@@ -122,9 +122,12 @@ export default async function kioskAuth(req, res, next) {
     // 2. FAST PATH — a previously validated principal for this exact
     //    (kioskId, key fingerprint) pair. Skips the DeviceRegistration lookup
     //    AND the bcrypt compare. Any error is a miss (getCache never throws).
+    //    A principal WITHOUT branchId is a pre-multi-branch cache entry: it is
+    //    treated as a miss so the full check below re-attaches the branch
+    //    (fail-closed — a stale entry can never punch unscoped).
     const credCacheKey = buildCredCacheKey(kioskId, fingerprint);
     const cached = await getCache(credCacheKey);
-    if (cached && cached.principal) {
+    if (cached && cached.principal && cached.principal.branchId) {
       // Defence in depth: the cached snapshot still has to agree with itself.
       if (cached.locked) {
         logInvalidCredentials("device_locked", kioskId, sourceIp);
@@ -194,14 +197,26 @@ export default async function kioskAuth(req, res, next) {
     }
 
     // 6. Physical device must exist and be enabled (fail-closed).
-    const kiosk = await Kiosk.findOne({ kioskId }).lean();
-    if (!kiosk) {
+    // kioskId is only unique PER BRANCH ({branchId, kioskId} compound), and a
+    // DeviceRegistration does not record a branch — so if the same kioskId is
+    // provisioned in two branches this lookup is genuinely ambiguous. Fail
+    // closed (401) instead of picking an arbitrary branch's device.
+    const kiosks = await Kiosk.find({ kioskId }).lean();
+    if (kiosks.length === 0) {
       logInvalidCredentials("unknown_kiosk", kioskId, sourceIp);
       return res.status(401).json({
         success: false,
         message: INVALID_CREDENTIALS_MESSAGE,
       });
     }
+    if (kiosks.length > 1) {
+      logInvalidCredentials("ambiguous_kiosk", kioskId, sourceIp);
+      return res.status(401).json({
+        success: false,
+        message: INVALID_CREDENTIALS_MESSAGE,
+      });
+    }
+    const kiosk = kiosks[0];
     if (!kiosk.enabled) {
       logInvalidCredentials("kiosk_disabled", kioskId, sourceIp);
       return res.status(403).json({
@@ -220,11 +235,12 @@ export default async function kioskAuth(req, res, next) {
       });
     }
 
-    // Attach the kiosk principal with the SERVER-DERIVED scope.
+    // Attach the kiosk principal with the SERVER-DERIVED scope and branch.
     req.kiosk = {
       id: kiosk._id,
       kioskId: kiosk.kioskId,
       scope: kiosk.scope,
+      branchId: kiosk.branchId,
       registrationId: reg._id,
       principalType: "kiosk",
     };
