@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { DietSelector } from "./components/DietSelector";
 import apiClient from "../utils/apiClient.js";
+import { uploadMemberPhoto } from "../utils/mediaClient.js";
 import { allowedGendersForScope, defaultGenderForScope } from "../utils/scopeGenders.js";
 import { downloadMembershipInvoice } from "./utils/invoicePdf.js";
 import { useAdmin } from "./authContext.js";
@@ -297,7 +298,22 @@ export default function AdminRegister() {
       fd.append("amount", String(form.selectedPrice));
       fd.append("paymentStatus", paymentStatus);
       if (paymentStatus === "paid") fd.append("paymentMode", paymentMode);
-      if (photo) fd.append("photo", photo);
+      if (photo) {
+        // Media pipeline: process → presign → browser PUT → send the key.
+        // Pipeline disabled: fall back to the legacy multipart field.
+        try {
+          const result = await uploadMemberPhoto(photo);
+          if (result.photoKey) {
+            fd.append("photoKey", result.photoKey);
+          } else {
+            fd.append("photo", result.legacyFile);
+          }
+        } catch (err) {
+          setSubmitError(err.message || "Photo upload failed. Please try again.");
+          setSubmitting(false);
+          return;
+        }
+      }
 
       if (includeDiet && selectedDietId) {
         fd.append("dietId", selectedDietId);

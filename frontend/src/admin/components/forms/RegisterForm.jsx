@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import apiClient, { API_BASE_URL } from "../../../utils/apiClient.js";
 import { allowedGendersForScope } from "../../../utils/scopeGenders.js";
+import { uploadMemberPhoto, ensureMediaSession } from "../../../utils/mediaClient.js";
 import { useAdmin } from "../../authContext.js";
 import { useToast } from "../../../components/shared/ToastProvider";
+import MemberAvatar from "../../../components/shared/MemberAvatar.jsx";
 
 export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel = "Submit" }) {
   const admin = useAdmin();
@@ -64,6 +66,12 @@ export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel =
     }
   }, [defaultData]);
 
+  // The edit preview may render an edge delivery URL; make sure the short-lived
+  // media cookie exists first so the Worker authorizes the <img> request.
+  useEffect(() => {
+    ensureMediaSession();
+  }, []);
+
   useEffect(() => {
     if (defaultData && Object.keys(defaultData).length > 0) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -119,15 +127,36 @@ export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel =
     setForm((prev) => ({ ...prev, photo: file, photoUrl: previewUrl }));
   };
 
-  const submitForm = (e) => {
+  const submitForm = async (e) => {
     e.preventDefault();
     const error = validateForm();
     if (error) {
       toast.warning(error);
       return;
     }
-    // Include the version for optimistic concurrency protection.
-    onSubmit({ ...form, customFields, version: defaultData.version });
+
+    const payload = { ...form, customFields, version: defaultData.version };
+    if (payload.photo instanceof File) {
+      try {
+        const result = await uploadMemberPhoto(payload.photo, {
+          memberId: defaultData?._id || null,
+        });
+        if (result.photoKey) {
+          // Pipeline handled it: send the key, never the raw file.
+          payload.photoKey = result.photoKey;
+          payload.photo = null;
+        }
+        // result.legacyFile → keep the File; the parent sends it via multipart.
+      } catch (err) {
+        toast.error(err.message || "Photo upload failed. Please try again.");
+        return;
+      }
+    }
+    // photoUrl is server-owned (resolved delivery/legacy URL) or a local blob
+    // preview — never send it back to the API.
+    delete payload.photoUrl;
+
+    onSubmit(payload);
   };
 
   return (
@@ -253,13 +282,17 @@ export default function RegisterForm({ defaultData = {}, onSubmit, buttonLabel =
 
         <div className="field-group">
           <label className="field-label">Upload Photo</label>
-          <input type="file" accept="image/jpeg,image/png" onChange={handlePhotoUpload} className="field-control" />
+          <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoUpload} className="field-control" />
           {form.photoUrl && (
             <div className="image-preview">
-              <img
-                src={form.photoUrl.startsWith("http") ? form.photoUrl : `${API_BASE_URL.replace(/\/api$/, "")}${form.photoUrl}`}
-                alt="preview"
-                className="h-full w-full"
+              <MemberAvatar
+                photoUrl={
+                  form.photoUrl.startsWith("http") || form.photoUrl.startsWith("blob:")
+                    ? form.photoUrl
+                    : `${API_BASE_URL.replace(/\/api$/, "")}${form.photoUrl}`
+                }
+                name={form.fullName || ""}
+                size={96}
               />
             </div>
           )}
