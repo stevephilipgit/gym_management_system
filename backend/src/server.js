@@ -51,6 +51,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import memberRoutes from "./routes/memberRoutes.js";
 import packageRoutes from "./routes/packageRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
+import mediaRoutes from "./routes/mediaRoutes.js";
 import financeRoutes from "./routes/financeRoutes.js";
 import fieldRoutes from "./routes/fieldRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
@@ -190,6 +191,8 @@ app.use("/api/fields", fieldRoutes);
 app.use("/api/members", memberRoutes);
 app.use("/api/packages", packageRoutes);
 app.use("/api/upload", uploadRoutes);
+// Member photo media pipeline (presigned uploads + edge delivery session).
+app.use("/api/media", mediaRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/diets", dietRoutes);
 app.use("/api/public", publicRoutes);
