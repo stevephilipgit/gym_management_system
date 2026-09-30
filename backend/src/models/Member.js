@@ -1,6 +1,7 @@
 // models/Member.js
 import mongoose from "mongoose";
 import { generateFormattedName } from "../utils/nameFormatter.js";
+import { resolvePhotoUrl } from "../media/delivery.js";
 
 const memberSchema = new mongoose.Schema(
   {
@@ -51,7 +52,23 @@ const memberSchema = new mongoose.Schema(
       },
     },
 
+    // Legacy local-disk reference (`/uploads/...`). Kept for documents created
+    // before the media pipeline and for the rollback path when the media
+    // pipeline is disabled. Never used when `photoKey` is set.
     photoUrl: String,
+
+    // Active photo object in the private bucket — a versioned, immutable key
+    // (see media/objectKeys.js). The object itself is never stored here.
+    photoKey: { type: String, default: null },
+
+    // Objects replaced by a newer photo, kept for the retention window
+    // (MEDIA_PREVIOUS_RETENTION_DAYS, default 14) so devices that have not yet
+    // fetched the new member state keep rendering. Pruned by the media cleanup
+    // job — never deleted at write time.
+    previousPhotos: {
+      type: [{ key: String, retiredAt: Date }],
+      default: [],
+    },
 
     gymPlan: { type: String, required: true },
     trainingType: { type: String, required: true },
@@ -145,6 +162,19 @@ memberSchema.post("init", function () {
     this.version = 0;
   }
 });
+
+// Serialization: clients keep rendering `member.photoUrl`, but its VALUE is
+// resolved here once — an active `photoKey` maps to the private-bucket delivery
+// URL, otherwise the legacy `/uploads/...` reference is returned untouched.
+// Queries that end in `.lean()` bypass this transform, so those call sites
+// resolve explicitly (see utils/attendanceInput.js, controllers/attendanceController.js).
+const resolvePhotoOnSerialize = (doc, ret) => {
+  if (ret) ret.photoUrl = resolvePhotoUrl(ret);
+  return ret;
+};
+
+memberSchema.set("toJSON", { transform: resolvePhotoOnSerialize });
+memberSchema.set("toObject", { transform: resolvePhotoOnSerialize });
 
 // ✅ ANALYTICS OPTIMIZATION INDEXES
 memberSchema.index({ dob: 1 });
