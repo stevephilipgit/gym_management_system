@@ -62,6 +62,17 @@ apiClient.interceptors.request.use(
     if (sid) {
       config.headers["X-Session-Id"] = sid;
     }
+    // FormData must go out as real multipart. With the instance default
+    // "Content-Type: application/json", axios would JSON-serialize the body and
+    // silently drop every File — so drop the header and let the browser set
+    // the boundary.
+    if (config.data instanceof FormData) {
+      if (typeof config.headers?.delete === "function") {
+        config.headers.delete("Content-Type");
+      } else {
+        delete config.headers["Content-Type"];
+      }
+    }
     return config;
   },
   (error) => Promise.reject(error)

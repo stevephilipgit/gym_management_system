@@ -1,5 +1,5 @@
 // components/forms/FormFileUpload.jsx — image upload with preview
-export default function FormFileUpload({ onFile, preview, error, accept = "image/jpeg,image/png" }) {
+export default function FormFileUpload({ onFile, preview, error, accept = "image/jpeg,image/png,image/webp" }) {
   return (
     <div className="register-upload">
       <div className="register-upload-box" aria-hidden="true">

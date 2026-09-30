@@ -48,7 +48,9 @@ export default function AdminUpdate() {
     try {
       const fd = new FormData();
       Object.keys(updated).forEach((key) => {
-        if (key !== "photo" && key !== "customFields") {
+        // photo → uploaded separately (or presigned); photoUrl → server-owned,
+        // never echoed back; customFields → appended as JSON below.
+        if (key !== "photo" && key !== "photoUrl" && key !== "customFields") {
           fd.append(key, updated[key]);
         }
       });

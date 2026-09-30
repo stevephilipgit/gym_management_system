@@ -3,6 +3,8 @@
  * Displays check-in/check-out/late/error/closed states with member info
  */
 
+import MemberAvatar from "./MemberAvatar.jsx";
+
 export default function PunchModal({
   showModal,
   modalData,
@@ -195,9 +197,16 @@ export default function PunchModal({
                 gridTemplateColumns: '1fr 1fr',
                 gap: '14px',
               }}>
-                <div>
-                  <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Name</div>
-                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#111827', marginTop: '2px' }}>{modalData.member?.name}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <MemberAvatar
+                    photoUrl={modalData.member?.photoUrl}
+                    name={modalData.member?.name}
+                    size={52}
+                  />
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Name</div>
+                    <div style={{ fontSize: '14px', fontWeight: 700, color: '#111827', marginTop: '2px' }}>{modalData.member?.name}</div>
+                  </div>
                 </div>
                 <div>
                   <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Member ID</div>

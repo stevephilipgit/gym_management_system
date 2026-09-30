@@ -5,6 +5,7 @@ import kioskApiClient from "../utils/kioskApiClient.js";
 import PunchModal from "../components/shared/PunchModal.jsx";
 import { isKioskConfigured } from "../utils/kioskIdentity.js";
 import { getSessionId } from "../utils/sessionIdentity.js";
+import { ensureMediaSession, ensureKioskMediaSession } from "../utils/mediaClient.js";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
@@ -28,6 +29,15 @@ function validateInput(input) {
 function kioskErrorInfo(err) {
   const data = err?.response?.data;
   const status = err?.response?.status;
+  // No response at all → the request never reached the server (plan §20:
+  // V1 is online-only, surface connectivity loss instead of a generic error).
+  if (!err?.response) {
+    return {
+      type: "error",
+      data: null,
+      message: "Connectivity lost — Please see reception.",
+    };
+  }
   if (data?.gymClosed || data?.status === "gym_closed") return { type: "closed", data };
   if (status === 401 || status === 403) {
     return {
@@ -76,6 +86,29 @@ export default function KioskAttendance() {
 
   // Kiosk device readiness (used only when NOT a Super Admin)
   const kioskConfigured = isKioskConfigured();
+
+  // ── Connectivity (plan §20: online-only, no offline queue) ──────────────
+  const [isOffline, setIsOffline] = useState(
+    () => typeof navigator !== "undefined" && navigator.onLine === false
+  );
+
+  useEffect(() => {
+    const goOffline = () => setIsOffline(true);
+    const goOnline = () => setIsOffline(false);
+    window.addEventListener("offline", goOffline);
+    window.addEventListener("online", goOnline);
+    return () => {
+      window.removeEventListener("offline", goOffline);
+      window.removeEventListener("online", goOnline);
+    };
+  }, []);
+
+  // Edge media cookie so punch-result photos (<img> to the Worker) are
+  // authorized. Read-only: the kiosk never uploads photos.
+  useEffect(() => {
+    if (isKioskConfigured()) ensureKioskMediaSession();
+    if (getSessionId()) ensureMediaSession();
+  }, []);
 
   // Detect admin session at mount. Uses a BARE axios call (not apiClient) so a
   // non-admin visitor (customer) is never redirected to /login by the apiClient
@@ -407,6 +440,25 @@ export default function KioskAttendance() {
         <p className="kiosk-eyebrow">Premium Fitness Club</p>
         <h1>GIRI GYM</h1>
         <p className="kiosk-clock">{displayClock}</p>
+
+        {isOffline && (
+          <div
+            role="alert"
+            style={{
+              marginBottom: 12,
+              padding: "10px 14px",
+              borderRadius: 10,
+              backgroundColor: "#fef2f2",
+              border: "1px solid #fecaca",
+              color: "#b91c1c",
+              fontWeight: 700,
+              fontSize: 15,
+              textAlign: "center",
+            }}
+          >
+            Connectivity lost — Please see reception
+          </div>
+        )}
 
         {showScopeSelector ? (
           <div className="kiosk-form">
