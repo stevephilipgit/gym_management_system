@@ -1,0 +1,47 @@
+# worker/wrangler.toml — Cloudflare Worker for member photo delivery.
+#
+# Storage is provider-agnostic: the Worker fetches objects from any
+# S3-compatible private bucket (Backblaze B2 today) with server-side SigV4
+# credentials — there is NO bucket binding. Switching providers is config-only.
+#
+# Deployment steps (plan §33):
+#   1. Create a PRIVATE B2 bucket (never enable public access) and an
+#      application key with read-only access to it.
+#   2. Fill in the bucket name below (MEDIA_BUCKET) + your route pattern.
+#   3. Set secrets (never commit):
+#        wrangler secret put MEDIA_TOKEN_SECRET     # must equal backend MEDIA_TOKEN_SECRET
+#        wrangler secret put MEDIA_ACCESS_KEY_ID   # B2 application key ID
+#        wrangler secret put MEDIA_SECRET_ACCESS_KEY
+#   4. npx wrangler deploy   (from this directory)
+#   5. Point the backend at the Worker route: MEDIA_PUBLIC_BASE_URL=https://media.example.com/photos
+#
+# Rollback (plan §34): remove the route / MEDIA_PUBLIC_BASE_URL from the
+# backend — the Worker itself has no state, and the bucket keeps every object.
+
+name = "gym-member-photos"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# Route the Worker in front of your delivery base URL path. The backend builds
+# photo URLs as `${MEDIA_PUBLIC_BASE_URL}/{objectKey}`, so this path prefix must
+# match the backend's MEDIA_PUBLIC_BASE_URL path (default "/photos").
+[[routes]]
+pattern = "media.example.com/photos/*"
+custom_domain = false
+
+[vars]
+PHOTO_ROUTE_PREFIX = "/photos/"
+# MEDIA_TOKEN_COOKIE = "gym_media_token"   # only if the backend overrides it
+# MEDIA_STORAGE_PROVIDER = "b2"             # informational; the Worker speaks S3
+# MEDIA_REGION = "us-east-1"                # B2 accepts any SigV4 region
+# MEDIA_ENDPOINT = "https://s3.us-west-004.backblazeb2.com"
+# MEDIA_BUCKET = "gym-member-photos"        # private bucket name (not a binding)
+
+# Secrets (set with `wrangler secret put NAME`, never commit):
+#   MEDIA_TOKEN_SECRET       shared HMAC secret with the backend media token module
+#   MEDIA_ACCESS_KEY_ID      object-storage application key ID
+#   MEDIA_SECRET_ACCESS_KEY  object-storage application key secret
+#
+# Recommended: add a Cloudflare Cache Rule for this route that honours the
+# Worker's Cache-Control ("public, max-age=31536000, immutable" on 200s,
+# "private, no-store" on every error status).
