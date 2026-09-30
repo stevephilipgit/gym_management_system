@@ -69,6 +69,21 @@ export const CRON_CONFIG = {
       enabled: boolFromEnv(process.env.CRON_AI_SESSION_LIFECYCLE_ENABLED),
       schedule: process.env.CRON_AI_SESSION_LIFECYCLE_SCHEDULE || "0 3 * * *",
     },
+    // Member photo media pipeline (both are no-ops while the media pipeline is
+    // disabled, so they are safe to leave on). See jobs/mediaCleanupJobs.js.
+    mediaOrphanCleanup: {
+      enabled: boolFromEnv(process.env.CRON_MEDIA_ORPHAN_CLEANUP_ENABLED),
+      // Unreferenced objects are only removed once they are older than the
+      // 24h safety window (MEDIA_ORPHAN_GRACE_HOURS), so the cadence below is
+      // safe even for uploads that are still in flight.
+      schedule: process.env.CRON_MEDIA_ORPHAN_CLEANUP_SCHEDULE || "10 4 * * *", // 04:10 IST
+    },
+    mediaPhotoRetention: {
+      enabled: boolFromEnv(process.env.CRON_MEDIA_RETENTION_ENABLED),
+      // Photos replaced by a newer one are kept for
+      // MEDIA_PREVIOUS_RETENTION_DAYS (default 14) before removal.
+      schedule: process.env.CRON_MEDIA_RETENTION_SCHEDULE || "20 4 * * *", // 04:20 IST
+    },
   },
 };
 

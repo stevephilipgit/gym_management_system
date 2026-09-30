@@ -84,6 +84,8 @@ import { cleanupOldEnquiries } from "./controllers/enquiryController.js";
 import cron from "node-cron";
 import { autoCloseJob, startupRecoveryJob, staleAutoCloseJob } from "./jobs/attendanceJobs.js";
 import { attendanceDailyExportJob, retryPendingNotifications, cleanupExpiredExports } from "./jobs/attendanceDailyExportJob.js";
+// ✅ Member photo media pipeline lifecycle (orphan sweep + retention sweep).
+import { orphanPhotoCleanup, retiredPhotoCleanup } from "./jobs/mediaCleanupJobs.js";
 import systemSettingsService from "./services/systemSettingsService.js";
 
 // ✅ AI: session retention lifecycle
@@ -367,6 +369,15 @@ const startServer = async () => {
       });
       logger.info("[AISessionCleanup] Lifecycle run", result);
     });
+
+    // ✅ Member photo cleanup (media pipeline). Both sweeps are no-ops while
+    // the pipeline is disabled, and neither ever removes a referenced object:
+    // orphans only after a 24h safety window, replaced photos only after the
+    // 14-day retention window.
+    scheduleJob("mediaOrphanCleanup", "Media orphan cleanup", () => orphanPhotoCleanup());
+    scheduleJob("mediaPhotoRetention", "Media photo retention cleanup", () =>
+      retiredPhotoCleanup()
+    );
 
     // Start listening
     server = app.listen(config.app.port, () => {
