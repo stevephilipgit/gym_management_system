@@ -4,6 +4,12 @@
 // public kiosk punch path. Keeping this shared guarantees the public kiosk path
 // applies exactly the same input rules as the admin counter — no weaker "public"
 // variant.
+//
+// Photo delivery: punch responses resolve the member's photo through
+// media/delivery.js (active media key → private-bucket delivery URL, otherwise
+// the legacy /uploads reference). These member objects are queried with
+// .lean(), so they bypass the Member schema's serialization transform.
+import { resolvePhotoUrl } from "../media/delivery.js";
 
 /**
  * Sanitize input - strip dangerous chars, trim, remove all whitespace.
@@ -141,7 +147,7 @@ export function buildPunchResponse({ attendance, member, isCheckOut, isLate, day
       gymId: member.gymId,
       name: member.fullName,
       plan: member.gymPlan,
-      photoUrl: member.photoUrl,
+      photoUrl: resolvePhotoUrl(member),
       daysLeft,
       status: daysLeft > 0 ? "active" : daysLeft === 0 ? "lastday" : "expired",
       validityEnd: formatDate(member.validityEnd),

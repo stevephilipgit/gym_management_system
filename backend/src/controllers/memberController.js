@@ -14,6 +14,13 @@ import FinanceLog from "../models/FinanceLog.js";
 import Branch from "../models/Branch.js";
 import Counter from "../services/atomicCounter.js";
 import scopeResolver from "../core/scopeResolver.js";
+import logger from "../core/logger.js";
+import { MediaError, isMediaEnabled } from "../media/mediaService.js";
+import {
+  buildPhotoAttachUpdate,
+  resolveBranchCode,
+  verifyMemberPhotoKey,
+} from "../media/memberPhoto.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -182,7 +189,36 @@ export const memberController = {
   registerMember: asyncHandler(async (req, res) => {
     const data = req.body;
     const photoFile = req.file;
-    const photoUrl = photoFile ? `/uploads/${photoFile.filename}` : null;
+
+    // Photo handling: with the media pipeline ON the client has already
+    // uploaded the object directly to storage and only echoes back its key —
+    // Express never sees image bytes. With the pipeline OFF the previous
+    // multipart path keeps working unchanged (documented rollback mode).
+    const photoKey = data.photoKey ? String(data.photoKey).trim() : null;
+    delete data.photoKey;
+    let photoUrl = null;
+
+    if (isMediaEnabled()) {
+      if (photoFile) {
+        throw new ValidationError(
+          "Photo must be uploaded through the media upload flow"
+        );
+      }
+      if (photoKey) {
+        // Post-upload verification: exists, size, content type, tenant scope.
+        const branchCode = await resolveBranchCode(req.branchId);
+        await verifyMemberPhotoKey({ branchCode, photoKey, memberId: null });
+      }
+    } else if (photoKey) {
+      // A stale client echoing a key the server cannot honor. Registration is
+      // more important than the photo: continue without it, loudly.
+      logger.warn("MEMBER_PHOTO_KEY_IGNORED", {
+        reason: "media pipeline disabled",
+        memberId: null,
+      });
+    } else if (photoFile) {
+      photoUrl = `/uploads/${photoFile.filename}`;
+    }
 
     // Validate required fields
     if (!data.fullName || !data.fatherName || !data.phone) {
@@ -269,6 +305,7 @@ export const memberController = {
       validityEnd,
       customFields,
       photoUrl,
+      photoKey: photoKey || null,
       status: paymentStatus === "paid" ? "active" : "draft",
       ...(clientRequestId ? { clientRequestId } : {}),
     };
@@ -485,8 +522,34 @@ export const memberController = {
       delete data[field];
     }
 
-    // Handle photo upload
-    if (req.file) {
+    // Photo upload / photo key. With the media pipeline ON the client sends a
+    // `photoKey` produced by POST /api/media/presign; the object is re-verified
+    // before it is referenced and the object it replaces is RETAINED for the
+    // retention window (never deleted here).
+    const photoKey = data.photoKey ? String(data.photoKey).trim() : null;
+    delete data.photoKey;
+
+    if (isMediaEnabled()) {
+      if (req.file) {
+        throw new ValidationError(
+          "Photo must be uploaded through the media upload flow"
+        );
+      }
+      if (photoKey) {
+        const branchCode = await resolveBranchCode(req.branchId);
+        await verifyMemberPhotoKey({
+          branchCode,
+          photoKey,
+          memberId: existingMember._id,
+        });
+        Object.assign(data, buildPhotoAttachUpdate({ member: existingMember, photoKey }));
+      }
+    } else if (photoKey) {
+      logger.warn("MEMBER_PHOTO_KEY_IGNORED", {
+        reason: "media pipeline disabled",
+        memberId: String(existingMember._id),
+      });
+    } else if (req.file) {
       data.photoUrl = `/uploads/${req.file.filename}`;
     }
 
@@ -520,6 +583,77 @@ export const memberController = {
       }
       throw new NotFoundError("Member not found");
     }
+
+    return res.json({ success: true, data: member });
+  }),
+
+  // Change only the member's photo (media pipeline).
+  // The client uploads first (POST /api/media/presign → direct to storage) and
+  // then hands the key back here; the backend never receives image bytes.
+  updateMemberPhoto: asyncHandler(async (req, res) => {
+    const lookupGymId = req.params.gymId || req.params.id;
+    const { photoKey, version, memberCode } = req.validatedBody ?? req.body ?? {};
+
+    if (!photoKey) {
+      throw new ValidationError("photoKey is required");
+    }
+    if (!isMediaEnabled()) {
+      throw new MediaError(
+        "Photo uploads are unavailable on this server configuration",
+        503,
+        "MEDIA_DISABLED"
+      );
+    }
+
+    const { member: existingMember, members } = await resolveMemberForAdmin(req, lookupGymId, {
+      memberCode,
+    });
+    if (members) {
+      return sendMultipleMembers(res, members);
+    }
+    if (!existingMember) {
+      throw new NotFoundError("Member not found");
+    }
+
+    const expectedVersion =
+      version === undefined || version === null ? (existingMember.version ?? 0) : Number(version);
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+      throw new ValidationError("version must be a non-negative integer");
+    }
+
+    const branchCode = await resolveBranchCode(req.branchId);
+    await verifyMemberPhotoKey({
+      branchCode,
+      photoKey,
+      memberId: existingMember._id,
+    });
+
+    const member = await memberRepository.updateByGymId(
+      lookupGymId,
+      buildPhotoAttachUpdate({ member: existingMember, photoKey }),
+      expectedVersion,
+      {
+        allowedGenders: scopeResolver.getScopeAllowedGenders(req),
+        memberCode,
+        branchId: req.branchId,
+      }
+    );
+
+    if (!member) {
+      const stillExists = await memberRepository.findByGymId(lookupGymId, {
+        allowedGenders: scopeResolver.getScopeAllowedGenders(req),
+        memberCode,
+        branchId: req.branchId,
+      });
+      if (stillExists) {
+        throw new ConflictError(
+          "This member was modified by another user. Please reload the member and try again."
+        );
+      }
+      throw new NotFoundError("Member not found");
+    }
+
+    await auditActions.memberUpdated(req, member._id, { photoKey });
 
     return res.json({ success: true, data: member });
   }),
