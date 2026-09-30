@@ -13,6 +13,7 @@ import {
   isLateEntry,
   buildPunchResponse,
 } from '../utils/attendanceInput.js';
+import { resolvePhotoUrl } from '../media/delivery.js';
 
 const Attendance = mongoose.model('Attendance');
 const Member = mongoose.model('Member');
@@ -346,7 +347,7 @@ export const markAttendance = async (req, res) => {
         gymId: member.gymId,
         name: member.fullName,
         plan: member.gymPlan,
-        photoUrl: member.photoUrl,
+        photoUrl: resolvePhotoUrl(member),
         daysLeft,
         status: daysLeft > 0 ? 'active' : daysLeft === 0 ? 'lastday' : 'expired',
       },

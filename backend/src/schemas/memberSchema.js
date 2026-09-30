@@ -148,6 +148,11 @@ export const memberRegisterSchema = Joi.object({
   // Idempotency key (optional, backward compatible): prevents duplicate
   // member creation on retry/double-submit.
   clientRequestId: Joi.string().trim().max(100).optional(),
+
+  // Media pipeline: key of an object already uploaded via POST /api/media/presign
+  // (the client uploads directly to storage; the backend only stores the key and
+  // re-verifies existence/size/content-type/tenant scope before persisting).
+  photoKey: Joi.string().trim().max(512).optional(),
 }).unknown(true);
 
 export const memberUpdateSchema = Joi.object({
@@ -235,6 +240,24 @@ export const memberUpdateSchema = Joi.object({
   customFields: Joi.alternatives()
     .try(Joi.object(), Joi.string())
     .optional(),
+
+  // Media pipeline: newly uploaded photo object key (see memberRegisterSchema).
+  photoKey: Joi.string().trim().max(512).optional(),
+}).unknown(true);
+
+export const memberPhotoSchema = Joi.object({
+  // Key of an object the client already uploaded through the presign endpoint.
+  photoKey: Joi.string().trim().max(512).required().messages({
+    "any.required": "photoKey is required",
+    "string.empty": "photoKey is required",
+  }),
+
+  // Optimistic concurrency (same rule as the general update endpoint): the
+  // version the client loaded. A mismatch means someone else edited the member.
+  version: Joi.number().integer().min(0).optional(),
+
+  // Disambiguates a gymId that exists more than once in the branch.
+  memberCode: Joi.string().trim().max(20).optional(),
 }).unknown(true);
 
 export const memberSearchSchema = Joi.object({
@@ -323,6 +346,7 @@ export const memberRenewSchema = Joi.object({
 
 export const validateMemberRegister = (data) => memberRegisterSchema.validate(data, { abortEarly: false });
 export const validateMemberUpdate = (data) => memberUpdateSchema.validate(data, { abortEarly: false });
+export const validateMemberPhoto = (data) => memberPhotoSchema.validate(data, { abortEarly: false });
 export const validateMemberSearch = (data) => memberSearchSchema.validate(data, { abortEarly: false });
 export const validateMemberStatus = (data) => memberStatusSchema.validate(data, { abortEarly: false });
 export const validateMemberRenew = (data) => memberRenewSchema.validate(data, { abortEarly: false });

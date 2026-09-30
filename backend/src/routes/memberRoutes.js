@@ -10,8 +10,10 @@ import draftController from "../controllers/draftController.js";
 import adminAuth from "../middleware/adminAuth.js";
 import requireRole from "../middleware/requireRole.js";
 import { validateSchema } from "../middleware/schemaValidator.js";
-import { memberRegisterSchema, memberUpdateSchema, memberRenewSchema } from "../schemas/memberSchema.js";
+import { memberRegisterSchema, memberUpdateSchema, memberRenewSchema, memberPhotoSchema } from "../schemas/memberSchema.js";
 import { adminLimiter, sensitiveLimiter } from "../middleware/rateLimiter.js";
+import { ValidationError } from "../core/errorHandler.js";
+import { isMediaEnabled } from "../media/mediaService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,6 +44,15 @@ const upload = multer({
   storage,
   limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB — same as /api/upload
   fileFilter: (req, file, cb) => {
+    // Media pipeline ON → image binaries must never pass through Express: the
+    // client uploads directly to storage via a presigned URL. The multipart
+    // BODY is still parsed (registration fields arrive that way); only the
+    // file part is refused, loudly.
+    if (isMediaEnabled()) {
+      return cb(
+        new ValidationError("Photo must be uploaded through the media upload flow")
+      );
+    }
     if (!file.mimetype.match(/jpg|jpeg|png/i)) {
       return cb(new Error("Only JPG, JPEG, PNG allowed"));
     }
@@ -79,5 +90,13 @@ router.get("/:gymId", sensitiveLimiter, adminAuth, memberController.getMemberByG
 
 // PUT /api/members/:gymId (update member)
 router.put("/:gymId", adminAuth, upload.single("photo"), validateSchema(memberUpdateSchema), memberController.updateMember);
+
+// PUT /api/members/:gymId/photo (media pipeline: attach an uploaded photo key)
+router.put(
+  "/:gymId/photo",
+  adminAuth,
+  validateSchema(memberPhotoSchema),
+  memberController.updateMemberPhoto
+);
 
 export default router;
