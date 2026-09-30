@@ -20,4 +20,11 @@ export function validateEnv() {
   if (!process.env.KIOSK_SELECTION_SECRET) {
     console.warn('[Config] KIOSK_SELECTION_SECRET is not set. Falling back to JWT_ACCESS_SECRET for kiosk selection tokens; set a dedicated secret in production.');
   }
+
+  // Media edge-auth secret (shared with the delivery Worker). Not fatal
+  // (config falls back to the JWT access secret) but key separation is
+  // recommended — warn at startup.
+  if (!process.env.MEDIA_TOKEN_SECRET) {
+    console.warn('[Config] MEDIA_TOKEN_SECRET is not set. Falling back to JWT_ACCESS_SECRET for media tokens; set a dedicated secret in production.');
+  }
 }

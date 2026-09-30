@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { applyDnsServerOverride } from './dnsResolver.js';
 import { CRON_CONFIG } from './cronConfig.js';
+import { MEDIA_CONFIG } from './mediaConfig.js';
 dotenv.config();
 
 // Pin Node's internal (c-ares) resolver when DNS_SERVERS is set. Required on
@@ -64,6 +65,10 @@ const config = {
   // Defined in cronConfig.js (single source of truth) — kept under `config.cron`
   // so existing consumers (`config.cron.timezone`, `config.cron.jobs.*`) still work.
   cron: CRON_CONFIG,
+// Member photo media pipeline (presigned object-storage uploads + edge delivery).
+// Defined in mediaConfig.js; `config.media.enabled` is false unless storage
+// credentials are present and MEDIA_STORAGE_ENABLED is not "false".
+  media: MEDIA_CONFIG,
   ai: {
     enabled: String(process.env.AI_ENABLED).toLowerCase() === 'true',
     provider: process.env.AI_PROVIDER || 'gemini',

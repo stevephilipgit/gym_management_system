@@ -15,6 +15,8 @@
     "test": "mocha \"src/tests/**/*.test.js\" --timeout 30000"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1142.0",
+    "@aws-sdk/s3-request-presigner": "^3.1142.0",
     "@google/generative-ai": "^0.24.1",
     "bcryptjs": "^3.0.3",
     "compression": "^1.8.1",
