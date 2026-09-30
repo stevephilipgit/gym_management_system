@@ -3,6 +3,7 @@
 .env.local
 .env.*.local
 .env.production
+.dev.vars
 
 # Dependencies
 node_modules/
@@ -147,3 +148,6 @@ DEPLOYMENT_*.md
 
 # Local dev database URI
 backend/mongo_uri.txt
+
+# Cloudflare Wrangler local state
+.wrangler/
